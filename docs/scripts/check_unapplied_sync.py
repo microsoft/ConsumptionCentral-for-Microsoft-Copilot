@@ -12,6 +12,14 @@ An earlier session already established that UnappliedChanges is a normal
 export artefact rather than a pending-changes flag - see
 check_unapplied.py. What that did not cover, and what this adds, is that
 ADDING a query to the model without adding it here breaks the file.
+
+Calculated tables are excluded. A DAX calculated table has no mashup query,
+so it correctly never appears in UnappliedChanges. Consumption Central's own
+model is built entirely from Power Query and so has none, but the check is
+used against other templates in the family - GitHubCopilotPanel has two -
+where the unfiltered comparison reports failures on a perfectly good file.
+The test is on the partition source type rather than a name list, so a
+calculated table added here later needs no change to this script.
 """
 import json
 import sys
@@ -30,6 +38,16 @@ def decode(raw):
     return raw.decode("utf-8")
 
 
+def mashup_backed(table):
+    """True when at least one partition is a Power Query partition.
+
+    A calculated table's partitions are type "calculated"; a calculation
+    group uses "calculationGroup". Neither has a mashup query behind it.
+    """
+    return any(p.get("source", {}).get("type") == "m"
+               for p in table.get("partitions", []))
+
+
 def main():
     rc = 0
     for arg in sys.argv[1:]:
@@ -41,13 +59,17 @@ def main():
             model = json.loads(decode(z.read("DataModelSchema")))["model"]
             unapplied = json.loads(decode(z.read("UnappliedChanges")))
 
+        tables = model.get("tables", [])
+        calculated = [t["name"] for t in tables if not mashup_backed(t)]
         model_names = ([e["name"] for e in model.get("expressions", [])]
-                       + [t["name"] for t in model.get("tables", [])])
+                       + [t["name"] for t in tables if mashup_backed(t)])
         uq = [q["name"] for q in unapplied.get("queries", [])]
 
         print(p.name)
         print(f"  model objects {len(model_names)}   "
               f"unapplied queries {len(uq)}")
+        if calculated:
+            print(f"  calculated, no M query expected: {', '.join(calculated)}")
 
         problems = 0
         for n, c in Counter(uq).items():
