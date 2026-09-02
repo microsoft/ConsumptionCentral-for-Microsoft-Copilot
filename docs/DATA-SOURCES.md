@@ -47,7 +47,14 @@ The export dialog offers **Export by week** or **Export by day**, and then two w
 | Button | What it does |
 |---|---|
 | **Export to CSV** | Downloads a ZIP. This is what path [1](../1.%20Local%20CSV/) uses, and it is the fallback on path [2](../2.%20Fabric/). |
-| **Connect data** | Gives a **Partition identifier** and **Query identifier** for a live connection, under either a **Power BI** or a **Microsoft Fabric** tab. Power BI → [path 3](../3.%20Viva%20Direct/); Fabric → a [Dataflow Gen2](../2.%20Fabric/README.md#the-viva-half-needs-no-notebook), which is the **preferred** route on the Fabric path. |
+| **Connect data** | Gives a **Partition identifier** and **Query identifier** for a live connection to the **dashboard's own** result, which is multi-table. |
+
+> **For the live-connection paths, do not take the identifiers from here.** Paths
+> [2](../2.%20Fabric/) and [3](../3.%20Viva%20Direct/) send no table name, so they need a
+> **custom query** — one you build under **Analysis**, whose identifiers come from **Analysis
+> results → your query → the link icon**. A custom query returns a single table, which is what those
+> paths expect. Building your own is also what lets you tick the spending-policy and employee
+> attributes that carry policy names, limits and departments onto the rows.
 
 A banner in the dialog says **"Includes user identifiers"** when identifiable export is enabled for
 you. That is the quickest way to tell which shape you are about to get.

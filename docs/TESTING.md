@@ -10,17 +10,17 @@ useful.
 
 ## Test 1 — Does the Viva connector work in your tenant? *(10 min)*
 
-**The big one.** The connection is confirmed to exist — the Consumption Dashboard's own **Connect
-data** dialog publishes a Partition and Query identifier for exactly this. What is unproven is
-whether a given tenant can use it: our first attempt returned **access forbidden**, which looks like
-the Analyst role or connector access rather than anything in the connection itself.
+**The big one.** The connection is confirmed to exist — Viva Insights publishes a Partition and
+Query identifier for exactly this. What is unproven is whether a given tenant can use it: our first
+attempt returned **access forbidden**, which looks like the Analyst role or connector access rather
+than anything in the connection itself.
 
 Full procedure: **[3. Viva Direct/TEST-PROCEDURE.md](../3.%20Viva%20Direct/TEST-PROCEDURE.md)**
 
 The short version:
 
-1. <https://analysis.insights.cloud.microsoft> → **Consumption Dashboard** → download icon →
-   **Connect data** → **Power BI** tab → copy both identifiers
+1. <https://analysis.insights.cloud.microsoft> → **Analysis** → build a query with the Copilot credit
+   metrics → **Analysis results** → your query → the **link icon** → copy both identifiers
 2. Power BI Desktop → **Get Data** → **Online Services** → **Viva Insights**
 3. Paste both. Leave **Query Name** blank. Advanced: **Pivoted** + **Row-level data**,
    connectivity **Import**

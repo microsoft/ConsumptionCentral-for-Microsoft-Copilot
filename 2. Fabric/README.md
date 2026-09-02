@@ -109,8 +109,9 @@ Central tables.
 Viva Insights ships a certified **Dataflow Gen2** connector that writes query results straight into a
 Lakehouse on a schedule — no download, no notebook. **This is the preferred route on this path.**
 
-1. Consumption Dashboard → **Connect data** → the **Microsoft Fabric** tab. Copy the **Partition
-   identifier** and **Query identifier**.
+1. Viva Insights → **Analysis** → build a query with the Copilot credit metrics → **Analysis
+   results** → your query → the **link icon**. Copy the **Partition identifier** and **Query
+   identifier**.
 2. Fabric workspace → **New** → **Dataflow Gen2** → **Get data** → search *Viva Insights* under
    **Online Services**.
 3. Paste both identifiers. Leave *Query Name* blank. Under **Advanced options** set **Schema Type =
@@ -118,6 +119,10 @@ Lakehouse on a schedule — no download, no notebook. **This is the preferred ro
    account**.
 4. Set the Lakehouse as the data destination, then schedule the refresh for **Tuesday ~8am PST** —
    after Viva's weekend refresh.
+
+> Leaving *Query Name* blank only works against a **custom query**, which returns a single table.
+> Identifiers taken from the Consumption Dashboard's own export point at a multi-table result and
+> need a table name supplied, which is why the credit query has to be one you built in Analysis.
 
 > **Also turn on auto-refresh for the query itself**, in Viva Insights → Analysis results. Without
 > it the Dataflow refreshes happily against a result that never changes — which looks exactly like

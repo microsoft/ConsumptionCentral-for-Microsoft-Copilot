@@ -19,6 +19,11 @@ Open **`Consumption Central - Viva Direct.pbit`**, paste them in, click **Load**
 | **`VivaPartitionId`** | Partition identifier |
 | **`VivaQueryId`** | Query identifier |
 
+> **Not the Consumption Dashboard's "Connect data" dialog.** That one also hands out a partition and
+> query identifier, which is why it gets used by mistake — but it points at the dashboard's own
+> multi-table result, and this template sends no table name. Build your own query under **Analysis**
+> and take the identifiers from **Analysis results**.
+
 **Leave everything else blank.** The prompt lists more boxes than you need — the rest are for
 Copilot Studio, GitHub and Azure AI, which are optional.
 
@@ -26,13 +31,15 @@ Copilot Studio, GitHub and Azure AI, which are optional.
 
 ## Only the custom query is supported
 
-The connector can read two shapes, but this template targets the **custom query** you build in
-Analysis. That is the shape that auto-refreshes, and it returns a single table — so no table name is
-ever sent, and there is no parameter to get wrong.
+The connector can read two shapes, and this template targets the **custom query** you build under
+Analysis. That shape returns a single table, so no table name is ever sent and there is no parameter
+to get wrong.
 
-A Consumption Dashboard export is multi-table and needs its export name supplied with the request.
-The dialog never shows you that name, so the parameter was unanswerable in practice and has been
-removed. If you have only a Dashboard export, build a custom query instead.
+The Consumption Dashboard's own result is multi-table and needs its export name supplied with the
+request. The dialog never shows you that name, so the parameter was unanswerable in practice and has
+been removed. If that is all you have, build a custom query instead — it takes a couple of minutes
+and gives you better data, because you choose the spending-policy and employee attributes that ride
+along on the rows.
 
 **[Full connector reference →](../docs/VIVA-CONNECTOR.md)**
 
