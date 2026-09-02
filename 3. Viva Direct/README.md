@@ -24,21 +24,15 @@ Copilot Studio, GitHub and Azure AI, which are optional.
 
 ---
 
-## Either Viva source works
+## Only the custom query is supported
 
-The connector reads **two different shapes**, and one parameter tells them apart:
+The connector can read two shapes, but this template targets the **custom query** you build in
+Analysis. That is the shape that auto-refreshes, and it returns a single table — so no table name is
+ever sent, and there is no parameter to get wrong.
 
-| Your source | `VivaExportName` |
-|---|---|
-| **Custom query** — you built it in Analysis | **leave blank** |
-| **Consumption Dashboard export** | **set it** to the export name |
-
-A custom query returns a single table, so no table name is sent. A Consumption Dashboard export is
-multi-table and named, so the name has to go with the request — omit it and the service returns a
-bare `500` rather than saying a name was needed.
-
-This can't be detected automatically: `VivaInsights.Data` hands back a *lazy* table, so probing it
-reports success whether or not the table can actually be read.
+A Consumption Dashboard export is multi-table and needs its export name supplied with the request.
+The dialog never shows you that name, so the parameter was unanswerable in practice and has been
+removed. If you have only a Dashboard export, build a custom query instead.
 
 **[Full connector reference →](../docs/VIVA-CONNECTOR.md)**
 
@@ -79,9 +73,10 @@ they're found by name, so nothing needs renaming and anything you don't have is 
 Leave `DataFolder` alone if all you have is Cowork. The connector covers it and those pages simply
 stay empty, which is a supported state.
 
-> Foundry exports often land somewhere else entirely, so `AzureAiSpendCsvPath` and
-> `AzureAiTokensCsvPath` remain as an explicit escape hatch — set either one and it wins over the
-> folder.
+> Azure AI Foundry files live in `DataFolder` alongside everything else. The separate
+> `AzureAiSpendCsvPath` / `AzureAiTokensCsvPath` parameters have been removed — one product having
+> its own path parameters while the other three were found by name was inconsistent, and the folder
+> lookup already handles them.
 
 **[Where to get each one →](../docs/DATA-SOURCES.md)**
 
@@ -89,10 +84,10 @@ stay empty, which is a supported state.
 
 ## If the refresh fails
 
-**`(500) Internal Server Error`** almost always means `VivaExportName` is set when it shouldn't be.
-A custom query needs it **blank**.
-
-Set it only if you're using a Consumption Dashboard export instead of a custom query.
+**`(500) Internal Server Error`** means the connector was asked for a multi-table export without a
+table name. This template only issues single-table custom-query requests, so if you see it, check
+that `VivaPartitionId` and `VivaQueryId` point at a **custom query** built in Analysis rather than at
+a Consumption Dashboard export.
 
 **[Connector detail and what was tested →](../docs/VIVA-CONNECTOR.md)**
 

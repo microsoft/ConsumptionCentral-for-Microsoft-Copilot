@@ -57,7 +57,7 @@ Give it to the template:
 | Path | Parameter |
 |---|---|
 | Local CSV | drop the file in your data folder |
-| Viva Direct | `EntraCsvPath` |
+| Viva Direct | drop the file in your `DataFolder` |
 | Fabric | run `Ingest_Org.ipynb` |
 
 Column names are matched flexibly — `department`, `Department` and

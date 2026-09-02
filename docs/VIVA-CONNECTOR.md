@@ -14,10 +14,11 @@ All verified against a live tenant in August 2026.
 | Auto-refresh | ✅ | ❌ |
 | Real UPNs under identification | ✅ | ✅ |
 | Org attributes | ✅ analyst chooses | limited |
-| `VivaExportName` needed | ❌ **leave blank** | ✅ required |
+| Supported by this template | ✅ | ❌ |
 | Policy names | in-query column | separate table |
 
-**Use a custom query** unless you have a reason not to.
+**Use a custom query.** The template no longer supports the Dashboard export shape — see
+[The 500 error](#the-500-error) for why.
 
 ---
 
@@ -45,15 +46,22 @@ file if none answer.
 A Consumption Dashboard export is **multi-table**. Omit `TableName` and the connector returns a bare
 `(500) Internal Server Error` — it does not say a table name is needed.
 
-| Export | `VivaExportName` |
+The export name has to travel with the request, and it is one of these:
+
+| Export | Name |
 |---|---|
 | Identified | `IdentifiableAiConsumptionWeeklyExport` |
 | De-identified | `AiConsumptionWeeklyExport` |
 
-To check yours: **Download Power BI template** from the same dialog, open it, and read a table name
-in Power Query. Whatever precedes `Data_` is your export name.
+The template used to expose this as a `VivaExportName` parameter. That has been **removed**: the
+Consumption Dashboard dialog never displays the export name, so the only way to answer the prompt was
+to download Microsoft's own template and read a table name out of Power Query. A parameter a user
+cannot answer from the UI they are looking at is a trap, not an option.
 
-**A custom query returns a single table, so none of this applies — leave the parameter blank.**
+Nor can the right value be detected: `VivaInsights.Data` returns a *lazy* table, so probing it
+reports success whether or not the table can actually be read.
+
+**A custom query returns a single table, so none of this applies.**
 
 ---
 
