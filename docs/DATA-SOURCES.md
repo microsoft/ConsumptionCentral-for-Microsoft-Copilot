@@ -12,6 +12,21 @@ ones observed in a real export and are marked as such — check yours matches be
 **Verification status is marked throughout.** A plausible-but-wrong click path wastes more of your
 time than an honest "check the portal", so anything unconfirmed says so.
 
+## Which sources automate
+
+The single question most people arrive with. Answered once, here:
+
+| Source | Automated route | Still needs a download? |
+|---|---|---|
+| [Cowork / Work IQ](#1-cowork--work-iq-credits--viva-insights-consumption-dashboard) | Certified Power Query connector — direct on Power BI, Dataflow Gen2 on Fabric | **No** |
+| [GitHub Copilot](#3-github-copilot-ai-credits) | REST API | **No** |
+| [Entra org attributes](#5-org-attributes--microsoft-entra-optional) | Graph PowerShell on a schedule | **No** |
+| [Copilot Studio](#2-copilot-studio-credits) | None — PPAC is download-only | **Yes** |
+| [Azure AI Foundry](#4-azure-ai-foundry) | None at the grain used here — see that section | **Yes** |
+
+For the two that need a download, a [Power Automate flow](../2.%20Fabric/flows/) can at least land
+the file in the right place for you.
+
 ---
 
 ## 1. Cowork / Work IQ credits — Viva Insights Consumption Dashboard
@@ -115,7 +130,7 @@ Use **weekly** for Consumption Central. Every Cowork page is built on weekly gra
 trend across whatever weeks you load.
 
 There is **no scheduled CSV export and no REST API** — each CSV run is a point-in-time download. But
-there *is* a certified **Power Query connector**, which changes the picture considerably:
+there *is* a certified **Power Query connector**, so Viva consumption **can** be automated:
 
 - **Power BI** — connect direct from Desktop, refresh on a schedule.
   See [3. Viva Direct](../3.%20Viva%20Direct/).
@@ -127,11 +142,11 @@ there *is* a certified **Power Query connector**, which changes the picture cons
 Either way, **auto-refresh must also be enabled on the query itself** in Viva Insights → Analysis
 results. Miss that and the report refreshes happily against a result that never changes.
 
+The distinction that matters: there is no endpoint you can `curl`, but there is a supported
+connector, and it removes the download entirely. Nobody needs to remember to press export for Viva.
+
 Accumulating history beyond the 6-month window is still the best reason to move to the
 [Fabric path](../2.%20Fabric/) — the connector reaches only as far back as the export does.
-
-> **Correction.** Earlier versions of this document said there was no scheduled export at all. There
-> is one, via the connector; what does not exist is a REST endpoint you can `curl`.
 
 [pbiconn]: https://learn.microsoft.com/en-us/viva/insights/advanced/analyst/power-bi-connector
 [fabconn]: https://learn.microsoft.com/en-us/viva/insights/advanced/analyst/export-query-data-microsoft-fabric

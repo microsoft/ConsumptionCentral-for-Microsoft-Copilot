@@ -1,14 +1,24 @@
 # Automating the landing step
 
-Three of Consumption Central's four sources have **no REST API** — Viva consumption, Copilot Studio, and Entra org
-attributes all have to be exported by hand. Only GitHub can be pulled directly, which
-[`Ingest_GitHub_API.ipynb`](../notebooks/Ingest_GitHub_API.ipynb) does.
+Consumption Central reads five sources, and they do not automate equally:
 
-That leaves someone remembering to download files. For the Viva export in particular that matters
-more than it sounds: it reaches back five months, so a forgotten quarter is permanently lost history.
+| Source | Automated route | Needs a human? |
+|---|---|---|
+| **Viva consumption** | Certified Power Query connector — a [Dataflow Gen2](../README.md#the-viva-half-needs-no-notebook) on Fabric, or a direct connection on [3. Viva Direct](../../3.%20Viva%20Direct/) | **No** |
+| **GitHub Copilot** | REST API, via [`Ingest_GitHub_API.ipynb`](../notebooks/Ingest_GitHub_API.ipynb) | **No** |
+| **Entra org** | Graph PowerShell on a schedule | **No** |
+| **Copilot Studio** | None — PPAC is download-only | Yes |
+| **Azure AI Foundry** | None — Cost Management exports are download-only at the grain we need | Yes |
 
-**The fix is a Power Automate flow that lands the file for you** — watch a mailbox or a SharePoint
-library, write straight to OneLake, let the ingester pick it up on its next run.
+So the two that still need someone to press export are **Copilot Studio** and **Azure AI Foundry**.
+
+**The flows on this page are for those two.** They watch a mailbox or a SharePoint library and write
+straight to OneLake, so the ingester picks the file up on its next run. That does not remove the
+download; it removes the "save it in the right place" step and the mistakes that come with it.
+
+> **Viva does not need a flow.** It used to, and older notes here said so. The certified connector
+> now covers it end to end — use the Dataflow Gen2 route on Fabric. A flow is only worth setting up
+> for Viva if you are deliberately working from downloaded CSVs.
 
 ---
 
@@ -72,14 +82,15 @@ A flow can only react to a file that shows up. How each source gets there:
 
 | Source | Reality |
 |---|---|
-| **Viva consumption** | Manual download, then mail it to the watched mailbox or drop it in the library. **Or skip the flow entirely** — a [Dataflow Gen2](../README.md#the-viva-half-can-run-itself) writes query results straight to the Lakehouse on a schedule. |
-| **Copilot Studio** | Same — PPAC is download-only. |
+| **Viva consumption** | **No flow needed** — a [Dataflow Gen2](../README.md#the-viva-half-needs-no-notebook) writes query results straight to the Lakehouse on a schedule. Use a flow only if you are deliberately working from downloaded CSVs. |
+| **Copilot Studio** | Manual download — PPAC is download-only. Mail it to the watched mailbox or drop it in the library. |
+| **Azure AI Foundry** | Manual download from Cost Management. Same handling as Studio. |
 | **GitHub** | The report is *emailed to you*, so the email flow can catch it with no human step at all. Better still, skip it and use the API notebook. |
 | **Entra org** | Schedule the Graph PowerShell snippet in [DATA-SOURCES.md](../../docs/DATA-SOURCES.md) and have it write to the SharePoint library. Fully automatable. |
 
-So realistically: **GitHub and Entra can be fully hands-off. Viva and Studio still need someone to
-press export** — the flow just removes the "save it in the right place" step and the mistakes that
-come with it.
+So realistically: **Viva, GitHub and Entra can be fully hands-off. Copilot Studio and Azure AI
+Foundry still need someone to press export** — the flow just removes the "save it in the right
+place" step and the mistakes that come with it.
 
 That is still worth having. The failure mode you are protecting against is not someone forgetting to
 click download; it is someone downloading it and putting it somewhere the pipeline cannot see.

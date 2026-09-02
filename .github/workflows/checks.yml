@@ -52,34 +52,67 @@ jobs:
           import os, re, sys, urllib.parse
 
           LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
-          missing = []
-          ok = 0
+          HEAD = re.compile(r"^(#{1,6})\s+(.*?)\s*$", re.M)
 
+          def slug(text):
+              # GitHub's heading anchor rules: strip markdown, lowercase,
+              # drop punctuation, then one hyphen per space. Runs of spaces
+              # are NOT collapsed - "credits - viva" becomes "credits--viva"
+              # once the dash is stripped, and collapsing them here would
+              # report good links as broken.
+              text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+              text = re.sub(r"[*`_]", "", text).lower().strip()
+              text = re.sub(r"[^\w\s-]", "", text)
+              return re.sub(r"[ \t]", "-", text)
+
+          docs = {}
           for dirpath, dirnames, filenames in os.walk("."):
               if ".git" in dirpath:
                   continue
               for fn in filenames:
-                  if not fn.endswith(".md"):
-                      continue
-                  path = os.path.join(dirpath, fn)
-                  text = open(path, encoding="utf-8").read()
-                  for label, target in LINK.findall(text):
-                      t = target.split("#")[0].strip()
-                      if not t or t.startswith(("http", "mailto:")):
-                          continue
-                      # ../../issues and friends resolve on github.com only
-                      if "issues" in t or "stargazers" in t:
-                          continue
-                      t = urllib.parse.unquote(t)
-                      resolved = os.path.normpath(os.path.join(dirpath, t))
-                      if os.path.exists(resolved):
-                          ok += 1
-                      else:
-                          missing.append((path, label, target))
+                  if fn.endswith(".md"):
+                      p = os.path.normpath(os.path.join(dirpath, fn))
+                      body = open(p, encoding="utf-8").read()
+                      docs[p] = {slug(m.group(2)) for m in HEAD.finditer(body)}
 
-          print(f"{ok} internal links resolve")
-          for f, label, target in missing:
-              print(f"BROKEN  {f}: [{label}] -> {target}")
+          missing = []
+          ok = 0
+
+          for path in docs:
+              text = open(path, encoding="utf-8").read()
+              for label, target in LINK.findall(text):
+                  if target.startswith(("http", "mailto:")):
+                      continue
+                  # ../../issues and friends resolve on github.com only
+                  if "issues" in target or "stargazers" in target:
+                      continue
+                  filepart, _, anchor = target.partition("#")
+                  filepart = urllib.parse.unquote(filepart.strip())
+
+                  if filepart:
+                      resolved = os.path.normpath(
+                          os.path.join(os.path.dirname(path), filepart))
+                      if not os.path.exists(resolved):
+                          missing.append((path, label, target, "no such file"))
+                          continue
+                  else:
+                      resolved = path
+
+                  # A renamed heading leaves every deep link pointing at
+                  # nothing, and GitHub just scrolls to the top rather than
+                  # erroring - so nobody notices until a reader is confused.
+                  if anchor:
+                      if resolved not in docs:
+                          ok += 1
+                          continue
+                      if urllib.parse.unquote(anchor) not in docs[resolved]:
+                          missing.append((path, label, target, "no such heading"))
+                          continue
+                  ok += 1
+
+          print(f"{ok} internal links resolve, anchors included")
+          for f, label, target, why in missing:
+              print(f"BROKEN  {f}: [{label}] -> {target}  ({why})")
           sys.exit(1 if missing else 0)
           PY
 
