@@ -32,12 +32,46 @@ The connector exposes more than one table, and the names are not guessable.
 | **`PeopleHistorical`** | Org attributes — `PeopleHistoricalId`, `IsCopilotLicensed`, `Domain`, `Organization`, `PopulationType`, time zones |
 | **`HR`** | Same table, same columns |
 | `PeopleMetaData` | ❌ **fails** — despite being the name the CSV export uses |
+| `M365SpendingPolicyMetaData` | ❌ **fails** — likewise |
+| `PersonM365CreditsMetrics` | ❌ **fails** — likewise |
 | `Data_PeopleMetaData`, `Data_People`, `OrganizationalData` | ❌ |
 
 The model tries `PeopleHistorical`, then `HR`, then `PeopleMetaData`, and falls back to the Entra
 file if none answer.
 
 **The join key is `PeopleHistoricalId`**, which the metrics rows also carry.
+
+---
+
+## The CSV export and the connector are not the same surface
+
+This is the part that costs people an afternoon. The **CSV download** of a custom query contains
+three tables:
+
+| File | Holds |
+|---|---|
+| `PersonM365CreditsMetrics.csv` | The metrics — same 11 columns the connector returns |
+| `PeopleMetaData.csv` | Org attributes |
+| **`M365SpendingPolicyMetaData.csv`** | **`SpendingPolicyId`, `Name`, `IncludedServices`, `PlanLimit`, `UserLimit`** |
+
+The **connector**, for the same query, exposes only the first two — and the second under a different
+name. Every name above was tried individually against a live tenant with the error captured rather
+than swallowed; only `PeopleHistorical` answered.
+
+So the policy name exists in your tenant and is in your own export, and the API will not serve it.
+Until that changes, Viva Direct labels a nameless policy by its id
+(`Policy f1a2bfe2 — name not in export`) instead of calling it *(Unassigned)*, and reads the real
+names from `M365SpendingPolicyMetaData.csv` if you drop it in `DataFolder`.
+
+---
+
+## The GitHub Copilot credit metric breaks the query
+
+Including it makes the Viva query fail in Viva Insights, before any Power BI involvement. Removing
+it and re-running fixes it. Confirmed with a customer in September 2026.
+
+Take GitHub usage from the GitHub export instead — `GitHubAiUsage` and `GitHubUserMap` in your
+`DataFolder`, exactly as on the other two paths.
 
 ---
 
