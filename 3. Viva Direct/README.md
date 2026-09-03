@@ -19,6 +19,11 @@ Open **`Consumption Central - Viva Direct.pbit`**, paste them in, click **Load**
 | **`VivaPartitionId`** | Partition identifier |
 | **`VivaQueryId`** | Query identifier |
 
+> **Leave the GitHub Copilot credit metric out of the query.** Including it makes the query itself
+> fail in Viva Insights, before Power BI is involved at all. Take GitHub usage from the GitHub
+> export instead — drop `GitHubAiUsage` and `GitHubUserMap` in your `DataFolder` and the GitHub
+> pages work exactly as they do on the other paths.
+
 > **Not the Consumption Dashboard's "Connect data" dialog.** That one also hands out a partition and
 > query identifier, which is why it gets used by mistake — but it points at the dashboard's own
 > multi-table result, and this template sends no table name. Build your own query under **Analysis**
@@ -26,6 +31,25 @@ Open **`Consumption Central - Viva Direct.pbit`**, paste them in, click **Load**
 
 **Leave everything else blank.** The prompt lists more boxes than you need — the rest are for
 Copilot Studio, GitHub and Azure AI, which are optional.
+
+---
+
+## Policy names need one file
+
+The connector gives you the policy **id** and the **limits**, but not the policy **name**. Verified
+name by name against a live tenant: of everything the CSV download contains, only `PeopleHistorical`
+answers over the API. The policy table does not.
+
+So a policy with no name available is labelled by its id — `Policy f1a2bfe2 — name not in export` —
+rather than called *(Unassigned)*, which would be untrue: the policy **is** assigned, its name just
+is not readable over the connector.
+
+**To get the real names**, download the CSV export of the same query — Viva Insights → **Analysis
+results** → your query → **Download** — and drop **`M365SpendingPolicyMetaData.csv`** into your
+`DataFolder`. Nothing else from that ZIP is needed. The names appear on the next refresh.
+
+*(Only `(Unassigned)` proper remains: the all-zero id, which marks usage recorded outside any policy
+window.)*
 
 ---
 
