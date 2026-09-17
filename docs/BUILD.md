@@ -180,7 +180,7 @@ take `--dry-run` and all are idempotent:
 
 | Script | Repairs |
 |---|---|
-| `fix_org_upn_case.py` | Folds the `Org` key to lower case. `Table.Distinct`, `Table.NestedJoin` and `Record.FromList` all compare case-sensitively while the DAX relationship does not, so a tenant whose directory says `LaiC@x` and whose Viva export says `laic@x` got two `Org` rows for one person and the refresh died on the duplicate key. Only bites when two sources are present at once. |
+| `fix_org_upn_case.py` | Folds the `Org` key to lower case. `Table.Distinct`, `Table.NestedJoin` and `Record.FromList` all compare case-sensitively while the DAX relationship does not, so a tenant whose directory says `AlexW@x` and whose Viva export says `alexw@x` got two `Org` rows for one person and the refresh died on the duplicate key. Only bites when two sources are present at once. |
 | `fix_query_body_drift.py` | Resettles the `UnappliedChanges` copy of a query on the schema copy. A Desktop re-export trims trailing blank lines from one and not the other; it refuses to touch anything that differs by more than that. |
 
 `fix_credits_guide_text.py` is *not* one of these. It edits textboxes, so it is a report-layer change

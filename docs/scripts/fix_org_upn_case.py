@@ -7,12 +7,12 @@ OrgNormalised merges two or three separate exports - the seat roster, an
 Entra/CSV directory dump and whatever org columns Viva carried - and it
 merges them with Table.Distinct, Table.NestedJoin and Record.FromList.
 All three are case-SENSITIVE. The DAX relationship that consumes the
-result is not. So a tenant whose directory spells someone LaiC@dnb.com
-while Viva spells them laic@dnb.com produced two Org rows that DAX read
+result is not. So a tenant whose directory spells someone AlexW@contoso.com
+while Viva spells them alexw@contoso.com produced two Org rows that DAX read
 as one key, and the whole refresh died with
 
     Column 'UserPrincipalName' in Table 'Org' contains a duplicate value
-    'LaiC@dnb.com' and this is not allowed for columns on the one side of
+    'AlexW@contoso.com' and this is not allowed for columns on the one side of
     a many-to-one relationship
 
 with every other table reporting "Load was cancelled by an error in
@@ -79,8 +79,8 @@ BUFFERED_OLD = '''    Upns = Table.Buffer(Table.Distinct(Table.Combine({
 
 BUFFERED_NEW = '''    // Three independent exports, three independent opinions on how to spell
     // an address, and Table.Distinct compares them case-SENSITIVELY while
-    // the DAX relationship downstream does not. A directory saying LaiC@x
-    // beside a Viva export saying laic@x therefore reached the model as two
+    // the DAX relationship downstream does not. A directory saying AlexW@x
+    // beside a Viva export saying alexw@x therefore reached the model as two
     // Org rows for one person, and Org is the one side of every
     // relationship, so the refresh failed outright on the duplicate key.
     //
@@ -134,8 +134,8 @@ JOINED_NEW = (
     f'{T*4}// Normalise folds case within each source, but nothing folds it\n'
     f'{T*4}// ACROSS them, and both Table.Distinct and Table.NestedJoin compare\n'
     f'{T*4}// case-sensitively while the DAX relationship downstream does not.\n'
-    f'{T*4}// A directory spelling someone LaiC@x beside a Viva export spelling\n'
-    f'{T*4}// them laic@x therefore produced two Org rows for one person, and\n'
+    f'{T*4}// A directory spelling someone AlexW@x beside a Viva export spelling\n'
+    f'{T*4}// them alexw@x therefore produced two Org rows for one person, and\n'
     f'{T*4}// Org is the one side of every relationship, so the refresh failed\n'
     f'{T*4}// outright on the duplicate key.\n'
     f'{T*4}//\n'

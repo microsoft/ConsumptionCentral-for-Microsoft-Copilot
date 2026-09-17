@@ -146,8 +146,8 @@ let
         {{"userPrincipalName", "UserPrincipalName"}}),
     // Three independent exports, three independent opinions on how to spell
     // an address, and Table.Distinct compares them case-SENSITIVELY while
-    // the DAX relationship downstream does not. A directory saying LaiC@x
-    // beside a Viva export saying laic@x therefore reached the model as two
+    // the DAX relationship downstream does not. A directory saying AlexW@x
+    // beside a Viva export saying alexw@x therefore reached the model as two
     // Org rows for one person, and Org is the one side of every
     // relationship, so the refresh failed outright on the duplicate key.
     //
