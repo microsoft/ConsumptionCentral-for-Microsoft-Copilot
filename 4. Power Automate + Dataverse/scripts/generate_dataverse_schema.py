@@ -118,10 +118,12 @@ def contract(model: dict) -> dict:
 
         # Some columns are read by the query and then dropped, so they never
         # appear as model columns. `snapshot_month` is the one that matters:
-        # LatestSnapshot uses it to pick the newest export, and when it is
-        # absent the query yields an empty table and the pages render blank
-        # with no error. Take every canonical name the M binds, not just the
-        # ones that survive to the model.
+        # LatestSnapshot uses it to keep only the newest export. Absent, it
+        # passes the table straight through, which is fine. But present and
+        # blank it fails the refresh with MissingExportDate - so once it is a
+        # column here, whatever writes the table must always populate it.
+        # Take every canonical name the M binds, not just the ones that
+        # survive to the model.
         for canonical in re.findall(r'\{\s*"([^"]+)"\s*,\s*\{', expression):
             if canonical in loaded:
                 continue

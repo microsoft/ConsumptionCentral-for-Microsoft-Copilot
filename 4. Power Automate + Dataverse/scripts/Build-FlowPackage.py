@@ -166,9 +166,16 @@ def upsert_action(feed: dict, table: dict, prefix: str) -> dict:
         f"{prefix}payloadjson": "@{string(items('For_each_row'))}",
     }
     for column in table["columns"]:
-        item[column["logicalName"]] = (
-            f"@{{items('For_each_row')?['{column['canonical']}']}}"
-        )
+        canonical = column["canonical"]
+        if canonical == "snapshot_month":
+            # The API has no such field, but the column exists in Dataverse, so
+            # the report binds it and then insists every row carries a month.
+            # Leaving it null fails the refresh with MissingExportDate, so stamp
+            # the month the row's usage falls in.
+            value = ("@{formatDateTime(items('For_each_day'), 'yyyy-MM')}")
+        else:
+            value = f"@{{items('For_each_row')?['{canonical}']}}"
+        item[column["logicalName"]] = value
     return {
         "Upsert_row": {
             "type": "OpenApiConnection", "runAfter": {},

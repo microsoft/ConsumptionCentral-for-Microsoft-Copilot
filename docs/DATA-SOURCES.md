@@ -251,8 +251,9 @@ treat `ServiceName` as an open list — Consumption Central groups by whatever v
 >
 > **The per-user grain has no API.** `StudioPerUser.csv` stays a manual export on every path.
 >
-> If you cannot find the export and do not want the API, skip it — the Studio pages stay empty and the
-> other two products are unaffected.
+> Every path now leads with the API: [`pull_studio.py`](../1.%20Local%20CSV/pull_studio.py) for the
+> folder-based paths, the Fabric notebook, or the path 4 flows. If the API is not open to you, the
+> manual steps are in [fallback/](../fallback/) — the Studio pages work either way.
 
 ### Files and columns
 

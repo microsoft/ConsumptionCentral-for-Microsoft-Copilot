@@ -104,6 +104,7 @@ Where a video differs from these written instructions, follow the written ones.
 |---|---|
 | **[How to read the dashboard](docs/INTERPRETING.md)** | **What every page and figure means — start here if a number looks odd** |
 | [Where the data comes from](docs/DATA-SOURCES.md) | Click-paths and permissions for every export |
+| [Manual export fallback](fallback/) | When the API route isn't open to you |
 | [Department breakdowns](docs/ORG-DATA.md) | How org attributes get in |
 | [Rates and pricing](docs/COMMERCIAL-TERMS.md) | What to set and where to find it |
 | [Every measure explained](docs/MEASURES.md) | Reference |

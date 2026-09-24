@@ -30,20 +30,34 @@ Open **`Consumption Central - Viva Direct.pbit`**, paste them in, click **Load**
 
 ## Adding the other products *(optional)*
 
-Set **`DataFolder`** to a folder holding whatever exports you have. Files are found by name, so
-nothing needs renaming and anything you don't have is skipped.
+Set **`DataFolder`** to a folder holding whatever you have. Files are found by name, so nothing needs
+renaming and anything you don't have is skipped.
+
+**Copilot Studio and Azure pull themselves.** Point both scripts at that same folder:
+
+```bash
+python "../1. Local CSV/pull_studio.py"   "C:\Consumption Central\Data"
+python "../1. Local CSV/pull_azure_ai.py" "C:\Consumption Central\Data"
+```
+
+They use your existing `az login` and write the files this template already reads, so there is
+nothing to wire up. Schedule them and the Studio and Azure pages stay current alongside the live
+Cowork feed.
+
+The rest are downloads:
 
 | Product | Files it looks for |
 |---|---|
-| Copilot Studio | `StudioTenantDaily`, `StudioPerAgent`, `StudioPerUser` |
+| Copilot Studio | `StudioTenantDaily`, `StudioPerAgent` — from `pull_studio.py` |
+| Copilot Studio *(per user)* | `StudioPerUser` — **no API**, export by hand |
 | GitHub Copilot | `GitHubAiUsage`, `GitHubUserMap` |
-| Azure AI Foundry | `AzureAiSpendDaily`, `AzureAiTokensDaily` |
+| Azure AI Foundry | `AzureAiSpendDaily`, `AzureAiTokensDaily` — from `pull_azure_ai.py` |
 | Org attributes | `entra_org.csv` — for department breakdowns |
 
 Leave `DataFolder` blank for consumption-only reporting. Leave pricing parameters at their defaults.
 
 **[Where to get each one →](../docs/DATA-SOURCES.md)** ·
-**[Automating the Azure files →](../docs/ADVANCED-SETUP.md#automating-azure-collection)**
+**[No API access? Export by hand →](../fallback/)**
 
 ---
 

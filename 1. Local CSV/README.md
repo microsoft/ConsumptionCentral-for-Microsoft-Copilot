@@ -14,18 +14,30 @@ just leave their pages empty.
 
 Anywhere. `C:\Consumption Central\Data` is fine.
 
-### 2. Put your exports in it
+### 2. Put your data in it
+
+Two of the four pull themselves. Run these and they write straight into the
+folder:
+
+```bash
+python pull_studio.py   "C:\Consumption Central\Data"
+python pull_azure_ai.py "C:\Consumption Central\Data"
+```
+
+Both use your existing `az login` — neither asks for a secret.
+
+The other two are downloads:
 
 | Product | Where to get it |
 |---|---|
 | **Cowork / Work IQ** | Viva Insights → Analysis → build a query → download CSV |
-| **Copilot Studio** | Power Platform admin centre → Licensing → Copilot Studio |
 | **GitHub Copilot** | GitHub → Billing → AI usage report |
-| **Azure AI Foundry** | Azure Cost Analysis → export, or run [`pull_azure_ai.py`](pull_azure_ai.py) |
 
-File names don't have to match exactly — the template recognises the usual variations.
+File names don't have to match exactly — the template recognises the usual
+variations.
 
-**[Full click-paths and permissions →](../docs/DATA-SOURCES.md)**
+**[Full click-paths and permissions →](../docs/DATA-SOURCES.md)** ·
+**[No API access? Export by hand →](../fallback/)**
 
 ### 3. Open the template
 
@@ -79,7 +91,9 @@ them to the query in Viva Insights and re-run — easier than supplying a separa
 
 ## Next steps
 
-- **Automate the Azure export** — schedule [`pull_azure_ai.py`](pull_azure_ai.py) instead of
-  downloading by hand. **[How →](../docs/ADVANCED-SETUP.md#automating-azure-collection)**
+- **Schedule the two pullers** so the folder stays current without you.
+  **[How →](../docs/ADVANCED-SETUP.md#automating-azure-collection)**
+- **Want the Studio per-user page?** That one has no API. Export it by hand —
+  **[steps →](../fallback/#copilot-studio--per-user)**
 - **Outgrown a folder?** **[2. Fabric](../2.%20Fabric/)** collects straight into Lakehouse tables and
   keeps history beyond Viva's 6-month export window.

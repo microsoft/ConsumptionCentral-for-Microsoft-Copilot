@@ -172,7 +172,7 @@
                     "cc_scenarioname": "@{items('For_each_row')?['Scenario_Name']}",
                     "cc_environmentid": "@{items('For_each_row')?['Environment_Id']}",
                     "cc_environmentname": "@{items('For_each_row')?['Environment_Name']}",
-                    "cc_snapshotmonth": "@{items('For_each_row')?['snapshot_month']}"
+                    "cc_snapshotmonth": "@{formatDateTime(items('For_each_day'), 'yyyy-MM')}"
                   }
                 }
               }
