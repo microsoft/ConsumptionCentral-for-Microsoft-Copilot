@@ -45,12 +45,14 @@ SECRET_NAMES = {
 # Each feed: which Dataverse table it fills, the API it reads, and how far back
 # a normal run goes. RESTATE is the trailing window a daily run rewrites,
 # because billing APIs revise recent days after first publishing them.
-# The licensing routes only answer a *delegated* tenant-admin identity. The
-# Power Platform API publishes no application role that covers them, so a
-# client-credentials token - even one that can call other Power Platform APIs -
-# gets 403 with an empty body. The "HTTP with Microsoft Entra ID" connector
-# (shared_webcontents) signs the call as the flow owner, which is the only
-# combination confirmed to return data. See README for the admin roles.
+# These routes need two things at once: a delegated tenant-admin identity, and
+# a client the API already trusts. The Power Platform API publishes no
+# application role covering licensing, so a client-credentials token gets 403
+# with an empty body - but so does a *delegated* admin token issued to your own
+# app registration, even with every licensing scope consented. The "HTTP with
+# Microsoft Entra ID" connector (shared_webcontents) is a pre-authorised
+# first-party client and signs as the flow owner. That combination is the only
+# one confirmed to return data. See README for the admin roles.
 ENTRA_CONNECTOR = "shared_webcontents"
 ENTRA_CONNECTION = "shared_webcontents_1"
 
@@ -188,8 +190,9 @@ def entra_fetch_action(feed: dict) -> dict:
     """Read one page as the flow owner, through the Entra connector.
 
     No Authorization header: the connection is bound to the API's resource URI
-    and the connector attaches the signed-in admin's token. That delegated
-    identity is the only one these routes answer.
+    and the connector attaches the signed-in admin's token. The connector is
+    also a client the API already trusts, which a token minted by your own app
+    registration is not - that combination is what these routes require.
     """
     return {
         "Fetch": {
@@ -470,6 +473,10 @@ def main() -> None:
             "shared_keyvault": {
                 "name": "shared_keyvault",
                 "id": "/providers/Microsoft.PowerApps/apis/shared_keyvault",
+            },
+            ENTRA_CONNECTOR: {
+                "name": ENTRA_CONNECTOR,
+                "id": "/providers/Microsoft.PowerApps/apis/" + ENTRA_CONNECTOR,
             },
         }, indent=2))
 

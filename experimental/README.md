@@ -5,8 +5,9 @@ data from the manual admin-centre export described in its own README.
 
 The one place the licensing API *is* supported is
 [4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse), where
-a flow can sign in as its admin owner. The scripts here are the interactive
-equivalents, kept visible and reviewable rather than sitting in a branch.
+the flow calls it through a connection the API already trusts. The scripts here
+call it as their own client and are expected to be refused; they are kept
+visible and reviewable rather than sitting in a branch.
 
 ## What it would replace
 
@@ -30,31 +31,37 @@ Tested against a live tenant on 2026-09-24.
 | `GET /licensing/entitlements/MCSMessages/resources` | **403, empty body** |
 
 That last row is the one `pull_studio.py` depends on for per-day, per-agent
-figures. It is now understood — see below — and the fix is a supported setup
-step in [4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse).
-It still blocks the unattended paths.
+figures. It is now understood — see below — and there is a working route for it
+in [4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse).
+It still blocks the scripts in this folder.
 
-### Resolved: it was the identity, not the request
+### Resolved: it was the caller, not the request
 
-The 403 is not a tenant problem and not a scope problem. **The Power Platform
-API publishes no application role that covers the licensing routes** — every
-`Licensing.*` permission exists only as a delegated one. A client-credentials
-token is therefore refused no matter what has been consented, which is exactly
-what the empty-bodied 403 was saying.
+Two things have to be true at once, and only one of them is about permissions.
 
-These routes answer a **delegated tenant-admin** sign-in only. The working
-combination is the Power Automate **HTTP with Microsoft Entra ID** connection,
-which signs each call as the flow's owner, with that owner being a Global
-Administrator, Power Platform Administrator, or Billing Administrator.
+**The identity must be a delegated tenant admin.** The Power Platform API
+publishes no application role covering the licensing routes — every
+`Licensing.*` permission exists only as a delegated one — so a
+client-credentials token is refused whatever you consent to.
+
+**The client application must already be trusted by the API.** This is the part
+that is easy to miss. A delegated token issued to *your own* app registration,
+for a Global Administrator, with `Licensing.Allocations.Read`,
+`Licensing.BillingPolicies.Read` and `CopilotStudio.Licenses.Read` all present
+in the token, still returns 403. Being an admin is not sufficient.
+
+The combination confirmed to work is the Power Automate **HTTP with Microsoft
+Entra ID** connection: a pre-authorised first-party client, signing as a flow
+owner who is a Global Administrator, Power Platform Administrator, or Billing
+Administrator.
 
 That is now implemented and is a supported setup step — see
 [4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse).
 
 The consequence for everything else in this folder: `pull_studio.py` and the
-Fabric `Ingest_Studio_Consumption` notebook can only run **interactively**, as
-a signed-in admin. Neither can be scheduled, because neither has a delegated
-user at refresh time. That is a property of the API, not something this repo
-can work around.
+Fabric `Ingest_Studio_Consumption` notebook authenticate as their own client,
+so they are expected to hit the same 403. Treat them as unverified. Neither can
+be scheduled either, because neither has a delegated user at refresh time.
 
 ### What the 403 was not
 
@@ -65,6 +72,8 @@ Worth recording, because each of these looks like the obvious answer:
   `Licensing.Allocations.Read`, `Licensing.BillingPolicies.Read` and
   `CopilotStudio.Licenses.Read`, admin-consented, and all three were confirmed
   present in the issued token. Still 403.
+- **Not delegated versus application.** Both were tried. The delegated token
+  failed too, which is what pointed at the client rather than the identity.
 - **Not the URL.** Unknown routes on this service return a clean
   `404 RouteNotFound`. This one returns 403, so the route exists and is
   refusing.
