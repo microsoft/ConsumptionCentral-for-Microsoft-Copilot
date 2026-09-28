@@ -45,14 +45,15 @@ SECRET_NAMES = {
 # Each feed: which Dataverse table it fills, the API it reads, and how far back
 # a normal run goes. RESTATE is the trailing window a daily run rewrites,
 # because billing APIs revise recent days after first publishing them.
-# These routes need two things at once: a delegated tenant-admin identity, and
-# a client the API already trusts. The Power Platform API publishes no
-# application role covering licensing, so a client-credentials token gets 403
-# with an empty body - but so does a *delegated* admin token issued to your own
-# app registration, even with every licensing scope consented. The "HTTP with
-# Microsoft Entra ID" connector (shared_webcontents) is a pre-authorised
-# first-party client and signs as the flow owner. That combination is the only
-# one confirmed to return data. See README for the admin roles.
+# These routes only accept a Licensing.* scope from an application that has
+# been pre-authorised to receive it. A client-credentials token gets 403 with
+# an empty body (no application role covers licensing), and so does a
+# *delegated* admin token minted by your own app registration with every
+# licensing scope consented. Being first-party is not sufficient either: the
+# Azure CLI reaches the capacity route but cannot obtain a licensing scope at
+# all. The "HTTP with Microsoft Entra ID" connector (shared_webcontents) is
+# pre-authorised for them and signs as the flow owner, which is the only
+# combination confirmed to return data. See README for the admin roles.
 ENTRA_CONNECTOR = "shared_webcontents"
 ENTRA_CONNECTION = "shared_webcontents_1"
 
