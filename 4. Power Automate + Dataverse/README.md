@@ -8,20 +8,24 @@ Power Platform. If you have Fabric, use [2. Fabric](../2.%20Fabric) instead.
 
 > **How the Copilot Studio flows sign in**
 >
-> The licensing endpoint these flows read is fussy about two things at once:
-> **who** is calling and **which application** is asking.
+> The licensing endpoint these flows read will only accept a `Licensing.*`
+> scope from an application it has already been pre-authorised to accept it
+> from. That rules out the two things you would naturally try:
 >
-> - The Power Platform API publishes no application role covering licensing, so
->   a client secret gets `403` with an empty body.
-> - A delegated admin token issued to your own app registration also gets `403`,
->   even with every licensing scope consented. Being an admin is not enough on
->   its own.
+> - A client secret gets `403` with an empty body — the API publishes no
+>   application role covering licensing at all.
+> - A delegated admin token issued to your own app registration also gets
+>   `403`, even with every licensing scope consented.
 >
 > The flows therefore call it through the **HTTP with Microsoft Entra ID**
-> connection, which is a client the API already trusts and which signs each call
-> as the person who owns the flow. That owner must be a Global Administrator,
+> connection, which is pre-authorised for those scopes and signs each call as
+> the person who owns the flow. That owner must be a Global Administrator,
 > Power Platform Administrator, or Billing Administrator, and the flows stop
 > working if ownership moves to anyone else.
+>
+> If a flow returns 403, check the owner first. To confirm the tenant itself is
+> healthy, see the one-line `az` check in
+> [experimental](../experimental/README.md#a-one-line-check-that-your-tenant-is-fine).
 >
 > The Azure and GitHub flows are unaffected and still use the app registration.
 

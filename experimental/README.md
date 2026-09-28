@@ -20,7 +20,7 @@ lost before the template ever sees it.
 
 ## Status
 
-Tested against a live tenant on 2026-09-24.
+Tested against a live tenant on 2026-09-24, re-confirmed 2026-09-28.
 
 | Endpoint | Result |
 |---|---|
@@ -30,30 +30,56 @@ Tested against a live tenant on 2026-09-24.
 | `GET /environmentmanagement/environments` | Works |
 | `GET /licensing/entitlements/MCSMessages/resources` | **403, empty body** |
 
+The working rows are reachable with nothing more than an `az login` — see the
+one-line check below. That is useful on its own: it separates "my tenant or
+account is wrong" from "this specific route is refusing me".
+
 That last row is the one `pull_studio.py` depends on for per-day, per-agent
 figures. It is now understood — see below — and there is a working route for it
 in [4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse).
 It still blocks the scripts in this folder.
 
-### Resolved: it was the caller, not the request
+### Resolved: the client has to be pre-authorised for the licensing scopes
 
-Two things have to be true at once, and only one of them is about permissions.
+It is not enough to be an admin, and it is not enough to hold the scope. The
+calling **application** has to be one the API already trusts *with that scope*.
 
-**The identity must be a delegated tenant admin.** The Power Platform API
-publishes no application role covering the licensing routes — every
-`Licensing.*` permission exists only as a delegated one — so a
-client-credentials token is refused whatever you consent to.
+Two independent tests, each holding one variable:
 
-**The client application must already be trusted by the API.** This is the part
-that is easy to miss. A delegated token issued to *your own* app registration,
-for a Global Administrator, with `Licensing.Allocations.Read`,
-`Licensing.BillingPolicies.Read` and `CopilotStudio.Licenses.Read` all present
-in the token, still returns 403. Being an admin is not sufficient.
+| Calling client | `Licensing.*` in the token | `/resources` |
+|---|---|---|
+| Own app registration, admin-consented | yes | **403** |
+| Azure CLI (`04b07795…`), a first-party client | no — cannot obtain it | **403** |
+| Power Automate Entra connector | yes, pre-authorised | 200 |
+
+The first row rules out "just grant the permission". The second rules out
+"just use a trusted client". Only the third satisfies both at once, and that
+is what these flows use.
+
+Client credentials fail for a separate reason: the Power Platform API publishes
+no application role covering licensing at all — every `Licensing.*` permission
+exists only as a delegated one — so a secret is refused whatever you consent to.
 
 The combination confirmed to work is the Power Automate **HTTP with Microsoft
-Entra ID** connection: a pre-authorised first-party client, signing as a flow
-owner who is a Global Administrator, Power Platform Administrator, or Billing
-Administrator.
+Entra ID** connection, signing as a flow owner who is a Global Administrator,
+Power Platform Administrator, or Billing Administrator.
+
+### A one-line check that your tenant is fine
+
+Before blaming the flow, confirm the service answers you at all. The *capacity*
+route needs no licensing scope, so a plain Azure CLI sign-in reaches it:
+
+```bash
+az login --allow-no-subscriptions
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H "Authorization: Bearer $(az account get-access-token \
+      --resource https://api.powerplatform.com --query accessToken -o tsv)" \
+  'https://api.powerplatform.com/licensing/entitlements/MCSMessages?api-version=2024-10-01'
+```
+
+`200` means the tenant, the account and the API are all healthy, and any 403
+you see on `/resources` is the scope/client issue above rather than anything
+you have misconfigured. Verified 2026-09-28.
 
 That is now implemented and is a supported setup step — see
 [4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse).
@@ -68,12 +94,18 @@ be scheduled either, because neither has a delegated user at refresh time.
 Worth recording, because each of these looks like the obvious answer:
 
 - **Not the role.** The calling account was Global Administrator.
-- **Not the scope.** A dedicated app registration was granted
+- **Not the scope on its own.** A dedicated app registration was granted
   `Licensing.Allocations.Read`, `Licensing.BillingPolicies.Read` and
   `CopilotStudio.Licenses.Read`, admin-consented, and all three were confirmed
-  present in the issued token. Still 403.
+  present in the issued token. Still 403. The scope is necessary but the API
+  only honours it from a client it has pre-authorised for it.
 - **Not delegated versus application.** Both were tried. The delegated token
   failed too, which is what pointed at the client rather than the identity.
+- **Not simply "use a first-party client".** Azure CLI is one, and it reaches
+  the capacity route fine, but its `.default` yields only
+  `CopilotStudio.Copilots.Test`, `EnvironmentManagement.Environments.Read` and
+  the two `PowerPages.Websites.*` scopes — no licensing scope exists for it to
+  request, so `/resources` still returns 403.
 - **Not the URL.** Unknown routes on this service return a clean
   `404 RouteNotFound`. This one returns 403, so the route exists and is
   refusing.
