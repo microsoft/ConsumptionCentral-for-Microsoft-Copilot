@@ -64,6 +64,13 @@ DEFAULTS = {
 
 PARAMETER_META = 'meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]'
 
+# DataversePrefix is cloned from DataverseDatabase, so it needs its own lineage
+# tag. Sharing one makes Desktop refuse the whole template with "Cannot
+# de-serialize Database", because the two entries land in the same collection.
+# The upstream template uses fb000001-000N-...-00000000000N for slots 1-6, so
+# this takes the next free one in that family.
+PREFIX_LINEAGE_TAG = "fb000001-0007-4001-8001-000000000007"
+
 NEW_SOURCE = ["Sql.Database(DataverseServer, DataverseDatabase)"]
 
 NEW_GET_TABLE = [
@@ -211,6 +218,8 @@ def patch(value: dict, label: str, report: list[str]) -> dict:
         template = next(e for e in items if e["name"] == "DataverseDatabase")
         added = {k: v for k, v in template.items()}
         added["name"] = "DataversePrefix"
+        if "lineageTag" in added:
+            added["lineageTag"] = PREFIX_LINEAGE_TAG
         set_body(added, [f"{DEFAULTS['DataversePrefix']} {PARAMETER_META}"])
         items.insert(items.index(template) + 1, added)
         report.append(f"{label}: added the DataversePrefix parameter")
@@ -228,6 +237,15 @@ def verify(value: dict, label: str) -> None:
         fail(f"{label}: DataverseSource was not rewritten")
     if "DataversePrefix" not in bodies["GetTable"]:
         fail(f"{label}: GetTable does not use the prefix")
+    seen: dict[str, str] = {}
+    for entry in entries(value):
+        tag = entry.get("lineageTag")
+        if tag is None:
+            continue
+        if tag in seen:
+            fail(f"{label}: {entry['name']} and {seen[tag]} share lineage tag {tag} - "
+                 f"Desktop refuses to open a template with a repeated tag in one collection")
+        seen[tag] = entry["name"]
 
 
 def main() -> None:
