@@ -49,6 +49,17 @@ TYPES = {
     "boolean": "Boolean",
 }
 
+# M type in a typed empty table -> the model data type it loads as.
+M_TYPES = {
+    "text": "string",
+    "number": "double",
+    "date": "dateTime",
+    "datetime": "dateTime",
+    "Int64.Type": "int64",
+    "Currency.Type": "decimal",
+    "logical": "boolean",
+}
+
 # The business key for each table. The flow hashes these into `cc_rowkey`, an
 # alternate key, so a re-run upserts the same row instead of duplicating it.
 # A key that is wrong here shows up as double-counted credits, so each one is
@@ -68,6 +79,7 @@ KEYS = {
                                 "ModelVersion"],
     "azure_billing_reconciliation": ["Period", "Product", "PoolName", "Representation"],
     "viva_spending_policy": ["SpendingPolicyId"],
+    "viva_credits_weekly": ["PersonId", "MetricDate", "ServiceId", "SpendingPolicyId"],
 }
 
 
@@ -137,6 +149,38 @@ def contract(model: dict) -> dict:
 
         if columns:
             found[match.group(1)] = {"modelTable": table["name"], "columns": columns}
+
+    # Some tables are read only inside a shared expression. Cowork's
+    # `viva_credits_weekly` is read by VivaCreditMetrics, which then feeds two
+    # model tables - so scanning partitions alone left it out, and the
+    # Dataverse path had nowhere to load Cowork data. Its columns come from the
+    # typed empty table the expression falls back to, which is the shape it
+    # promises everything downstream. An expression with no typed shape, such
+    # as the single optional row behind CommercialTerms, is skipped: its
+    # parameters are the fallback.
+    for entry in model["model"].get("expressions", []):
+        expression = entry.get("expression", "")
+        if isinstance(expression, list):
+            expression = "\n".join(expression)
+        match = re.search(r'GetTable\("([^"]+)"\)', expression)
+        if not match or match.group(1) in found:
+            continue
+        typed = re.search(r'#table\(\s*type\s+table\s*\[(.*?)\]\s*,', expression, re.S)
+        if not typed:
+            continue
+        columns = []
+        for canonical, m_type in re.findall(
+                r'(\w+)\s*=\s*(?:nullable\s+)?([A-Za-z0-9]+(?:\.Type)?)', typed.group(1)):
+            if m_type not in M_TYPES:
+                fail(f"{entry['name']}.{canonical}: unmapped M type '{m_type}'")
+            columns.append({
+                "canonical": canonical,
+                "modelColumn": None,
+                "dataType": M_TYPES[m_type],
+                "loaded": True,
+            })
+        if columns:
+            found[match.group(1)] = {"modelTable": entry["name"], "columns": columns}
     return found
 
 

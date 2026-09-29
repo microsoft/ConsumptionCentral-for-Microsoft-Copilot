@@ -47,7 +47,7 @@ cd "4. Power Automate + Dataverse/scripts"
 python Deploy-DataverseSchema.py --environment https://your-org.crm.dynamics.com
 ```
 
-That is a dry run. It prints the 11 tables and 123 columns it would create and
+That is a dry run. It prints the 12 tables and 173 columns it would create and
 changes nothing.
 
 When the plan looks right, get a token and run it for real:
@@ -127,7 +127,7 @@ The flows cover the four feeds that have an API behind them:
 | `azure_ai_spend` | Azure AI Spend flow |
 | `github_ai_usage` | GitHub Usage flow |
 
-The remaining seven tables have no API, so no flow fills them. Their pages stay
+The remaining eight tables have no API, so no flow fills them. Their pages stay
 blank until you load them. Two are small reference tables you fill once
 (`github_user_map`, `viva_spending_policy`); the rest come from exports covered
 in [docs/DATA-SOURCES.md](../docs/DATA-SOURCES.md).
@@ -136,6 +136,14 @@ To load one by hand, import its CSV straight into the matching Dataverse table
 with **Data** → **Import** in [make.powerapps.com](https://make.powerapps.com).
 The sample files in [1. Local CSV/sample-data](../1.%20Local%20CSV/sample-data)
 show the expected columns.
+
+**Cowork / Work IQ** goes into `viva_credits_weekly`. Import
+`PersonServiceCreditsMetrics.csv` from the Viva Insights export
+([docs/DATA-SOURCES.md](../docs/DATA-SOURCES.md#files-and-columns)). Most
+columns map by name; map `Session count`, `Spending policy limit`,
+`Total Copilot Credits used` and `User limit` by hand. An import adds rows
+rather than replacing them, so delete the old rows before loading a newer
+export. Org columns in the export are not carried on this path.
 
 If you want every page populated without that work, use
 [2. Fabric](../2.%20Fabric) or [1. Local CSV](../1.%20Local%20CSV) instead.
