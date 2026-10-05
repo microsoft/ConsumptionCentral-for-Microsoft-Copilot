@@ -125,6 +125,12 @@ jobs:
           python docs/scripts/check_azure_template_contract.py
           python -m unittest discover -s docs/scripts -p 'test_azure_template_contract.py'
 
+      - name: Templates carry no repeated lineage tag
+        run: |
+          # A tag repeated inside one collection makes Desktop refuse to open
+          # the template at all, and no other check here notices.
+          python docs/scripts/check_lineage_tags.py
+
       - name: Azure notebook request regression tests
         run: python docs/scripts/test_azure_notebook_requests.py
 
