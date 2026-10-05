@@ -13,6 +13,22 @@
 
 </div>
 
+## Watch first
+
+Both play here in the page — no download.
+
+**Demo — what the report covers, page by page** *(1m 51s)*
+
+https://github.com/user-attachments/assets/702d94f7-74fc-43ad-a259-d00695f76a9c
+
+**Setup guide — getting your own data in, every source, start to finish** *(10m 49s)*
+
+https://github.com/user-attachments/assets/480af64f-53ab-4f4c-b5d2-6f35546fdcfb
+
+Where a video differs from the written instructions, follow the written ones.
+
+---
+
 ## What it is
 
 A Power BI report covering Copilot spend across **Cowork/Work IQ**, **Copilot Studio**,
@@ -82,19 +98,6 @@ Almost every parameter has a sensible default. Two are worth thinking about:
 |---|---|
 | **Where your data is** | A folder path, a Lakehouse name, or two IDs from Viva — depends on your path |
 | **What a credit costs you** | List price is **$0.01**. Change it only if your agreement differs |
-
----
-
-## Watch instead
-
-Both play inline here, no download.
-
-- **Demo** *(1m 51s)* — a tour of the fifteen pages.
-  https://github.com/user-attachments/assets/702d94f7-74fc-43ad-a259-d00695f76a9c
-- **Setup guide** *(10m 49s)* — every data source, start to finish.
-  https://github.com/user-attachments/assets/480af64f-53ab-4f4c-b5d2-6f35546fdcfb
-
-Where a video differs from these written instructions, follow the written ones.
 
 ---
 
