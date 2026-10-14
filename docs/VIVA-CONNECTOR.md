@@ -1,7 +1,8 @@
 # Viva Insights connector — what we found
 
 Reference for the **[3. Viva Direct](../3.%20Viva%20Direct/)** path. You don't need this to connect;
-it's here for when something doesn't behave.
+it's here for when something doesn't behave. To build and run the query itself, see
+**[Running the Viva Insights query](VIVA-QUERY.md)**.
 
 All verified against a live tenant in August 2026.
 
