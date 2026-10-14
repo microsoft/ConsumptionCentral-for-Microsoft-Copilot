@@ -96,7 +96,7 @@ Almost every parameter has a sensible default. Two are worth thinking about:
 
 | | |
 |---|---|
-| **Where your data is** | A folder path, a Lakehouse name, or two IDs from Viva — depends on your path |
+| **Where your data is** | A folder path, a Lakehouse name, or two IDs from Viva ([how to get them](docs/VIVA-QUERY.md)) — depends on your path |
 | **What a credit costs you** | List price is **$0.01**. Change it only if your agreement differs |
 
 ---
@@ -107,6 +107,7 @@ Almost every parameter has a sensible default. Two are worth thinking about:
 |---|---|
 | **[How to read the dashboard](docs/INTERPRETING.md)** | **What every page and figure means — start here if a number looks odd** |
 | [Where the data comes from](docs/DATA-SOURCES.md) | Click-paths and permissions for every export |
+| [Running the Viva Insights query](docs/VIVA-QUERY.md) | Building, running and refreshing the query paths 2 and 3 connect to |
 | [Department breakdowns](docs/ORG-DATA.md) | How org attributes get in |
 | [Rates and pricing](docs/COMMERCIAL-TERMS.md) | What to set and where to find it |
 | [Every measure explained](docs/MEASURES.md) | Reference |

@@ -9,9 +9,12 @@ other products and policy names still come from files, which are optional.
 
 In Viva Insights:
 
-1. **Analysis** → build a query with the Copilot credit metrics → turn on **Auto-refresh**
+1. **Create analysis** → **Create custom query** → **Consumption query** → turn on
+   **Auto-refresh** → **Run**
 2. **Analysis results** → your query → the **link icon**
 3. Copy the two identifiers
+
+**[Step-by-step: building and running the query →](../docs/VIVA-QUERY.md)**
 
 Open **`Consumption Central - Viva Direct.pbit`**, paste them in, click **Load**.
 

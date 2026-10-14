@@ -24,9 +24,10 @@ Fabric portal → your workspace → **New** → **Lakehouse**.
 Viva Insights ships a certified **Dataflow Gen2** connector that writes query results straight into
 your Lakehouse on a schedule. This is the preferred route.
 
-1. Viva Insights → **Analysis** → build a query with the Copilot credit metrics → **Analysis
-   results** → your query → the **link icon**. Copy the **Partition identifier** and **Query
-   identifier**.
+1. Viva Insights → **Create analysis** → **Create custom query** → **Consumption query**, with
+   **Auto-refresh** on → **Run** → **Analysis results** → your query → the **link icon**. Copy the
+   **Partition identifier** and **Query identifier**.
+   **[Step-by-step →](../docs/VIVA-QUERY.md)**
 2. Fabric workspace → **New** → **Dataflow Gen2** → **Get data** → search *Viva Insights* under
    **Online Services**.
 3. Paste both identifiers. Leave *Query Name* blank. Under **Advanced options** set **Schema Type =

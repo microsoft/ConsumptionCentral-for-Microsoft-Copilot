@@ -55,6 +55,7 @@ The export dialog offers **Export by week** or **Export by day**, and then two w
 > results → your query → the link icon**. A custom query returns a single table, which is what those
 > paths expect. Building your own is also what lets you tick the spending-policy and employee
 > attributes that carry policy names, limits and departments onto the rows.
+> **[How to build and run it →](VIVA-QUERY.md)**
 
 A banner in the dialog says **"Includes user identifiers"** when identifiable export is enabled for
 you. That is the quickest way to tell which shape you are about to get.
