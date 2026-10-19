@@ -57,7 +57,7 @@ Lakehouse at the top of each, run.
 | `Ingest_CommercialTerms` | Azure Cost Management | `commercial_terms` |
 | `Ingest_Studio` | Power Platform exports | `studio_*` |
 | `Ingest_Org` | Viva attributes, optionally enriched by an Entra export | `org_attributes` |
-| `Ingest_Viva_Consumption` | *Fallback only* — Viva CSV export | `viva_credits_weekly`, `viva_spending_policy` |
+| `Ingest_Viva_Consumption` | Legacy Viva CSV fallback and optional Cowork task export | `viva_credits_weekly`, `viva_spending_policy`, `cowork_tasks_weekly` |
 
 `Ingest_Studio` is the supported way to load Copilot Studio data. Use it.
 
@@ -127,6 +127,17 @@ the Viva query and keep them when landing the data.
 separate Entra export.
 
 ---
+
+## Optional Cowork tasks
+
+Place each `CoworkWeeklyMetrics.csv` and its matching `PeopleMetaData.csv` in a separate subfolder
+under `Files/landing/viva/`, then run `Ingest_Viva_Consumption`. Task-only exports are supported;
+task counts/credits upsert separately and never become additional billing consumption. If the
+optional table is absent, existing reports still refresh and the task page explains the empty state.
+
+The existing Viva connector/Dataflow route remains supported for consumption. It is not assumed
+to produce this separate task export automatically. See the [task guide](../docs/COWORK-TASKS.md)
+and [table contract](docs/DATA-DICTIONARY.md#cowork_tasks_weekly).
 
 ## Reference
 

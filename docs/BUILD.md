@@ -10,8 +10,8 @@ ConsumptionCentral-GHCP\Consumption Central - Cowork WorkIQ Studio GHCP.pbip    
 ConsumptionCentral-Fabric\Consumption Central - Cowork WorkIQ Studio GHCP.pbip   the Lakehouse variant
 ```
 
-27 tables, 284 measures, 14 pages. Identical model and report in both — only the partitions and the
-source parameters differ.
+The active variants share the report and common model; source queries and parameters differ.
+Use the shipped artifacts and `pages.json` for the current inventory, not an old local project.
 
 ## Producing `Consumption Central - Local CSV.pbit`
 
@@ -63,15 +63,14 @@ can be maintained side by side:
 ConsumptionCentral-Fabric\Consumption Central - Cowork WorkIQ Studio GHCP.pbip
 ```
 
-Every query reads `Sql.Database(FabricSQLEndpoint, LakehouseName)`; no CSV path remains. Verified:
-27 tables, 284 measures, 14 pages, opens clean in Desktop.
+Source queries read `Sql.Database(FabricSQLEndpoint, LakehouseName)`; no CSV path remains.
+Revalidate the current model and every page after each rebuild.
 
 What changed from the CSV project, if it ever needs redoing:
 
 1. `DataFolder` / `DataFiles` / `GetDataFile` replaced by `FabricSQLEndpoint`, `LakehouseName`,
-   `FabricSource` and `GetTable`. `GetTable` wraps the read in `try ... otherwise null` so an absent
-   table degrades rather than errors — a missing Lakehouse table *raises*, unlike a missing CSV,
-   which returns null.
+   `FabricSource` and `GetTable`. `GetTable` inspects source navigation and returns null when a
+   table is absent. Authentication, permission and transport errors must still surface.
 2. Ten partitions rewritten against the contract in
    [`2. Fabric/docs/DATA-DICTIONARY.md`](../2.%20Fabric/docs/DATA-DICTIONARY.md).
 3. `CommercialTerms` and `TermOrDefault` added: an optional one-row `commercial_terms` table
@@ -117,6 +116,69 @@ is tempting and does not work reliably: Power Query registers every data source 
 at *parse* time rather than runtime, so the firewall sees the CSV and SQL sources as being combined
 in one partition and throws
 `Formula.Firewall: ... privacy levels which cannot be used together`. Two files, no branch.
+
+## Rebuilding the Cowork task additions
+
+The reviewable sources are under `docs\scripts\cowork_tasks\`: shared M normalization/adapters,
+editable assumptions, model/DAX generation, page generation and notebook helpers. Working PBIPs
+remain ignored because they can retain private parameter values. Build only in an isolated worktree;
+use a dedicated Desktop document and never overwrite someone else's open report or unsaved edits.
+
+For each primary template, expand to a short-name project and apply the matching profile:
+
+```powershell
+python docs\scripts\pbit_to_pbip.py "1. Local CSV\Consumption Central - Local CSV.pbit" --out .pbi-work --project-name csv
+python docs\scripts\cowork_tasks\apply.py .pbi-work\csv\csv.pbip --profile csv
+```
+
+Repeat with `fabric` and `viva`. Open, refresh and inspect the project in Desktop before exporting
+the corresponding PBIT. If a project is already open, apply external changes through Desktop's
+supported reload/apply path before saving; otherwise Desktop can overwrite them.
+
+Keep query-storage metadata separate from model visibility. In `UnappliedChanges`, `isHidden`
+means a Desktop-managed **multi-table source**, not a hidden semantic-model table. The task
+generator must not copy a table's `isHidden` into its query record. After applying and saving a
+validation project, confirm the pending-query banner clears; do not delete staged queries to
+hide it.
+
+**Use an updated neutral defaults reference.** The defaults repair also restores existing M
+expressions, so its ordinary HEAD reference would undo the legacy companion-reader fixes:
+
+```powershell
+python docs\scripts\cowork_tasks\make_reference.py "1. Local CSV\Consumption Central - Local CSV.pbit" .pbi-work\csv-reference.pbit --profile csv
+# After Desktop has exported the updated report:
+python docs\scripts\fix_pbit_defaults.py --path "1. Local CSV\Consumption Central - Local CSV.pbit" --reference .pbi-work\csv-reference.pbit
+```
+
+Create each reference before replacing its original PBIT. References are data-free, model-only
+repair inputs, **not report deliverables**. They do not contain the new signed report page.
+The generator writes reproducible UTF-16LE JSON layouts accepted by `fix_pbit_defaults.py`;
+the regression suite exercises that repair reader against a generated reference.
+Rebuild Dataverse with its existing `Build-Dataverse-Template.py` from the freshly signed Fabric
+PBIT, then regenerate `dataverse-schema.json`. Do not publish, tag, deploy a table or change a tenant
+as part of this local build.
+
+If Desktop requires Apply before exporting but a native connector is unavailable, do not enter
+credentials or remove pending queries. Create a **new offline export copy** instead:
+
+```powershell
+python docs\scripts\cowork_tasks\prepare_offline_export.py "2. Fabric\Consumption Central - Fabric.pbit" --out .pbi-work --profile fabric --project-name fexp
+```
+
+Use `viva` and a short name such as `vexp` for Viva Direct. Only these copies replace the external
+source roots with empty in-memory inputs, allowing Apply and native export without cloud access.
+They preserve each variant's own report, model and partitions. **Their exported PBITs are not
+deliverables until repaired with the corresponding real-source neutral reference.**
+`fix_pbit_defaults.py` restores shared expressions in both `DataModelSchema` and `UnappliedChanges`;
+the shipped contract rejects offline markers, absent connector calls and mismatched source roots.
+This is an offline build technique, **not native connector refresh validation**. Keep those gates
+separate and verify the repaired artifact's signature, definitions and neutral defaults.
+
+`sync_notebook.py` copies the actual shared Fabric task helpers into the Viva notebook. Its output
+must remain synchronized. `prepare_validation.py` adds synthetic-only Power Query assertions to
+a separate test project; **never ship that test project or its regression table**.
+Complete the [task verification matrix](TESTING.md#cowork-task-verification), including a fresh
+PBIT open, not just source parsing.
 
 ## Editing the report layer of a shipped `.pbit`
 
@@ -194,7 +256,7 @@ python docs/scripts/fix_credits_guide_text.py --pbip C:\pbip
 ## Before you ship either one
 
 - [ ] Open the exported `.pbit` fresh — it should prompt for parameters before touching any data
-- [ ] Point it at `sample-data\` and confirm all 14 pages render
+- [ ] Point it at `sample-data\` and confirm every page in `pages.json` renders, including hidden guides
 - [ ] Check no parameter default contains a real customer path, endpoint or rate
 - [ ] Confirm the model has no cached data: templates carry structure only, never rows
 

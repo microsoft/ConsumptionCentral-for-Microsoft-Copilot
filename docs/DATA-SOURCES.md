@@ -194,6 +194,17 @@ The ZIP is named like `ConsumptionDashboard-Weekly-Identified_Aug04_2026_1859Hou
 > differs, Consumption Central matches column names case-insensitively and ignoring spaces, dashes and
 > underscores, so minor naming changes are absorbed automatically. A genuinely new column is ignored.
 
+### Optional Cowork task categories
+
+The separate `CoworkWeeklyMetrics.csv` export supplies person/week/category/type task counts and
+fractional credits. It does not replace `PersonServiceCreditsMetrics.csv`. Put each export in its
+own subfolder with its matching `PeopleMetaData.csv`, so newer task metadata cannot displace a
+legacy companion. Missing task data leaves the new task page blank; the existing pages are unchanged.
+
+See [Cowork tasks](COWORK-TASKS.md) for the actual fields, compatibility rules and provisional
+expert-equivalent assumptions. Fabric and Dataverse use the optional `cowork_tasks_weekly` table.
+Viva Direct keeps its existing query and uses the optional CSV folder for tasks.
+
 ### Spending policies
 
 Configured in **M365 admin center → Copilot → Cost Management → Configuration**.

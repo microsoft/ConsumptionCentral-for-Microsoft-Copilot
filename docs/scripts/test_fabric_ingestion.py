@@ -217,7 +217,8 @@ class FabricIngestionTests(unittest.TestCase):
             scope[variable] = self.viva["pick"](raw, *aliases)
         # Run the actual metrics assignment and blank-identity guard, without report display I/O.
         tree = ast.parse(source(VIVA, 5))
-        nodes = tree.body[:2]
+        self.assertIsInstance(tree.body[0], ast.If)
+        nodes = tree.body[0].body[:2]
         self.assertIsInstance(nodes[0], ast.Assign)
         self.assertIsInstance(nodes[1], ast.If)
         exec(compile(ast.Module(body=nodes, type_ignores=[]), "<metrics projection>", "exec"), scope)
@@ -466,7 +467,7 @@ class FabricIngestionTests(unittest.TestCase):
 
     def test_notebook_metadata_outputs_and_untargeted_cells_unchanged(self):
         targets = {
-            "Ingest_Viva_Consumption": {0, 2, 4, 5, 6},
+            "Ingest_Viva_Consumption": {0, 2, 4, 5, 6, 8, 10, 11},
             "Ingest_Org": {0, 1, 2, 3, 5},
         }
         for name, allowed in targets.items():

@@ -173,7 +173,7 @@ The part that matters most:
 - [ ] Reset the six commercial parameters — `0.01`, `0.008`, `0`, `19`, `39`, `4`
 - [ ] Check the Settings query still holds `#date(2026, 9, 1)`, `1900`, `3900`
 - [ ] **File → Export → Power BI template**
-- [ ] Open the exported `.pbit` fresh, point `DataFolder` at `sample-data/`, confirm all 14 pages render
+- [ ] Open the exported `.pbit` fresh, point `DataFolder` at `sample-data/`, confirm every report page renders
 - [ ] Then hide everything except `PersonServiceCreditsMetrics.csv` and refresh again — Cowork should
       still be right and the other pages should be empty rather than broken
 
@@ -181,6 +181,85 @@ The part that matters most:
 are a customer's real ones, that ships with the file. This is the step to be careful about.
 
 ---
+
+## Cowork task verification
+
+Offline checks run without cloud access:
+
+```powershell
+python docs\scripts\test_cowork_tasks.py
+python docs\scripts\test_fabric_ingestion.py
+```
+
+They execute the actual Python task normalizer, check notebook synchronization, verify optional
+Dataverse schema extraction, and apply model changes in memory while preserving legacy definitions.
+They **do not execute Power Query, DAX or a native SQL/Dataverse connector**.
+
+For actual Power Query execution, expand a separate Local CSV test project and run
+`docs\scripts\cowork_tasks\prepare_validation.py <test.pbip>`. Refresh it in Desktop: every row in
+`Cowork Task Regression` must pass, and the task page must agree with the
+[independent synthetic totals](../1.%20Local%20CSV/sample-data/cowork-tasks/README.md).
+This project uses only synthetic data and must not be exported as a deliverable.
+The query forces every `Passed` value before returning its table: false, null or error values
+must fail the query, rather than loading an assertion error as a blank Boolean cell.
+
+Use `--with-file-cases` to add eight native file-adapter assertions to the 27 normalizer checks.
+The preparation step creates new synthetic folders beside the project and embeds the actual
+`FileInput.m` adapter, covering absent, zero-byte, header-only, partial, malformed, task-only,
+combined and unavailable-folder inputs. Existing fixture folders are never overwritten.
+For a full-project refresh and rendered-page check, prepare a **new, closed** project with
+`--case legacy-only`, `task-only`, `zero-byte`, `header-only`, `partial` or `malformed`.
+The selected case becomes that project's DataFolder; these runs also include the file assertions.
+The `malformed` project must visibly fail its task refresh with `CoworkTasks.InvalidExport`.
+A passing assertion that catches an expected error does not replace that full-refresh failure check.
+
+| Required case | Model/refresh acceptance | Page acceptance |
+|---|---|---|
+| Representative new export, kept private | Counts/credits match source; historical join does not fan out; no legacy facts fabricated | Category/type/week filters work; estimates visibly provisional |
+| Synthetic task-only export | 10 tasks, 38 credits, 70% valuation coverage; expected three scenario results | Cards, category share, weekly trend and matrix agree |
+| Legacy identified or de-identified export without task data | Existing totals/filters unchanged; refresh succeeds | `Task categories not supplied`; task numbers blank |
+| Legacy and task exports in separate subfolders | Each uses its own metadata; no cross-fact addition | Independent periods and organizations |
+| Absent, zero-byte, header-only or empty optional table | Typed empty fact; no required new file | Correct absent versus supplied-empty message |
+| Missing credits, category, type or metadata | Counts retained; null credits not zero; no dropped rows | Coverage note, `Not supplied`, blank unsafe ratios/cost |
+| Unknown/future category and measured zeros | Observations retained; unmapped estimate blank; zero denominator safe | Unmapped categories visible; zero not confused with absence |
+| Filtered empty selection | All numeric task measures blank | `No tasks match these filters` |
+| Invalid date/count/credits/licence; conflicting task or metadata key | Sanitized actionable error, no silent fallback | Refresh failure visible, not an empty-data success |
+| Inaccessible folder or connector auth/transport failure | Genuine failure surfaces | No misleading “not supplied” state |
+| Re-import/backfill in Fabric | Same natural keys upsert; no duplicate task credits | Historical task totals unchanged by repeat imports |
+| Fresh exported PBIT for all four variants | Opens, refreshes, neutral defaults, no cache or test table | Every page/navigation works; Typical selected; hourly value unselected |
+
+Native Fabric and Dataverse refresh requires an authorized read-only endpoint. Synthetic navigation
+tests or model-file checks are useful but must not be reported as connector validation. Record any
+unavailable native acceptance gate explicitly; do not mark an artifact fully verified on that basis.
+
+### Task-category implementation verification record
+
+The following evidence was collected on 19 October 2026. This records completed checks, not a
+claim that every acceptance gate above passed.
+
+| Check | Observed result |
+|---|---|
+| Native combined synthetic refresh | Task totals, all three effort scenarios, explicit hourly-value selection, task filters and existing Cowork / Work IQ totals agreed with independent expectations |
+| Native legacy-only refresh | Existing billing totals remained unchanged; Tasks displayed `Task categories not supplied` with blank numeric results |
+| Native Power Query assertions | All 35 normalizer and file-adapter assertions passed, including missing, empty, partial, malformed and unavailable-folder cases |
+| Fresh exported Local CSV PBIT | Combined and task-only inputs loaded successfully; task-only showed 10 tasks, 38 credits and 70% valuation coverage without creating legacy billing facts |
+| Page appearance and order | Tasks rendered immediately after Cowork Cost, using the incumbent Cowork visual treatment; Typical selected and hourly value unselected |
+| Four rebuilt template packages | Data-free, neutral defaults, task contracts, strict model/staged-query agreement and lineage checks passed; legacy measure expressions, partitions and column bindings were preserved |
+| Fabric and Viva export construction | Dedicated offline copies applied and exported in Desktop; real connector expressions were restored in both model parts without modifying the native report/security parts |
+| Dataverse construction | Derived from the rebuilt Fabric export; generated schema and flow-package contracts passed |
+| Offline regression suites | 162 repository tests completed successfully with one skipped; 56 local Azure collector tests passed |
+| PBIR validator | Converter projects retained 98 existing errors and 28 warnings; comparison with the untouched baseline found no new diagnostics, so this is not a clean-validator claim |
+| Private representative input | Native refresh completed and Tasks populated. All five displayed last-four-week metrics matched independent source calculations: task count, credits, credits/task, expert-equivalent hours and valuation coverage. Unique task and historical metadata keys were checked locally. Exact all-history native aggregate comparison remains pending |
+| Full-project partial input | Final Local CSV PBIT loaded two synthetic tasks with `Not supplied` dimensions; missing credits, ratios, costs and estimates remained blank, with explicit coverage disclosure |
+| Full-project supplied-empty inputs | Header-only and zero-byte inputs rendered `Task export contains no rows` with blank task metrics and retained legacy billing. Zero-byte Apply completed with the pending-query banner cleared |
+| Full-project malformed input | Native Apply visibly failed with `Expected a nonnegative finite number` for the deliberately invalid credits value; the error was not swallowed as missing data. A valid private input subsequently refreshed successfully |
+| Fresh Fabric, Dataverse and Viva native acceptance | All reached their native parameter dialogs with neutral defaults. This is opening/default evidence, not a successful model refresh. Viva requires real partition/query IDs; no live Fabric, Dataverse or Viva endpoint refresh was performed |
+
+Desktop-control timeouts prevented the exact all-history native aggregate comparison. The
+review handoff explicitly retains that check and the separately authorized live endpoint refreshes
+as outstanding; this is not a claim of complete native acceptance across every variant.
+No private input, private verification results or populated model cache is included in the
+shipped templates.
 
 ## Things we know we cannot test here
 

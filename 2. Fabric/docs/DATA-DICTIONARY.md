@@ -1,6 +1,6 @@
 # Data dictionary
 
-The nine Delta tables Consumption Central reads, and what each column means.
+The Delta table contracts Consumption Central reads, and what each column means.
 
 If you build your own pipeline instead of using the notebooks, match this and the template works
 unchanged. The tables are deliberately close to the source exports — renamed to `snake_case` and
@@ -41,6 +41,39 @@ the Cowork pages are empty and the rest of the report is unaffected.
 All four are needed. A person can hold rows under two policies in the same week — their own, and the
 all-zero GUID for usage outside a policy window — and dropping the policy from the key would collapse
 those into one and lose credits.
+
+---
+
+<a id="cowork_tasks_weekly"></a>
+
+## `cowork_tasks_weekly`
+
+Optional **person x week x category x initiation-type** fact. Independent of `viva_credits_weekly`;
+do not union its credits into consumption billing or infer service/policy attributes.
+The task page can work when no legacy consumption table exists.
+
+| Column | Type | Notes |
+|---|---|---|
+| `person_id` | string | Required normalized person key; UPN accepted as fallback when supplied |
+| `user_principal_name` | string | Optional; never infer one from anonymous IDs |
+| `metric_date` | date | Required week-start date |
+| `task_category` | string | Optional open category list; missing maps to `Not supplied` |
+| `task_type` | string | Optional initiation type; not completion status |
+| `credits_used` | double | Optional fractional credits; null means missing, not zero |
+| `task_count` | long | Required finite nonnegative whole reported count |
+| `people_historical_id` | string | Optional historical metadata key |
+| `organization` | string | Optional historical task organization |
+| `function_type` | string | Optional historical function |
+| `is_copilot_licensed` | boolean | Optional licence flag |
+| `category_key`, `type_key` | string | Lowercase normalized labels used by the notebook merge; model derives these if absent |
+
+**Merge key:** `person_id`, `metric_date`, `category_key`, `type_key`. Inline metadata is enriched
+only from the task export's own companion directory. Identical duplicates collapse; conflicting
+observations or metadata keys fail before the merge. Missing or empty input never deletes history.
+The source notebook preserves fractional precision using the existing double-precision credit
+convention rather than rounding to integer credits or fixed four-decimal currency.
+
+See [Cowork task inputs and assumptions](../../docs/COWORK-TASKS.md).
 
 ---
 

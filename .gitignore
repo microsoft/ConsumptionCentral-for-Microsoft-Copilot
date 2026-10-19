@@ -9,6 +9,8 @@ Data/
 *Identified*.zip
 ConsumptionDashboard-*.zip
 PersonServiceCreditsMetrics.csv
+CoworkWeeklyMetrics*.csv
+Cowork_Weekly_*.zip
 PeopleMetaData.csv
 PersonPolicyMap.csv
 SpendingPolicyMetadata.csv
@@ -21,6 +23,7 @@ entra_org.csv
 
 # ...but the synthetic sample set is meant to be here
 !1. Local CSV/sample-data/*.csv
+!1. Local CSV/sample-data/cowork-tasks/*.csv
 
 # OS / editor
 Thumbs.db
@@ -45,3 +48,4 @@ venv/
 *.pbip
 *.Report/
 *.SemanticModel/
+.pbi-work/

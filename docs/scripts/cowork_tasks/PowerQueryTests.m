@@ -1,0 +1,57 @@
+let
+    Base = [PersonId="synthetic-a", MetricDate="2026-09-06", TaskCategory="Analysis & research",
+        TaskType="Scheduled", #"Total credits used"="12.5", #"Total Cowork tasks"="2", PeopleHistoricalId="history-a"],
+    Input = (records as list) => Table.FromRecords(records),
+    Normalize = (records as list, optional people as nullable table) => CoworkTaskNormalize(Input(records), people),
+    Force = (t as table) => List.Sum(List.Transform(Table.ToRows(t), (row) =>
+        List.Sum(List.Transform(row, (v) => if v = null then 0 else Text.Length(Text.From(v, "en-US")))))),
+    Fails = (row as record) => (try Force(Normalize({row})))[HasError],
+    Replace = (field as text, value as any) => Record.AddField(Record.RemoveFields(Base, {field}), field, value),
+    Check = (name as text, passed as logical) =>
+        if passed then {name, true}
+        else error Error.Record("CoworkTasks.RegressionFailed", name, null),
+    Valid = Normalize({Base}),
+    MissingOptional = CoworkTaskNormalize(#table({"PersonId", "MetricDate", "TaskCount"},
+        {{"synthetic-a", "2026-09-06", 2}}), null),
+    Zero = Normalize({Replace("Total Cowork tasks", "0")}),
+    People = #table({"PeopleHistoricalId", "Organization", "FunctionType", "IsCopilotLicensed"},
+        {{"history-a", "Example division A", "Research", "true"},
+         {"history-b", "Example division B", "Engineering", "false"}}),
+    HistoryRows = {Base, Record.TransformFields(Base, {
+        {"PeopleHistoricalId", each "history-b"}, {"MetricDate", each "2026-09-13"}})},
+    History = Normalize(HistoryRows, People),
+    ConflictingPeople = Table.Combine({People, #table(Table.ColumnNames(People),
+        {{"history-a", "Conflicting example", "Research", "true"}})}),
+    Duplicated = Normalize({Base, Base}),
+    Tests = {
+        Check("absent table is empty", Table.RowCount(CoworkTaskNormalize(null, null)) = 0),
+        Check("zero-column empty table is empty", Table.RowCount(CoworkTaskNormalize(#table({},{}), null)) = 0),
+        Check("header-only table is empty", Table.RowCount(CoworkTaskNormalize(#table({"PersonId"},{}), null)) = 0),
+        Check("known counts and fractional credits", Valid{0}[TaskCount] = 2 and Valid{0}[CreditsUsed] = 12.5),
+        Check("missing classification is distinct", MissingOptional{0}[TaskCategory] = "Not supplied"),
+        Check("missing credits stay null", MissingOptional{0}[CreditsUsed] = null),
+        Check("measured zero stays zero", Zero{0}[TaskCount] = 0),
+        Check("identical rows deduplicate", Table.RowCount(Duplicated) = 1 and List.Sum(Duplicated[TaskCount]) = 2),
+        Check("historical join preserves counts", Table.RowCount(History) = 2 and List.Sum(History[TaskCount]) = 4),
+        Check("historical organizations remain separate", List.Count(List.Distinct(History[Organization])) = 2),
+        Check("conflicting metadata fails", (try Force(Normalize({Base}, ConflictingPeople)))[HasError]),
+        Check("conflicting observations fail", (try Force(Normalize({Base, Replace("Total Cowork tasks","3")})))[HasError]),
+        Check("negative credits fail", Fails(Replace("Total credits used","-1"))),
+        Check("malformed credits fail", Fails(Replace("Total credits used","not-a-number"))),
+        Check("infinite credits fail", Fails(Replace("Total credits used","#infinity"))),
+        Check("fractional counts fail", Fails(Replace("Total Cowork tasks","1.5"))),
+        Check("logical counts fail", Fails(Replace("Total Cowork tasks",true))),
+        Check("missing counts fail", Fails(Replace("Total Cowork tasks",null))),
+        Check("missing identity fails", Fails(Replace("PersonId",null))),
+        Check("malformed dates fail", Fails(Replace("MetricDate","09/06/2026"))),
+        Check("invalid calendar dates fail", Fails(Replace("MetricDate","2026-02-30"))),
+        Check("invalid licence fails", Fails(Record.AddField(Base,"IsCopilotLicensed","perhaps"))),
+        Check("unknown category remains observed", Normalize({Replace("TaskCategory","Unknown")}){0}[TaskCount] = 2),
+        Check("unmatched metadata retains task rows", Table.RowCount(Normalize({Replace("PeopleHistoricalId","missing-example")}, People)) = 1),
+        Check("duplicate identical metadata does not fan out", Table.RowCount(Normalize({Base}, Table.Combine({People, People}))) = 1),
+        Check("UPN-only input works", CoworkTaskNormalize(#table({"UserPrincipalName", "MetricDate", "TaskCount"},
+            {{"SYNTHETIC@EXAMPLE.COM", "2026-09-06", 2}}), null){0}[PersonId] = "synthetic@example.com"),
+        Check("future category remains observed", Normalize({Replace("TaskCategory","New example work")}){0}[CategoryKey] = "new example work")
+    }
+in
+    #table(type table [Case=text, Passed=logical], Tests)
