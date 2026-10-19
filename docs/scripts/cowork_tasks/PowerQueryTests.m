@@ -23,6 +23,10 @@ let
     ConflictingPeople = Table.Combine({People, #table(Table.ColumnNames(People),
         {{"history-a", "Conflicting example", "Research", "true"}})}),
     Duplicated = Normalize({Base, Base}),
+    CaseVariants = Normalize({
+        Record.Combine({Base, [Organization="Example Division", FunctionType="Research"]}),
+        Record.Combine({Replace("MetricDate", "2026-09-13"), [Organization="EXAMPLE DIVISION", FunctionType="RESEARCH"]})
+    }),
     Tests = {
         Check("absent table is empty", Table.RowCount(CoworkTaskNormalize(null, null)) = 0),
         Check("zero-column empty table is empty", Table.RowCount(CoworkTaskNormalize(#table({},{}), null)) = 0),
@@ -34,6 +38,9 @@ let
         Check("identical rows deduplicate", Table.RowCount(Duplicated) = 1 and List.Sum(Duplicated[TaskCount]) = 2),
         Check("historical join preserves counts", Table.RowCount(History) = 2 and List.Sum(History[TaskCount]) = 4),
         Check("historical organizations remain separate", List.Count(List.Distinct(History[Organization])) = 2),
+        Check("case-only people attributes share a key", List.Count(List.Distinct(CaseVariants[PeopleKey])) = 1),
+        Check("different historical attributes keep separate keys", List.Count(List.Distinct(History[PeopleKey])) = 2),
+        Check("non-Sunday dates remain supported", Normalize({Replace("MetricDate", "2026-09-12")}){0}[MetricDate] = #date(2026,9,12)),
         Check("conflicting metadata fails", (try Force(Normalize({Base}, ConflictingPeople)))[HasError]),
         Check("conflicting observations fail", (try Force(Normalize({Base, Replace("Total Cowork tasks","3")})))[HasError]),
         Check("negative credits fail", Fails(Replace("Total credits used","-1"))),

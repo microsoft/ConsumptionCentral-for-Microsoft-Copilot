@@ -118,12 +118,14 @@ RETURN IF(HASONEVALUE('{CATEGORY}'[CategoryKey]) && NOT ISBLANK([Reported Cowork
 RETURN IF(NOT ISBLANK(_rate) && NOT ISBLANK([Cowork Expert-equivalent Hours]),
     [Cowork Expert-equivalent Hours] * _rate)""", "$#,0.00",
                 "Scenario monetary equivalent in USD, not realized financial savings. Requires explicit hourly-value selection.", "Task value"),
-        measure("Cowork Task Status Message", f"""VAR _supplied = MAX('{STATUS}'[Supplied])
+        measure("Cowork Task Status Message", f"""VAR _unavailable = MAX('{STATUS}'[SourceUnavailable])
+VAR _supplied = MAX('{STATUS}'[Supplied])
 VAR _rows = MAX('{STATUS}'[SourceRows])
 VAR _selected = [Cowork Task Rows]
 VAR _coverage = [Cowork Task Valuation Coverage]
 VAR _creditCoverage = [Cowork Task Credit Coverage]
 RETURN SWITCH(TRUE(),
+    _unavailable = 1, "Task folder unavailable; check DataFolder and folder access.",
     _supplied = 0, "Task categories not supplied",
     _rows = 0, "Task export contains no rows",
     ISBLANK(_selected) || _selected = 0, "No tasks match these filters",
@@ -161,8 +163,8 @@ def additions():
                ("Conservative", "double"), ("Typical", "double"), ("Optimistic", "double")],
               "Editable provisional ValueLens Cowork effort bands in minutes per reported task. Unmapped categories have no estimate."),
         table(PEOPLE, """let
-    Rows = Table.Distinct(Table.SelectColumns(CoworkTaskData,
-        {"PeopleKey", "Organization", "FunctionType", "IsCopilotLicensed"})),
+    Rows = Table.Distinct(Table.Buffer(Table.SelectColumns(CoworkTaskData,
+        {"PeopleKey", "Organization", "FunctionType", "IsCopilotLicensed"})), {"PeopleKey"}),
     Labels = Table.TransformColumns(Rows, {
         {"Organization", each if _ = null then "Not supplied" else _, type text},
         {"FunctionType", each if _ = null then "Not supplied" else _, type text},
@@ -172,8 +174,8 @@ in Labels""", [("PeopleKey", "string", True), ("Organization",), ("FunctionType"
               "Task-scoped historical attributes. No inferred UPN or cross-product identity link."),
         table(DATES, """let
     Dates = List.RemoveNulls(CoworkTaskData[MetricDate]),
-    First = List.Min(Dates, null),
-    Last = List.Max(Dates, null),
+    First = if List.IsEmpty(Dates) then null else Date.StartOfWeek(List.Min(Dates), Day.Sunday),
+    Last = if List.IsEmpty(Dates) then null else Date.StartOfWeek(List.Max(Dates), Day.Sunday),
     Days = if First = null then {} else List.Dates(First, Duration.Days(Last - First) + 7, #duration(1,0,0,0)),
     Base = Table.FromColumns({Days}, type table [Date=date]),
     Week = Table.AddColumn(Base, "Week Start", each Date.StartOfWeek([Date], Day.Sunday), type date),
@@ -184,7 +186,8 @@ in Ago""", [("Date", "dateTime"), ("Week Start", "dateTime"),
               "Task-only date range and period anchor; does not change legacy Cowork dates or forecasts."),
         table(PERIOD, """let
     Dates = List.RemoveNulls(CoworkTaskData[MetricDate]),
-    Span = if List.IsEmpty(Dates) then 0 else Number.IntegerDivide(Duration.Days(List.Max(Dates) - List.Min(Dates)), 7) + 1,
+    Weeks = List.Transform(Dates, each Date.StartOfWeek(_, Day.Sunday)),
+    Span = if List.IsEmpty(Weeks) then 0 else Number.IntegerDivide(Duration.Days(List.Max(Weeks) - List.Min(Weeks)), 7) + 1,
     Choices = List.Select({{"Last 4 weeks",4,1}, {"Last 8 weeks",8,2}}, each _{1} < Span),
     Rows = Choices & {{"All history", Span, 3}}
 in #table(type table [Period=text, Weeks=Int64.Type, Sort=Int64.Type], Rows)""",
@@ -193,11 +196,12 @@ in #table(type table [Period=text, Weeks=Int64.Type, Sort=Int64.Type], Rows)""",
         table(SCENARIO, '#table(type table [Scenario=text, Sort=Int64.Type], {{"Conservative",1},{"Typical",2},{"Optimistic",3}})',
               [("Scenario", "string", False, "Sort"), ("Sort", "int64", True)],
               "Provisional expert-equivalent effort scenario. Default Typical."),
-        table(HOURLY, 'Table.FromColumns({List.Numbers(0,1001)}, type table [#"Hourly Value"=Int64.Type])',
-              [("Hourly Value", "int64")], "USD per expert-equivalent hour. No default monetary selection; editable range."),
-        table(STATUS, """#table(type table [Supplied=Int64.Type, SourceRows=Int64.Type],
-    {{if CoworkTaskInput[Supplied] then 1 else 0, Table.RowCount(CoworkTaskData)}})""",
-              [("Supplied", "int64"), ("SourceRows", "int64")],
+        table(HOURLY, 'Table.FromColumns({{null} & List.Numbers(0,1001)}, type table [#"Hourly Value"=Int64.Type])',
+              [("Hourly Value", "int64")], "USD per expert-equivalent hour. Blank means no value selected; editable range."),
+        table(STATUS, """#table(type table [Supplied=Int64.Type, SourceRows=Int64.Type, SourceUnavailable=Int64.Type],
+    {{if CoworkTaskInput[Supplied] then 1 else 0, Table.RowCount(CoworkTaskData),
+      if Record.FieldOrDefault(CoworkTaskInput, "SourceUnavailable", false) then 1 else 0}})""",
+              [("Supplied", "int64"), ("SourceRows", "int64"), ("SourceUnavailable", "int64")],
               "Unfiltered source availability, distinct from no matching rows in a selection.", True),
     ]
 
@@ -217,10 +221,13 @@ def apply(model, unapplied, profile):
     tables = {t["name"]: t for t in model["tables"]}
     new_expressions = {
         "CoworkTaskNormalize": source("NormalizeTasks.m"),
-        "CoworkTaskInput": source("TableInput.m" if profile == "fabric" else "FileInput.m"),
+        "CoworkTaskInput": source("TableInput.m" if profile in ("fabric", "dataverse") else "FileInput.m"),
         "CoworkTaskData": "CoworkTaskNormalize(CoworkTaskInput[Data], CoworkTaskInput[People])",
     }
     if profile == "csv":
+        for annotation in expressions["BillingPeriodWeeks"].get("annotations", []):
+            if annotation["name"] == "PBI_ResultType":
+                annotation["value"] = "Number"
         new_expressions["GetVivaMetadataFile"] = source("LegacyCompanion.m")
         for name in ("OrgNormalised", "VivaSeatRosterFromFiles"):
             old = expressions[name]
@@ -259,6 +266,8 @@ def apply(model, unapplied, profile):
             q["resultType"] = "Record"
         if name in ("CoworkTaskNormalize", "GetVivaMetadataFile"):
             q["resultType"] = "Function"
+        if profile == "csv" and name == "DataFiles":
+            q["resultType"] = "Table"
     for item in new_tables:
         queries[item["name"]] = load_query(item)
     unapplied["queries"] = list(queries.values())

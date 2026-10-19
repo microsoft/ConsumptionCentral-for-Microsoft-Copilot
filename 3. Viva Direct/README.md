@@ -81,8 +81,10 @@ optional `DataFolder` CSV route with `CoworkWeeklyMetrics.csv` and its matching 
 in one export subfolder. No additional query ID is required or assumed to expose task categories.
 Without the task file, the new page is blank and the existing query/pages are unchanged.
 
-An explicitly configured inaccessible folder reports an error rather than masquerading as absent
-task data. See [supported fields, empty states and provisional value assumptions](../docs/COWORK-TASKS.md).
+An inaccessible optional folder displays `Task folder unavailable; check DataFolder and folder access.`
+on the task page without failing connector-only refreshes. Errors reading a discovered task file
+still fail refresh, as do Viva connector failures.
+See [supported fields, empty states and provisional value assumptions](../docs/COWORK-TASKS.md).
 
 ## If the refresh fails
 

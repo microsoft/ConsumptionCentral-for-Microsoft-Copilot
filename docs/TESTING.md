@@ -203,7 +203,12 @@ This project uses only synthetic data and must not be exported as a deliverable.
 The query forces every `Passed` value before returning its table: false, null or error values
 must fail the query, rather than loading an assertion error as a blank Boolean cell.
 
-Use `--with-file-cases` to add eight native file-adapter assertions to the 27 normalizer checks.
+The preparation step includes 30 normalizer checks and 11 compatibility checks using the actual
+legacy lookup and generated dimension/calendar queries. These cover relocated/standalone legacy
+metadata, task companion isolation, case-only people labels, mixed-weekday all-history coverage,
+empty calendars and simulated folder permission denial.
+
+Use `--with-file-cases` to add nine native file-adapter assertions (50 checks in total).
 The preparation step creates new synthetic folders beside the project and embeds the actual
 `FileInput.m` adapter, covering absent, zero-byte, header-only, partial, malformed, task-only,
 combined and unavailable-folder inputs. Existing fixture folders are never overwritten.
@@ -224,9 +229,12 @@ A passing assertion that catches an expected error does not replace that full-re
 | Unknown/future category and measured zeros | Observations retained; unmapped estimate blank; zero denominator safe | Unmapped categories visible; zero not confused with absence |
 | Filtered empty selection | All numeric task measures blank | `No tasks match these filters` |
 | Invalid date/count/credits/licence; conflicting task or metadata key | Sanitized actionable error, no silent fallback | Refresh failure visible, not an empty-data success |
-| Inaccessible folder or connector auth/transport failure | Genuine failure surfaces | No misleading “not supplied” state |
+| Inaccessible optional task folder | Viva connector-only refresh still succeeds; task numbers blank | `Task folder unavailable; check DataFolder and folder access.` |
+| Unreadable discovered task/companion file or connector auth/transport failure | Genuine failure surfaces | No misleading “not supplied” state |
 | Re-import/backfill in Fabric | Same natural keys upsert; no duplicate task credits | Historical task totals unchanged by repeat imports |
-| Fresh exported PBIT for all four variants | Opens, refreshes, neutral defaults, no cache or test table | Every page/navigation works; Typical selected; hourly value unselected |
+| Fresh exported PBIT for all four variants | Opens, refreshes, neutral defaults, no cache or test table | Every page/navigation works; Typical selected; no numeric hourly value selected |
+| Hourly single-select | `(Blank)` keeps monetary estimate blank; explicit zero means zero; one numeric rate at a time | First load is blank; changing rate replaces it, returning to `(Blank)` removes the estimate |
+| Mixed weekdays and case-only task people labels | All history includes every row; one people dimension row per normalized key | No duplicate-key refresh failure or lost earliest week |
 
 Native Fabric and Dataverse refresh requires an authorized read-only endpoint. Synthetic navigation
 tests or model-file checks are useful but must not be reported as connector validation. Record any

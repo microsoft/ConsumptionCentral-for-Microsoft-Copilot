@@ -216,9 +216,12 @@ def apply(report):
         ("task_category", 250, CATEGORY, "TaskCategory", "Task category"),
         ("task_organization", 334, PEOPLE, "Organization", "Task organization"),
         ("task_scenario", 418, SCENARIO, "Scenario", "Effort scenario", "Typical", True),
-        ("task_hourly", 502, HOURLY, "Hourly Value", "Expert hourly value (USD)"),
+        ("task_hourly", 502, HOURLY, "Hourly Value", "Expert hourly value (USD)", None, True),
     ):
         visuals.append(slicer(*args))
+    hourly = visuals[-1]
+    hourly["visual"]["query"]["sortDefinition"] = {
+        "sort": [{"field": field(HOURLY, "Hourly Value"), "direction": "Ascending"}]}
     visuals.append(card("task_value_basis", (1045, 590, 222, 120),
                          [metric("Cowork Task Value Basis")], font=9, labels=False))
     for item in visuals:
@@ -235,14 +238,11 @@ def apply(report):
 def extend_guide(pages):
     root = pages / "guide-cowork" / "visuals"
     foot = root / "guidecowor_foot" / "visual.json"
-    original = json.loads(foot.read_text(encoding="utf-8"))
-    paragraphs = original["visual"]["objects"]["general"][0]["properties"]["paragraphs"]
     marker = "Task categories (optional)"
-    if any(marker in run.get("value", "") for p in paragraphs for run in p.get("textRuns", [])):
-        return
     write(foot, textbox("guidecowor_foot", (28, 524, 580, 170), [
         "Watch out for",
-        "Legacy consumption: de-identified totals remain valid, but person and department views require identification or PersonPolicyMap.csv linking hashes to UPNs. Task metadata is separate and can provide historical organization without a UPN.",
+        "Legacy consumption: de-identified totals remain valid. For person and department views, enable identification in Viva Feature Access Management or, on the CSV path, use PersonPolicyMap.csv to link hashes to UPNs.",
+        "Task metadata is separate and can supply historical organization without a UPN.",
         "Forecast quality depends on the weeks loaded. A short history gives little more than a straight line.",
     ], 11))
     note = textbox("guide_cowork_tasks", (650, 516, 602, 190), [

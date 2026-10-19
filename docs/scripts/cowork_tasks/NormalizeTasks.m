@@ -48,7 +48,7 @@ let
             else if Value.Is(v, type datetime) then Date.From(v)
             else Date.FromText(Text.Trim(Text.From(v)), [Format="yyyy-MM-dd", Culture="en-US"])
         in if d[HasError] or d[Value] = null
-           then Fail("MetricDate", "Expected a populated ISO week-start date (yyyy-MM-dd).")
+           then Fail("MetricDate", "Expected a populated calendar date (yyyy-MM-dd).")
            else d[Value],
     Licence = (v as any) as nullable logical =>
         let t = Identity(v)
@@ -125,7 +125,7 @@ let
     Unique = if Table.IsEmpty(Table.SelectRows(Counts, each [Rows] > 1)) then DistinctRows
              else Fail("TaskCount", "Conflicting task rows share person, week, category and type; reconcile overlapping exports."),
     PeopleKey = Table.AddColumn(Unique, "PeopleKey", each
-        Text.FromBinary(Json.FromValue({[PersonId], [PeopleHistoricalId], [Organization], [FunctionType], [IsCopilotLicensed]})),
+        Text.FromBinary(Json.FromValue({[PersonId], [PeopleHistoricalId], Identity([Organization]), Identity([FunctionType]), [IsCopilotLicensed]})),
         type text),
     Result = Table.RemoveColumns(PeopleKey, {"_typeKey"})
 in

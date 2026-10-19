@@ -38,6 +38,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--profile", required=True, choices=("csv", "fabric", "viva"))
+    parser.add_argument("--profile", required=True, choices=("csv", "fabric", "viva", "dataverse"))
     args = parser.parse_args()
     make_reference(args.source, args.output, args.profile)

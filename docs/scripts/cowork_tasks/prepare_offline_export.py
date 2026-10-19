@@ -13,8 +13,16 @@ from pbit_to_pbip import convert
 
 MARKER = "CC_OFFLINE_EXPORT_ONLY"
 OVERRIDES = {
+    "csv": {
+        "DataFiles": '#table(type table [Content=binary, Name=text, Extension=text, #"Folder Path"=text, '
+                     '#"Date modified"=datetime, MatchKey=text, Depth=Int64.Type], {})',
+        "CoworkTaskInput": "[Data=null, People=null, Supplied=false, SourceUnavailable=false]",
+    },
     "fabric": {
         "FabricSource": '#table(type table [Schema=text, Item=text, Kind=text, Data=table], {})',
+    },
+    "dataverse": {
+        "DataverseSource": '#table(type table [Schema=text, Item=text, Kind=text, Data=table], {})',
     },
     "viva": {
         "VivaConnectorSource": "#table(type table [], {})",

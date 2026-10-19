@@ -55,6 +55,21 @@ def checked_assertions(body):
             + '"CoworkTasks.RegressionFailed", "Every native assertion must be true.", null)')
 
 
+def compatibility_assertions(document):
+    expressions = {e["name"]: model.text(e["expression"]) for e in document["model"]["expressions"]}
+    tables = {t["name"]: t["partitions"][0]["source"]["expression"] for t in model.additions()}
+    bindings = [
+        "ReadLegacy = (DataFiles as table) => let\nGetDataFile = " + expressions["GetDataFile"]
+        + ",\nGetVivaMetadataFile = " + model.source("LegacyCompanion.m") + "\nin GetVivaMetadataFile",
+        *[name + " = (CoworkTaskData as table) =>\n" + tables[table]
+          for name, table in (("ReadPeople", model.PEOPLE), ("ReadDates", model.DATES), ("ReadPeriod", model.PERIOD))],
+        'Denied = let DataFolder = "synthetic-denied", Folder.Files = (path as text) => '
+        'error Error.Record("DataSource.Error", "Synthetic permission denial", null) in\n'
+        + model.source("FileInput.m"),
+    ]
+    return "let\n" + ",\n".join(bindings) + ",\nResult =\n" + model.source("CompatibilityTests.m") + "\nin Result"
+
+
 def prepare(project, case="combined", with_file_cases=False):
     if case not in CASES:
         raise ValueError(f"Unknown synthetic validation case: {case}")
@@ -77,7 +92,7 @@ def prepare(project, case="combined", with_file_cases=False):
             for query in unapplied["queries"]:
                 if query["name"] == "DataFolder":
                     query["text"] = [expr["expression"]]
-    assertions = model.source("PowerQueryTests.m")
+    assertions = "Table.Combine({\n" + model.source("PowerQueryTests.m") + ",\n" + compatibility_assertions(document) + "\n})"
     if fixtures:
         assertions = "Table.Combine({\n" + assertions + ",\n" + file_assertions(fixtures) + "\n})"
     test_table = model.table("Cowork Task Regression", checked_assertions(assertions),

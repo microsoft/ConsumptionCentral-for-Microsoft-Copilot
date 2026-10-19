@@ -200,6 +200,9 @@ The separate `CoworkWeeklyMetrics.csv` export supplies person/week/category/type
 fractional credits. It does not replace `PersonServiceCreditsMetrics.csv`. Put each export in its
 own subfolder with its matching `PeopleMetaData.csv`, so newer task metadata cannot displace a
 legacy companion. Missing task data leaves the new task page blank; the existing pages are unchanged.
+When no task file is supplied, Local CSV retains its original shallowest/newest metadata search
+anywhere beneath `DataFolder`, including standalone metadata. The same-folder legacy companion
+rule applies only when task files coexist.
 
 See [Cowork tasks](COWORK-TASKS.md) for the actual fields, compatibility rules and provisional
 expert-equivalent assumptions. Fabric and Dataverse use the optional `cowork_tasks_weekly` table.

@@ -31,9 +31,10 @@ def sync(path=NOTEBOOK):
                (HERE / "fabric.py").read_text(encoding="utf-8"))
     set_source(cells[4], """# Both export families are optional individually, but an empty landing path is an input error.
 landing_files = viva_landing_files(notebookutils.fs, LANDING)
-files = [p for p in landing_files if p.rsplit("/", 1)[-1].lower().startswith("personservicecreditsmetrics")]
+top_level_files = viva_landing_files(notebookutils.fs, LANDING, recursive=False)
+files = [p for p in top_level_files if p.rsplit("/", 1)[-1].lower().startswith("personservicecreditsmetrics")]
 task_files = [p for p in landing_files if task_key(p.rsplit("/", 1)[-1]).startswith("coworkweeklymetrics")]
-policy_files = [p for p in landing_files if p.rsplit("/", 1)[-1].lower().startswith("spendingpolicymetadata")]
+policy_files = [p for p in top_level_files if p.rsplit("/", 1)[-1].lower().startswith("spendingpolicymetadata")]
 if not files and not task_files:
     raise ValueError("No supported consumption or task CSV files found in the configured landing folder.")
 raw = None
@@ -91,7 +92,10 @@ else:
     set_source(cells[0], overview.rstrip() + marker + """
 `CoworkWeeklyMetrics.csv` can be supplied alone or alongside legacy consumption.
 Place each export and its `PeopleMetaData.csv` companion in a separate subfolder
-under `Files/landing/viva/`. The notebook reads the landing tree but skips `_processed`.
+under `Files/landing/viva/`. Only task files and their companions are discovered recursively;
+directories starting with `_` or `.` (including `_processed`) are skipped.
+Legacy `PersonServiceCreditsMetrics` and `SpendingPolicyMetadata` CSVs are read only from
+the landing folder's top level, as before. Retained legacy exports in subfolders are not ingested.
 Task rows upsert separately into `cowork_tasks_weekly` at person/week/category/type grain.
 Historical metadata is joined within each export; conflicting duplicate keys fail.
 No task file means existing task history is left unchanged. Empty task exports do not erase history.

@@ -131,7 +131,7 @@ python docs\scripts\pbit_to_pbip.py "1. Local CSV\Consumption Central - Local CS
 python docs\scripts\cowork_tasks\apply.py .pbi-work\csv\csv.pbip --profile csv
 ```
 
-Repeat with `fabric` and `viva`. Open, refresh and inspect the project in Desktop before exporting
+Repeat with `fabric`, `viva` and `dataverse`. Open, refresh and inspect each project in Desktop before exporting
 the corresponding PBIT. If a project is already open, apply external changes through Desktop's
 supported reload/apply path before saving; otherwise Desktop can overwrite them.
 
@@ -154,8 +154,10 @@ Create each reference before replacing its original PBIT. References are data-fr
 repair inputs, **not report deliverables**. They do not contain the new signed report page.
 The generator writes reproducible UTF-16LE JSON layouts accepted by `fix_pbit_defaults.py`;
 the regression suite exercises that repair reader against a generated reference.
-Rebuild Dataverse with its existing `Build-Dataverse-Template.py` from the freshly signed Fabric
-PBIT, then regenerate `dataverse-schema.json`. Do not publish, tag, deploy a table or change a tenant
+When initializing a Dataverse variant from Fabric, use the existing `Build-Dataverse-Template.py`,
+then give Dataverse its own native project Apply/export and regenerate `dataverse-schema.json`.
+For updates, expand the existing Dataverse PBIT and use the `dataverse` profile directly so its
+own source definitions are preserved. Do not publish, tag, deploy a table or change a tenant
 as part of this local build.
 
 If Desktop requires Apply before exporting but a native connector is unavailable, do not enter
@@ -165,14 +167,21 @@ credentials or remove pending queries. Create a **new offline export copy** inst
 python docs\scripts\cowork_tasks\prepare_offline_export.py "2. Fabric\Consumption Central - Fabric.pbit" --out .pbi-work --profile fabric --project-name fexp
 ```
 
-Use `viva` and a short name such as `vexp` for Viva Direct. Only these copies replace the external
-source roots with empty in-memory inputs, allowing Apply and native export without cloud access.
+Use `viva` and a short name such as `vexp` for Viva Direct, or `dataverse` / `dexp` for Dataverse.
+The `csv` profile is also supported for an empty local export without requiring the shipping
+placeholder folder to exist. Only these copies replace source roots with empty in-memory inputs,
+allowing Apply and native export without cloud access or access to unrelated local exports.
 They preserve each variant's own report, model and partitions. **Their exported PBITs are not
 deliverables until repaired with the corresponding real-source neutral reference.**
 `fix_pbit_defaults.py` restores shared expressions in both `DataModelSchema` and `UnappliedChanges`;
 the shipped contract rejects offline markers, absent connector calls and mismatched source roots.
 This is an offline build technique, **not native connector refresh validation**. Keep those gates
 separate and verify the repaired artifact's signature, definitions and neutral defaults.
+It also does not replace the synthetic filesystem and model regression project. For each of the
+four variants, create a matching neutral reference, apply/export that variant natively, and restore
+its source expressions from its own reference. Never ship an offline copy or reuse another
+variant's reference. The Local CSV preview metadata must remain `Number` for `BillingPeriodWeeks`
+and `Table` for staged `DataFiles`; the Cowork contract checks both.
 
 `sync_notebook.py` copies the actual shared Fabric task helpers into the Viva notebook. Its output
 must remain synchronized. `prepare_validation.py` adds synthetic-only Power Query assertions to

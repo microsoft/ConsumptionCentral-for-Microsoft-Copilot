@@ -11,21 +11,23 @@
 | Fabric | `dbo.cowork_tasks_weekly`; the Viva ingestion notebook can now ingest task-only exports |
 | Power Automate + Dataverse | The corresponding optional `cowork_tasks_weekly` contract; no automatic task-export API or new flow is assumed |
 
-For CSV paths, keep exports in separate subfolders when they contain different files named `PeopleMetaData.csv`. Do not overwrite legacy people metadata with task metadata. The file loader chooses the shallowest task export, then the most recently modified file; it does not sum multiple overlapping snapshots. Fabric reads export subfolders and upserts historical natural keys.
+For CSV paths, keep exports in separate subfolders when they contain different files named `PeopleMetaData.csv`. Do not overwrite legacy people metadata with task metadata. The file loader chooses the shallowest task export, then the most recently modified file; it does not sum multiple overlapping snapshots. Without a task file, Local CSV retains its original legacy metadata search anywhere beneath `DataFolder` (shallowest, then newest), even without a metrics file. When tasks are present, keep legacy metadata beside the selected legacy metrics file; each task export uses only its own companion.
+
+Fabric recursively discovers task exports and their companions and upserts historical natural keys. Legacy consumption and spending-policy CSV discovery remains top-level only; retained legacy exports in `old/` or dated subfolders are not ingested. Directories starting with `_` or `.` are skipped for task discovery.
 
 The new file has **person x week x category x initiation-type** grain:
 
 | Export field | Meaning and handling |
 |---|---|
 | `PersonId` | Required person key; a populated `UserPrincipalName` is accepted as a fallback |
-| `MetricDate` | Required ISO week-start date (`yyyy-MM-dd`); the observed export uses Sundays |
+| `MetricDate` | Required calendar date (`yyyy-MM-dd`); the observed export uses Sunday week starts. Other weekdays remain accepted and are grouped into Sunday-start weeks |
 | `Total Cowork tasks` | Required nonnegative whole count; reported activity, not successful completions |
 | `Total credits used` | Optional fractional credits; missing is not zero |
 | `TaskCategory` | Optional open category list; missing becomes `Not supplied` |
 | `TaskType` | Optional initiation type; observed values include `Scheduled`, `UserInitiated`, `Unknown` |
 | `PeopleHistoricalId` | Optional historical metadata key, not a stable person identifier |
 
-The companion maps `PeopleHistoricalId` to `Organization`, `FunctionType` and `IsCopilotLicensed`. Historical changes remain distinct. A left join retains unmatched tasks; conflicting duplicate metadata keys fail rather than multiplying counts. These attributes remain task-scoped and do not alter the shared organization dimension or cross-product cohorts.
+The companion maps `PeopleHistoricalId` to `Organization`, `FunctionType` and `IsCopilotLicensed`. Historical changes remain distinct. A left join retains unmatched tasks; conflicting duplicate metadata keys fail rather than multiplying counts. Case-only organization/function variants share one relationship key and dimension row, preserving a source label for display. These attributes remain task-scoped and do not alter the shared organization dimension or cross-product cohorts.
 
 Canonical SQL/Dataverse fields and types are documented in the [Fabric dictionary](../2.%20Fabric/docs/DATA-DICTIONARY.md#cowork_tasks_weekly). Header matching tolerates case, spaces, underscores and dashes; ambiguous aliases fail unless the exact canonical field is present.
 
@@ -33,9 +35,9 @@ Canonical SQL/Dataverse fields and types are documented in the [Fabric dictionar
 
 - **Reported tasks and task credits** are observations. Credits per task divides total credits by total tasks, never averages row-level ratios.
 - **Estimated PAYG cost** multiplies task credits by the existing `Cowork PAYG Rate Value`, displayed beside the scenario controls. It does not allocate prepaid capacity, licences or blended product costs.
-- **Task period** uses the latest task week, not the legacy consumption calendar. The default is the last four available weeks, or all history when shorter.
+- **Task period** uses the latest Sunday-start task week, not the legacy consumption calendar. The default is the last four available weeks, or all history when shorter. All history includes the earliest week even when input dates fall on different weekdays.
 - **Estimated expert-equivalent hours** are a provisional scenario applied to mapped categories. Unknown, Unclassified and other unmapped categories remain in observed totals but have blank estimates. The status strip shows valuation coverage.
-- **Estimated monetary equivalent** stays blank until exactly one expert hourly value is selected. Clearing that selection removes the estimate; selecting zero is an explicit zero-rate scenario. Currency is USD, matching the report's dollar cost measures, with no currency conversion.
+- **Estimated monetary equivalent** stays blank until one numeric expert hourly value is selected. The selector is single-select; its initial `(Blank)` option means no monetary value. Return to `(Blank)` to remove the estimate; selecting zero is an explicit zero-rate scenario. Currency is USD, matching the report's dollar cost measures, with no currency conversion.
 
 The task export contains no duration, successful-completion flag, task-level prompt, task ID, service/policy allocation or billed currency. It does not establish reconciliation with all Cowork / Work IQ credits. Do not sum these overlapping facts or interpret estimated equivalent work as realized savings, return on investment, completed outputs or measured time saved.
 
@@ -58,7 +60,7 @@ Minutes per reported task:
 
 **Typical** is initially selected. In Desktop, open **Transform data**, select **Cowork Task Categories**, then **Advanced Editor**. Edit the `Assumptions` table's category rows and three minute values. Category names must be unique after trimming and case normalization, and bands must be finite, nonnegative and ordered Conservative <= Typical <= Optimistic. Add a row only when you deliberately choose a basis for a new category. No extra assumption file is required.
 
-The hourly selector offers USD 0-1,000 in one-dollar increments, with nothing selected initially.
+The hourly selector offers a blank no-value option and USD 0-1,000 in one-dollar increments, with no numeric value selected initially.
 Its range can be edited in the **Cowork Task Hourly Value** query; it is a scenario input, not an
 observed compensation or billing rate.
 
@@ -76,8 +78,9 @@ The category matrix exposes the effective minutes and estimated hours. Hours are
 | Credits missing in selected rows | Counts remain available; credit totals, credit ratios and cost estimates are blank; coverage is disclosed |
 | Unmapped category | Observed counts and credits remain; category value estimate is blank |
 | Invalid core field, malformed supplied numeric/date/licence value, conflicting natural keys | Actionable task-source error; no silent coercion to zero |
-| Configured folder inaccessible, connector authentication or transport failure | Refresh error, not an optional-data empty state |
+| Optional task folder inaccessible | `Task folder unavailable; check DataFolder and folder access.`; task numbers blank, without blocking a connector-only Viva refresh |
+| Supplied task/companion file unreadable, connector authentication or transport failure | Refresh error, not an optional-data empty state |
 
-Identical task rows may be deduplicated. Conflicting rows at the normalized natural key must be reconciled rather than summed. Missing optional tables are detected through source navigation; unrelated connection failures are not blanket-caught.
+Identical task rows may be deduplicated. Conflicting rows at the normalized natural key must be reconciled rather than summed. Missing optional tables are detected through source navigation; connector failures and errors reading discovered files are not blanket-caught. Only optional folder enumeration degrades to an explicit status. Legacy Local CSV sources retain their existing folder-access behavior.
 
 See [synthetic examples](../1.%20Local%20CSV/sample-data/cowork-tasks/README.md) and the [verification matrix](TESTING.md#cowork-task-verification).

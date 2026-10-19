@@ -1,5 +1,7 @@
 (patterns as list) as nullable binary =>
 let
+    HasTasks = if DataFiles = null then false else not Table.IsEmpty(
+        Table.SelectRows(DataFiles, each Text.StartsWith([MatchKey], "coworkweeklymetrics"))),
     LegacyPatterns = {"personservicecredits", "personm365credits", "m365creditsmetrics", "servicecredits", "creditsmetrics"},
     Ranked = (p as text) => Table.Sort(Table.SelectRows(DataFiles, each Text.Contains([MatchKey], p)),
         {{"Depth", Order.Ascending}, {"Date modified", Order.Descending}}),
@@ -11,4 +13,4 @@ let
     Result = if Companion = null or Table.IsEmpty(Companion) then null
              else Table.Sort(Companion, {{"Date modified", Order.Descending}}){0}[Content]
 in
-    Result
+    if not HasTasks then GetDataFile(patterns) else Result
