@@ -249,14 +249,17 @@ claim that every acceptance gate above passed.
 | Dataverse construction | Derived from the rebuilt Fabric export; generated schema and flow-package contracts passed |
 | Offline regression suites | 162 repository tests completed successfully with one skipped; 56 local Azure collector tests passed |
 | PBIR validator | Converter projects retained 98 existing errors and 28 warnings; comparison with the untouched baseline found no new diagnostics, so this is not a clean-validator claim |
-| Private representative input | Independently normalized and checked locally for unique task and historical metadata keys; full native refresh and aggregate comparison remain pending |
-| Full-project empty, partial and malformed inputs | Native adapter assertions passed, but separate full-refresh/render checks remain pending; the caught-error assertions do not replace a visible malformed-input refresh failure |
-| Fresh Fabric, Dataverse and Viva native acceptance | Incomplete. Viva reached its parameter dialog and requires real partition/query IDs. Fabric opening reached its parameter dialog; Dataverse fresh opening remains pending. No live endpoint refresh was performed |
+| Private representative input | Native refresh completed and Tasks populated. All five displayed last-four-week metrics matched independent source calculations: task count, credits, credits/task, expert-equivalent hours and valuation coverage. Unique task and historical metadata keys were checked locally. Exact all-history native aggregate comparison remains pending |
+| Full-project partial input | Final Local CSV PBIT loaded two synthetic tasks with `Not supplied` dimensions; missing credits, ratios, costs and estimates remained blank, with explicit coverage disclosure |
+| Full-project supplied-empty inputs | Header-only and zero-byte inputs rendered `Task export contains no rows` with blank task metrics and retained legacy billing. Zero-byte Apply completed with the pending-query banner cleared |
+| Full-project malformed input | Native Apply visibly failed with `Expected a nonnegative finite number` for the deliberately invalid credits value; the error was not swallowed as missing data. A valid private input subsequently refreshed successfully |
+| Fresh Fabric, Dataverse and Viva native acceptance | All reached their native parameter dialogs with neutral defaults. This is opening/default evidence, not a successful model refresh. Viva requires real partition/query IDs; no live Fabric, Dataverse or Viva endpoint refresh was performed |
 
-The remaining local UI checks were interrupted by Desktop-control timeouts. The implementation
-must not be described as fully natively verified until those checks and the separately authorized
-endpoint checks are recorded. No private input, private verification results or populated model
-cache is included in the shipped templates.
+Desktop-control timeouts prevented the exact all-history native aggregate comparison. The
+review handoff explicitly retains that check and the separately authorized live endpoint refreshes
+as outstanding; this is not a claim of complete native acceptance across every variant.
+No private input, private verification results or populated model cache is included in the
+shipped templates.
 
 ## Things we know we cannot test here
 
