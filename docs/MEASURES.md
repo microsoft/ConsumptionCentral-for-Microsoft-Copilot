@@ -378,6 +378,31 @@ Copilot Studio credits normalised to a month, from the days observed. Covers onl
 
 ---
 
+## Cowork task breakdown
+
+These measures live on `Cowork Tasks`, use a separate task calendar/period and never contribute to
+the existing billing totals. See [basis and editable assumptions](COWORK-TASKS.md).
+
+| Measure | Definition |
+|---|---|
+| `Reported Cowork Tasks` | Sum of reported task counts; blank with no rows, zero only when measured |
+| `Cowork Task Credits` | Sum of fractional task credits; blank if any selected row omits credits |
+| `Cowork Credits per Task` | Summed credits / summed tasks; blank at a zero denominator |
+| `Cowork Task Share` | Tasks / tasks across the selected categories, preserving other filters |
+| `Cowork Task Cost at PAYG` | Task credits x existing Cowork PAYG rate; estimated consumption cost only |
+| `Cowork PAYG Cost per Task` | Estimated PAYG task cost / reported tasks |
+| `Cowork Task Credit Coverage` | Share of tasks whose source row supplies credits |
+| `Cowork Task Effort Minutes` | Selected category's Conservative, Typical or Optimistic assumption |
+| `Cowork Valued Tasks` / `Cowork Task Valuation Coverage` | Mapped task counts and their share of reported tasks |
+| `Cowork Unmapped Tasks` | Reported tasks without an explicit effort assumption |
+| `Cowork Expert-equivalent Hours` | Sum of mapped task count x assumed minutes / 60 |
+| `Cowork Expert Hours per Valued Task` | Estimated hours / mapped task count only |
+| `Cowork Task Monetary Equivalent` | Covered hours x explicitly selected USD hourly value; otherwise blank |
+| `Cowork Task Status Message` / `Cowork Task Value Basis` | Empty-state, coverage and visible scenario/rate explanations |
+
+Unmapped category estimates are blank, not zero. No task-success multiplier, audit-chain expansion,
+annualization, prepaid allocation or realized-savings assumption is included.
+
 ## Commercial inputs
 
 **`Cowork Capacity Pack Balance Value`** · *Settings*  

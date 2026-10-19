@@ -75,10 +75,12 @@ def write(path, text):
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
-def convert(pbit_path, out_root):
+def convert(pbit_path, out_root, project_name=None):
     pbit = pathlib.Path(pbit_path)
     require(pbit.is_file(), f"{pbit}: not a file")
-    name = pbit.stem
+    name = project_name or pbit.stem
+    require(name not in (".", "..") and not any(c in name for c in '\\/:*?"<>|'),
+            "project name must be a single valid folder name")
     project = pathlib.Path(out_root) / name
     require(not project.exists(), f"{project}: already exists, refusing to overwrite")
 
@@ -141,10 +143,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pbit", nargs="+")
     parser.add_argument("--out", required=True, help="folder to create projects in")
+    parser.add_argument("--project-name", help="short project name (one input only)")
     args = parser.parse_args(argv)
     try:
+        require(not args.project_name or len(args.pbit) == 1,
+                "--project-name requires exactly one input")
         for path in args.pbit:
-            convert(path, args.out)
+            convert(path, args.out, args.project_name)
     except Failure as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

@@ -1,0 +1,5 @@
+PeopleHistoricalId,Organization,FunctionType,IsCopilotLicensed
+history-a1,Synthetic North,Research,true
+history-a2,Synthetic South,Research,true
+history-b1,Synthetic North,Operations,false
+history-c1,Synthetic West,Operations,true

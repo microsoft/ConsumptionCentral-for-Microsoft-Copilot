@@ -97,6 +97,16 @@ other three has nothing to hang on.
 
 ---
 
+### Optional task page
+
+**2.1. Cowork: Tasks**, immediately after Cowork Cost, adds category mix, weekly initiation type and credit intensity
+from the separate task export. Its period and historical organization filters are local to task data.
+It can be populated without legacy consumption; missing task data leaves it blank.
+
+The expert-equivalent scenario is explicitly assumed, not measured time saved. Typical is initially
+selected, unmapped categories remain in observed totals, and monetary equivalent needs an explicit
+hourly value. Read the [task-page guide](COWORK-TASKS.md) before comparing value and consumption cost.
+
 ## Reading the key figures
 
 ### Usage Intensity — three attributes, not one

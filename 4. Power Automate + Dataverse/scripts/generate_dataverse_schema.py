@@ -80,6 +80,7 @@ KEYS = {
     "azure_billing_reconciliation": ["Period", "Product", "PoolName", "Representation"],
     "viva_spending_policy": ["SpendingPolicyId"],
     "viva_credits_weekly": ["PersonId", "MetricDate", "ServiceId", "SpendingPolicyId"],
+    "cowork_tasks_weekly": ["PersonId", "MetricDate", "TaskCategory", "TaskType"],
 }
 
 

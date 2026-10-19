@@ -204,6 +204,24 @@ def patch_unapplied(unapplied, defaults):
     return changed
 
 
+def patch_query_bodies(unapplied, source):
+    """Keep staged expressions synchronized with the restored model sources."""
+    reference = {e["name"]: e for e in source["model"].get("expressions", [])}
+    parameters = parameter_lines(source)
+    changed = []
+    for query in unapplied.get("queries", []):
+        name = query["name"]
+        if name in parameters or name not in reference:
+            continue
+        expression = reference[name]["expression"]
+        body = "\n".join(expression) if isinstance(expression, list) else expression
+        wanted = body.split("\n")
+        if query.get("text") != wanted:
+            query["text"] = wanted
+            changed.append(name)
+    return changed
+
+
 def patch(path, reference=None, dry_run=False):
     path = Path(path).resolve()
     require(path.is_file(), f"Source does not exist: {path}")
@@ -218,14 +236,17 @@ def patch(path, reference=None, dry_run=False):
     in_schema = patch_schema(schema, defaults)
     bodies = patch_bodies(schema, source)
     in_unapplied = patch_unapplied(unapplied, defaults)
+    query_bodies = patch_query_bodies(unapplied, source)
 
     print(f"\n{path.name}")
     print(f"  {SCHEMA}: {len(in_schema)} parameters restored")
     print(f"  {UNAPPLIED}: {len(in_unapplied)} parameters restored")
     for name in bodies:
         print(f"  {SCHEMA}: {name} body/description restored")
+    for name in query_bodies:
+        print(f"  {UNAPPLIED}: {name} body synchronized")
 
-    if not in_schema and not in_unapplied and not bodies:
+    if not in_schema and not in_unapplied and not bodies and not query_bodies:
         print("  already at shipping defaults; left byte-for-byte unchanged")
         return 0
     require(sorted(in_schema) == sorted(in_unapplied),

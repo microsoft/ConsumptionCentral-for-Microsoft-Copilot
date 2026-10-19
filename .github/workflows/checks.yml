@@ -148,6 +148,12 @@ jobs:
       - name: Fabric ingestion tests
         run: python docs/scripts/test_fabric_ingestion.py
 
+      - name: Cowork task ingestion and model regressions
+        run: python docs/scripts/test_cowork_tasks.py
+
+      - name: Shipped Cowork task contracts
+        run: python docs/scripts/check_cowork_template_contract.py
+
       - name: Sample data carries no real identifiers
         run: |
           # The sample set is synthetic. This catches a real export being

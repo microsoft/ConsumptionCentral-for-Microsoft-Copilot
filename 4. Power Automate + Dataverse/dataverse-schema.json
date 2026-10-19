@@ -603,6 +603,97 @@
       ]
     },
     {
+      "sourceTable": "cowork_tasks_weekly",
+      "modelTable": "CoworkTaskInput",
+      "logicalName": "cc_coworktasksweekly",
+      "displayName": "CoworkTaskInput",
+      "keyColumns": [
+        "PersonId",
+        "MetricDate",
+        "TaskCategory",
+        "TaskType"
+      ],
+      "columns": [
+        {
+          "canonical": "PersonId",
+          "logicalName": "cc_personid",
+          "displayName": "PersonId",
+          "type": "String",
+          "loadedToModel": true
+        },
+        {
+          "canonical": "UserPrincipalName",
+          "logicalName": "cc_userprincipalname",
+          "displayName": "UserPrincipalName",
+          "type": "String",
+          "loadedToModel": true
+        },
+        {
+          "canonical": "MetricDate",
+          "logicalName": "cc_metricdate",
+          "displayName": "MetricDate",
+          "type": "DateTime",
+          "loadedToModel": true
+        },
+        {
+          "canonical": "TaskCategory",
+          "logicalName": "cc_taskcategory",
+          "displayName": "TaskCategory",
+          "type": "String",
+          "loadedToModel": true
+        },
+        {
+          "canonical": "TaskType",
+          "logicalName": "cc_tasktype",
+          "displayName": "TaskType",
+          "type": "String",
+          "loadedToModel": true
+        },
+        {
+          "canonical": "CreditsUsed",
+          "logicalName": "cc_creditsused",
+          "displayName": "CreditsUsed",
+          "type": "Decimal",
+          "loadedToModel": true
+        },
+        {
+          "canonical": "TaskCount",
+          "logicalName": "cc_taskcount",
+          "displayName": "TaskCount",
+          "type": "Integer",
+          "loadedToModel": true
+        },
+        {
+          "canonical": "PeopleHistoricalId",
+          "logicalName": "cc_peoplehistoricalid",
+          "displayName": "PeopleHistoricalId",
+          "type": "String",
+          "loadedToModel": true
+        },
+        {
+          "canonical": "Organization",
+          "logicalName": "cc_organization",
+          "displayName": "Organization",
+          "type": "String",
+          "loadedToModel": true
+        },
+        {
+          "canonical": "FunctionType",
+          "logicalName": "cc_functiontype",
+          "displayName": "FunctionType",
+          "type": "String",
+          "loadedToModel": true
+        },
+        {
+          "canonical": "IsCopilotLicensed",
+          "logicalName": "cc_iscopilotlicensed",
+          "displayName": "IsCopilotLicensed",
+          "type": "Boolean",
+          "loadedToModel": true
+        }
+      ]
+    },
+    {
       "sourceTable": "github_ai_usage",
       "modelTable": "GitHub Usage",
       "logicalName": "cc_githubaiusage",

@@ -74,6 +74,16 @@ The names appear on the next refresh.
 
 ---
 
+## Optional Cowork task breakdown
+
+Keep the existing Viva custom query for consumption. To populate **2.1. Cowork: Tasks**, use the
+optional `DataFolder` CSV route with `CoworkWeeklyMetrics.csv` and its matching `PeopleMetaData.csv`
+in one export subfolder. No additional query ID is required or assumed to expose task categories.
+Without the task file, the new page is blank and the existing query/pages are unchanged.
+
+An explicitly configured inaccessible folder reports an error rather than masquerading as absent
+task data. See [supported fields, empty states and provisional value assumptions](../docs/COWORK-TASKS.md).
+
 ## If the refresh fails
 
 **`(500) Internal Server Error`** means the connector was asked for a multi-table export without a

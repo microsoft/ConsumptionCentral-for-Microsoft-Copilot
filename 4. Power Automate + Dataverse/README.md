@@ -127,7 +127,7 @@ The flows cover the four feeds that have an API behind them:
 | `azure_ai_spend` | Azure AI Spend flow |
 | `github_ai_usage` | GitHub Usage flow |
 
-The remaining eight tables have no API, so no flow fills them. Their pages stay
+The other tables have no matching flow in this package. Their pages stay
 blank until you load them. Two are small reference tables you fill once
 (`github_user_map`, `viva_spending_policy`); the rest come from exports covered
 in [docs/DATA-SOURCES.md](../docs/DATA-SOURCES.md).
@@ -144,6 +144,22 @@ columns map by name; map `Session count`, `Spending policy limit`,
 `Total Copilot Credits used` and `User limit` by hand. An import adds rows
 rather than replacing them, so delete the old rows before loading a newer
 export. Org columns in the export are not carried on this path.
+
+**Optional Cowork task categories** use the separate `cowork_tasks_weekly` table
+(`cc_coworktasksweekly` with the default prefix), not `viva_credits_weekly`.
+No packaged flow fetches the task export. For a manual import or your own dataflow:
+
+- Map `Total Cowork tasks` to `TaskCount` and `Total credits used` to `CreditsUsed`; preserve
+  fractional credits and leave absent optional credits null.
+- Left-join the export's own people metadata on `PeopleHistoricalId` before import to supply
+  historical organization, function and licence fields. Do not join by person alone.
+- Normalize person/category/type keys consistently and upsert a deterministic `cc_rowkey` from
+  `PersonId`, `MetricDate`, `TaskCategory`, `TaskType`. Do not repeatedly append overlapping exports.
+  Fill the person key from an explicitly supplied UPN only when `PersonId` is absent.
+- Keep Unknown/Unclassified categories, reject conflicting duplicate keys and leave all legacy
+  consumption tables unchanged. Missing task tables/rows are supported.
+
+See the [task guide](../docs/COWORK-TASKS.md) for fields and provisional estimates.
 
 If you want every page populated without that work, use
 [2. Fabric](../2.%20Fabric) or [1. Local CSV](../1.%20Local%20CSV) instead.

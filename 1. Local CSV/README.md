@@ -77,6 +77,13 @@ them to the query in Viva Insights and re-run — easier than supplying a separa
 
 ---
 
+## Optional task categories
+
+Add `CoworkWeeklyMetrics.csv` and its own `PeopleMetaData.csv` in a separate export subfolder
+beneath `DataFolder`. The new **2.1. Cowork: Tasks** page works with task-only data, while older
+exports without tasks still work. Do not replace the legacy metrics or their metadata companion.
+See [task fields, empty states and editable value assumptions](../docs/COWORK-TASKS.md).
+
 ## Next steps
 
 - **Automate the Azure export** — schedule [`pull_azure_ai.py`](pull_azure_ai.py) instead of

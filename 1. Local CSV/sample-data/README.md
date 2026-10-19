@@ -60,6 +60,13 @@ The data is shaped to exercise the parts of the report that matter, rather than 
   20 cities, 35 managers. None of them dominated by a single value, so the breakdowns are worth
   looking at rather than one bar and a sliver.
 
+## Optional task sample
+
+The [cowork-tasks subfolder](cowork-tasks/README.md) adds seven wholly synthetic task rows and a
+separate historical people companion. Keeping it in a subfolder exercises coexistence without
+replacing this directory's legacy metadata. Its independent expected totals include 10 tasks,
+38 credits and 70% valuation coverage.
+
 ## Using it
 
 Set the **`DataFolder`** parameter to this folder. That is the only one that has to change — files are

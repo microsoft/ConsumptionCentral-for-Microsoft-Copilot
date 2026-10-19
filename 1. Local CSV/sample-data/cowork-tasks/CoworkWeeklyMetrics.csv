@@ -1,0 +1,8 @@
+PersonId,MetricDate,TaskCategory,TaskType,Total credits used,Total Cowork tasks,PeopleHistoricalId
+synthetic-a,2026-09-06,Analysis & research,UserInitiated,12.5,2,history-a1
+synthetic-a,2026-09-13,Email workflows,Scheduled,3.75,3,history-a2
+synthetic-b,2026-09-13,Document & content creation,UserInitiated,8.25,1,history-b1
+synthetic-b,2026-09-20,Unknown,Unknown,2.5,2,history-b1
+synthetic-b,2026-09-20,Unclassified,Scheduled,0.5,1,history-b1
+synthetic-a,2026-09-20,Write or debug code,UserInitiated,10.5,1,history-a2
+synthetic-c,2026-09-20,Communication workflows,UserInitiated,0,0,history-c1
