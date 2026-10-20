@@ -13,6 +13,11 @@
 
 </div>
 
+> **Also see [Analytics Hub for Microsoft Copilot](https://github.com/microsoft/AnalyticsHub-Dashboard):**
+> one installer sets up an app on Microsoft Fabric or Azure that shows Copilot and agent adoption,
+> value, consumption and governance in one place. It includes Consumption Central as its optional
+> *Credit consumption* add-on.
+
 ## Watch first
 
 Both play here in the page — no download.
