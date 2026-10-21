@@ -48,13 +48,25 @@ def check(path):
                 errors.append(f"Missing loaded task table/query: {name}")
                 continue
             expression = model.text(tables[name]["partitions"][0]["source"]["expression"]).strip()
+            if expression != model.text(expected["partitions"][0]["source"]["expression"]).strip():
+                errors.append(f"Task table differs from editable definition: {name}")
             if expression != model.text(queries[name]["text"]).strip():
                 errors.append(f"Task table/unapplied query differs: {name}")
             if queries[name].get("isHidden"):
                 errors.append(f"Task query must not be marked as a managed multi-table source: {name}")
-        for name, filename in (("CoworkTaskNormalize", "NormalizeTasks.m"),):
+        adapter = "TableInput.m" if "FabricSource" in expressions or "DataverseSource" in expressions else "FileInput.m"
+        definitions = [("CoworkTaskNormalize", "NormalizeTasks.m"), ("CoworkTaskInput", adapter)]
+        if "GetVivaMetadataFile" in expressions:
+            definitions.append(("GetVivaMetadataFile", "LegacyCompanion.m"))
+        for name, filename in definitions:
             if name not in expressions or model.text(expressions[name]["expression"]).strip() != model.source(filename):
                 errors.append(f"Task source does not match editable definition: {name}")
+            if name in expressions and model.text(expressions[name]["expression"]).strip() != model.text(queries.get(name, {}).get("text", "")).strip():
+                errors.append(f"Task source/unapplied query differs: {name}")
+        if "GetVivaMetadataFile" in expressions:
+            annotations = {a["name"]: a["value"] for a in expressions["BillingPeriodWeeks"].get("annotations", [])}
+            if annotations.get("PBI_ResultType") != "Number" or queries["DataFiles"].get("resultType") != "Table":
+                errors.append("Local CSV preview types must be Number (BillingPeriodWeeks) and Table (DataFiles).")
         actual_measures = {m["name"]: m for m in tables.get(model.FACT, {}).get("measures", [])}
         for expected in model.measures():
             actual = actual_measures.get(expected["name"])
@@ -88,11 +100,19 @@ def check(path):
                         if blank in ("'0'", "0D", "0L"):
                             errors.append("Task cards must not render missing data as zero.")
             hourly = json.loads(archive.read(page_root + "visuals/task_hourly/visual.json"))["visual"]
+            selection = hourly.get("objects", {}).get("selection", [])
+            if not any(s.get("properties", {}).get("strictSingleSelect") == report.literal(True) for s in selection):
+                errors.append("Hourly value must be strict single-select with a blank no-value option.")
             if "filter" in json.dumps(hourly.get("objects", {}).get("general", [])):
                 errors.append("Hourly value must have no initial selection.")
             scenario = json.loads(archive.read(page_root + "visuals/task_scenario/visual.json"))["visual"]
             if "'Typical'" not in json.dumps(scenario.get("objects", {}).get("general", [])):
                 errors.append("Effort scenario must initially select Typical.")
+        footer = json.loads(archive.read("Report/definition/pages/guide-cowork/visuals/guidecowor_foot/visual.json"))
+        text = json.dumps(footer["visual"]["objects"]["general"])
+        for phrase in ("Viva Feature Access Management", "on the CSV path"):
+            if phrase not in text:
+                errors.append(f"Cowork guide must retain: {phrase}")
         if any(name == "DataModel" or name.startswith("DataModel/") for name in archive.namelist()):
             errors.append("Template contains cached model data.")
     return errors

@@ -203,7 +203,12 @@ This project uses only synthetic data and must not be exported as a deliverable.
 The query forces every `Passed` value before returning its table: false, null or error values
 must fail the query, rather than loading an assertion error as a blank Boolean cell.
 
-Use `--with-file-cases` to add eight native file-adapter assertions to the 27 normalizer checks.
+The preparation step includes 30 normalizer checks and 11 compatibility checks using the actual
+legacy lookup and generated dimension/calendar queries. These cover relocated/standalone legacy
+metadata, task companion isolation, case-only people labels, mixed-weekday all-history coverage,
+empty calendars and simulated folder permission denial.
+
+Use `--with-file-cases` to add nine native file-adapter assertions (50 checks in total).
 The preparation step creates new synthetic folders beside the project and embeds the actual
 `FileInput.m` adapter, covering absent, zero-byte, header-only, partial, malformed, task-only,
 combined and unavailable-folder inputs. Existing fixture folders are never overwritten.
@@ -224,9 +229,12 @@ A passing assertion that catches an expected error does not replace that full-re
 | Unknown/future category and measured zeros | Observations retained; unmapped estimate blank; zero denominator safe | Unmapped categories visible; zero not confused with absence |
 | Filtered empty selection | All numeric task measures blank | `No tasks match these filters` |
 | Invalid date/count/credits/licence; conflicting task or metadata key | Sanitized actionable error, no silent fallback | Refresh failure visible, not an empty-data success |
-| Inaccessible folder or connector auth/transport failure | Genuine failure surfaces | No misleading “not supplied” state |
+| Inaccessible optional task folder | Viva connector-only refresh still succeeds; task numbers blank | `Task folder unavailable; check DataFolder and folder access.` |
+| Unreadable discovered task/companion file or connector auth/transport failure | Genuine failure surfaces | No misleading “not supplied” state |
 | Re-import/backfill in Fabric | Same natural keys upsert; no duplicate task credits | Historical task totals unchanged by repeat imports |
-| Fresh exported PBIT for all four variants | Opens, refreshes, neutral defaults, no cache or test table | Every page/navigation works; Typical selected; hourly value unselected |
+| Fresh exported PBIT for all four variants | Opens, refreshes, neutral defaults, no cache or test table | Every page/navigation works; Typical selected; no numeric hourly value selected |
+| Hourly single-select | `(Blank)` keeps monetary estimate blank; explicit zero means zero; one numeric rate at a time | First load is blank; changing rate replaces it, returning to `(Blank)` removes the estimate |
+| Mixed weekdays and case-only task people labels | All history includes every row; one people dimension row per normalized key | No duplicate-key refresh failure or lost earliest week |
 
 Native Fabric and Dataverse refresh requires an authorized read-only endpoint. Synthetic navigation
 tests or model-file checks are useful but must not be reported as connector validation. Record any
@@ -260,6 +268,29 @@ review handoff explicitly retains that check and the separately authorized live 
 as outstanding; this is not a claim of complete native acceptance across every variant.
 No private input, private verification results or populated model cache is included in the
 shipped templates.
+
+### Compatibility follow-up verification record
+
+The nine review follow-ups were checked on 19-21 October 2026. This record is
+separate from the initial implementation evidence above.
+
+| Check | Observed result |
+|---|---|
+| Native template construction | All four variants, including Dataverse, were independently exported from their dedicated offline projects in Desktop. Local CSV was exported on 20 October; Fabric, Viva Direct and Dataverse on 21 October |
+| Source/default restoration | Each native original was preserved. Its own matching reference restored only `DataModelSchema` and `UnappliedChanges`; every other package member, including Report and SecurityBindings, remained byte-identical to that native export |
+| Final shipped packages | All four Cowork contracts and documented defaults passed. ZIP integrity, absence of cached DataModel/test tables/offline markers/build paths, Azure contracts and lineage checks passed |
+| Native compatibility assertions | My Copilot's read-only native run on 19 October reported 50 assertions, `Failures = BLANK` (zero matching rows), and no rows from a separate failing-row query. The tested implementation and synthetic fixtures were unchanged; this run was retained as attributed evidence, not rerun |
+| Native Apply/save | The synthetic regression project and Local CSV offline export project were independently observed applying and saving successfully on 20 October, with their pending-query banners cleared |
+| Fresh final cloud templates | Fabric, Viva Direct and Dataverse each reached their native parameter dialog with neutral defaults in distinct instances on 21 October. Each was canceled without loading or connecting to an endpoint |
+| Fresh final Local CSV template | The neutral parameter dialog opened, then the combined synthetic fixture completed refresh and loaded the report. This populated validation instance was not saved over a deliverable |
+| Hourly interaction gate | Keith completed the native Cowork Tasks check on 21 October and reported "all looks good", with no difference from the expected baseline, single-select, explicit zero or `(Blank)` behavior. My Copilot relayed his result after automation had been paused; these interactions are Keith's manual evidence, not independently observed by the implementing session |
+| Offline regression suites | 166 repository tests completed successfully with one skipped; 56 local Azure collector tests passed. The Dataverse schema check was up to date, eight notebooks parsed, and 157 internal documentation links resolved |
+| PBIR validator comparison | Updated converter output retained 98 existing errors and 28 warnings versus 98 errors and 29 warnings in the untouched baseline; no new diagnostics, not a clean-validator claim |
+
+Only synthetic inputs were used for this follow-up. Live Fabric, Dataverse and Viva
+connector refreshes require separate authorization and were not run. The exact
+all-history aggregate comparison remains out of scope; earlier private-input
+evidence above was not rerun or copied into the deliverables.
 
 ## Things we know we cannot test here
 

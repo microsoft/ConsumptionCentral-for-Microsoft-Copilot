@@ -82,6 +82,10 @@ them to the query in Viva Insights and re-run — easier than supplying a separa
 Add `CoworkWeeklyMetrics.csv` and its own `PeopleMetaData.csv` in a separate export subfolder
 beneath `DataFolder`. The new **2.1. Cowork: Tasks** page works with task-only data, while older
 exports without tasks still work. Do not replace the legacy metrics or their metadata companion.
+Without a task file, the legacy `PeopleMetaData.csv` lookup still searches anywhere beneath
+`DataFolder`, choosing the shallowest then newest match, including standalone metadata.
+With tasks present, keep legacy metadata beside the selected legacy metrics file to isolate
+it from the task companion.
 See [task fields, empty states and editable value assumptions](../docs/COWORK-TASKS.md).
 
 ## Next steps

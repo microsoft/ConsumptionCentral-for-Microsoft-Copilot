@@ -1,5 +1,6 @@
 """Offline task regression coverage. PowerQueryTests.m additionally requires Desktop refresh."""
 import copy
+import ast
 import csv
 import datetime
 import importlib.util
@@ -48,7 +49,7 @@ def documents(path):
 
 class TaskIngestionTests(unittest.TestCase):
     def test_native_file_fixtures_are_synthetic_and_do_not_overwrite(self):
-        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             root = prepare_validation.file_fixtures(Path(directory) / "cases")
             self.assertEqual({p.name for p in root.iterdir()}, set(prepare_validation.CASES))
             self.assertFalse(list((root / "legacy-only").rglob("CoworkWeeklyMetrics.csv")))
@@ -68,7 +69,7 @@ class TaskIngestionTests(unittest.TestCase):
         book = json.loads(sync_notebook.NOTEBOOK.read_text(encoding="utf-8"))
         embedded = "".join(book["cells"][2]["source"]).split(sync_notebook.MARKER + "\n")[1]
         self.assertEqual(embedded, (SOURCES / "fabric.py").read_text(encoding="utf-8"))
-        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "copy.ipynb"
             path.write_bytes(sync_notebook.NOTEBOOK.read_bytes())
             sync_notebook.sync(path)
@@ -146,6 +147,43 @@ class TaskIngestionTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             fabric.viva_landing_files(fs, "root")
 
+    def test_notebook_discovers_only_tasks_recursively(self):
+        root = "abfss://synthetic/Files/landing/viva"
+        def entry(folder, name, is_dir=False):
+            return SimpleNamespace(name=name, path=f"{folder}/{name}", isDir=is_dir)
+        listing = {
+            "Files/landing/viva": [
+                entry(root, "PersonServiceCreditsMetrics.csv"), entry(root, "SpendingPolicyMetadata.csv"),
+                entry(root, "old", True), entry(root, "2025-01", True), entry(root, "tasks", True),
+                entry(root, "_processed", True), entry(root, ".hidden", True),
+            ],
+            root + "/old": [entry(root + "/old", "PersonServiceCreditsMetrics.csv"),
+                           entry(root + "/old", "SpendingPolicyMetadata.csv")],
+            root + "/2025-01": [entry(root + "/2025-01", "SpendingPolicyMetadata.csv")],
+            root + "/tasks": [entry(root + "/tasks", "CoworkWeeklyMetrics.csv"),
+                             entry(root + "/tasks", "PeopleMetaData.csv")],
+        }
+        fs = Mock()
+        fs.ls.side_effect = listing.__getitem__
+        book = json.loads(sync_notebook.NOTEBOOK.read_text(encoding="utf-8"))
+        body = ast.parse("".join(book["cells"][4]["source"])).body
+        assignments = []
+        for node in body:
+            if not isinstance(node, ast.Assign):
+                break
+            assignments.append(node)
+        scope = {"notebookutils": SimpleNamespace(fs=fs), "LANDING": "Files/landing/viva",
+                 "viva_landing_files": fabric.viva_landing_files, "task_key": fabric.task_key}
+        exec(compile(ast.Module(body=assignments, type_ignores=[]), "<notebook discovery>", "exec"), scope)
+        self.assertEqual(scope["files"], [root + "/PersonServiceCreditsMetrics.csv"])
+        self.assertEqual(scope["policy_files"], [root + "/SpendingPolicyMetadata.csv"])
+        self.assertEqual(scope["task_files"], [root + "/tasks/CoworkWeeklyMetrics.csv"])
+        self.assertFalse(any("_processed" in str(c) or ".hidden" in str(c) for c in fs.ls.call_args_list))
+
+    def test_non_sunday_dates_remain_supported(self):
+        for value in ("2026-09-12", "2026-09-13", "2026-09-14"):
+            self.assertEqual(fabric.normalise_task(export_row(MetricDate=value))["metric_date"].isoformat(), value)
+
     def test_absent_tasks_do_not_touch_spark_or_history(self):
         spark = Mock()
         self.assertEqual(fabric.ingest_tasks(spark, [], [], "cowork_tasks_weekly", Mock(), Mock()), [])
@@ -175,9 +213,11 @@ class ModelContractTests(unittest.TestCase):
                 self.assertEqual(patch_query_bodies(queries, reference), [])
 
     def test_offline_sources_are_restored_in_both_model_parts(self):
-        for profile, directory, name in (("fabric", "2. Fabric", "Fabric"),
-                                         ("viva", "3. Viva Direct", "Viva Direct")):
-            with self.subTest(profile=profile), tempfile.TemporaryDirectory(dir=ROOT) as folder:
+        for profile, directory, name in (("csv", "1. Local CSV", "Local CSV"),
+                                         ("fabric", "2. Fabric", "Fabric"),
+                                         ("viva", "3. Viva Direct", "Viva Direct"),
+                                         ("dataverse", "4. Power Automate + Dataverse", "Power Automate + Dataverse")):
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as folder:
                 source = ROOT / directory / f"Consumption Central - {name}.pbit"
                 project = prepare_offline_export.prepare(source, Path(folder), profile, "x")
                 root = project.parent / "x.SemanticModel"
@@ -204,7 +244,7 @@ class ModelContractTests(unittest.TestCase):
 
     def test_defaults_reference_is_accepted_by_the_actual_export_repair(self):
         source = ROOT / "1. Local CSV" / "Consumption Central - Local CSV.pbit"
-        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "reference.pbit"
             make_reference.make_reference(source, output, "csv")
             schema = reference_schema(source, output)
@@ -228,8 +268,9 @@ class ModelContractTests(unittest.TestCase):
         body = model.source("FileInput.m")
         self.assertIn('Listing = if Root = "" then null else Folder.Files(Root)', body)
         self.assertIn("Attempt = try (if Listing = null then null else Table.RowCount(Listing))", body)
-        self.assertIn("if not Attempt[HasError] then Listing", body)
-        self.assertIn('error Error.Record("CoworkTasks.SourceUnavailable"', body)
+        self.assertIn("Files = if Attempt[HasError] then null else Listing", body)
+        self.assertIn("SourceUnavailable=Attempt[HasError]", body)
+        self.assertNotIn('Root = "C:', body)
         self.assertNotIn("else try Folder.Files(Root)", body)
 
     def test_native_assertions_are_forced_before_returning_the_table(self):
@@ -237,12 +278,32 @@ class ModelContractTests(unittest.TestCase):
         self.assertIn("List.AllTrue(List.Transform(Results[Passed], each _ = true))", result)
         self.assertIn("in if AllPassed then Results else error Error.Record(", result)
 
-    def test_native_unavailable_folder_probe_forces_record_field_evaluation(self):
+    def test_native_unavailable_folder_probe_checks_status_and_empty_data(self):
         body = model.source("FileInputTests.m")
-        self.assertIn('Unavailable = try Read("unavailable")[Supplied]', body)
-        self.assertNotIn('Unavailable = try Read("unavailable"),', body)
+        self.assertIn('Unavailable = Read("unavailable")', body)
         self.assertIn('{name, if passed then true', body)
-        self.assertIn('Unavailable[Error][Reason] = "CoworkTasks.SourceUnavailable"', body)
+        self.assertIn('Unavailable[SourceUnavailable] and not Unavailable[Supplied] and Unavailable[Data] = null', body)
+
+    def test_native_compatibility_assertions_use_actual_lookup_and_model_queries(self):
+        document, _ = documents(ROOT / "1. Local CSV" / "Consumption Central - Local CSV.pbit")
+        body = prepare_validation.compatibility_assertions(document)
+        self.assertIn(model.source("LegacyCompanion.m"), body)
+        self.assertIn(model.source("FileInput.m"), body)
+        for table in model.additions():
+            if table["name"] in (model.DATES, model.PERIOD, model.PEOPLE):
+                self.assertIn(table["partitions"][0]["source"]["expression"], body)
+        self.assertIn('if not HasTasks then GetDataFile(patterns) else Result', model.source("LegacyCompanion.m"))
+
+    def test_preview_types_are_repaired_without_changing_parameter_values(self):
+        document, queries = documents(ROOT / "1. Local CSV" / "Consumption Central - Local CSV.pbit")
+        expressions = {e["name"]: e for e in document["model"]["expressions"]}
+        before = expressions["BillingPeriodWeeks"]["expression"]
+        expressions["BillingPeriodWeeks"]["annotations"] = [{"name": "PBI_ResultType", "value": "Exception"}]
+        next(q for q in queries["queries"] if q["name"] == "DataFiles")["resultType"] = "Exception"
+        model.apply(document["model"], queries, "csv")
+        self.assertEqual(expressions["BillingPeriodWeeks"]["expression"], before)
+        self.assertEqual(expressions["BillingPeriodWeeks"]["annotations"][0]["value"], "Number")
+        self.assertEqual(next(q for q in queries["queries"] if q["name"] == "DataFiles")["resultType"], "Table")
 
     def test_normalizer_does_not_use_reserved_optional_as_an_identifier(self):
         body = model.source("NormalizeTasks.m")
@@ -255,6 +316,7 @@ class ModelContractTests(unittest.TestCase):
             "csv": ROOT / "1. Local CSV" / "Consumption Central - Local CSV.pbit",
             "fabric": ROOT / "2. Fabric" / "Consumption Central - Fabric.pbit",
             "viva": ROOT / "3. Viva Direct" / "Consumption Central - Viva Direct.pbit",
+            "dataverse": ROOT / "4. Power Automate + Dataverse" / "Consumption Central - Power Automate + Dataverse.pbit",
         }
         for profile, path in paths.items():
             with self.subTest(profile=profile):
@@ -316,13 +378,14 @@ class ModelContractTests(unittest.TestCase):
         self.assertIn("ISBLANK(_rate)", measures["Cowork Task Monetary Equivalent"])
         self.assertNotIn("COALESCE", measures["Cowork Expert-equivalent Hours"])
         self.assertIn('SELECTEDVALUE(\'Cowork Task Scenario\'[Scenario], "Typical")', measures["Cowork Task Effort Minutes"])
-        for message in ("Task categories not supplied", "Task export contains no rows", "No tasks match these filters"):
+        for message in ("Task categories not supplied", "Task export contains no rows", "No tasks match these filters",
+                        "Task folder unavailable; check DataFolder and folder access."):
             self.assertIn(message, measures["Cowork Task Status Message"])
 
 
 class ConverterTests(unittest.TestCase):
     def test_short_name_and_default_are_supported(self):
-        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             pbit = root / "Example.pbit"
             with zipfile.ZipFile(pbit, "w") as archive:
@@ -340,7 +403,7 @@ class ConverterTests(unittest.TestCase):
 class TaskReportTests(unittest.TestCase):
     def test_task_page_moves_after_cost_without_reordering_existing_pages(self):
         template = ROOT / "1. Local CSV" / "Consumption Central - Local CSV.pbit"
-        with tempfile.TemporaryDirectory(dir=ROOT) as directory, zipfile.ZipFile(template) as archive:
+        with tempfile.TemporaryDirectory() as directory, zipfile.ZipFile(template) as archive:
             root = Path(directory)
             paths = [
                 "pages.json", "exec-overview/page.json",
@@ -386,6 +449,15 @@ class TaskReportTests(unittest.TestCase):
             self.assertEqual(kpis["value"][0]["properties"]["fontSize"], report.literal(11))
             self.assertEqual(kpis["label"][0]["properties"]["position"], report.literal("belowValue"))
             self.assertEqual(kpis["accentBar"][0]["properties"]["show"], report.literal(False))
+            hourly = next(v for v in visuals if v["name"] == "task_hourly")["visual"]
+            self.assertEqual(hourly["objects"]["selection"][0]["properties"]["strictSingleSelect"], report.literal(True))
+            self.assertNotIn("general", hourly["objects"])
+            self.assertEqual(hourly["query"]["sortDefinition"]["sort"][0]["direction"], "Ascending")
+            hourly_table = next(t for t in model.additions() if t["name"] == model.HOURLY)
+            self.assertIn("{null} & List.Numbers(0,1001)", hourly_table["partitions"][0]["source"]["expression"])
+            footer = json.loads((pages / "guide-cowork" / "visuals" / "guidecowor_foot" / "visual.json").read_text(encoding="utf-8"))
+            self.assertIn("Viva Feature Access Management", json.dumps(footer))
+            self.assertIn("on the CSV path", json.dumps(footer))
 
     def test_short_labels_use_display_names_and_missing_values_are_not_zero(self):
         value = report.metric("Reported Cowork Tasks", "Tasks")

@@ -93,11 +93,11 @@ def normalise_task(record):
         task_error("person_id", "a populated PersonId or UserPrincipalName is required")
     date = row["metric_date"]
     if not date or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
-        task_error("metric_date", "expected an ISO week-start date (yyyy-MM-dd)")
+        task_error("metric_date", "expected a calendar date (yyyy-MM-dd)")
     try:
         row["metric_date"] = datetime.date.fromisoformat(date)
     except ValueError:
-        task_error("metric_date", "expected a valid ISO week-start date")
+        task_error("metric_date", "expected a valid calendar date (yyyy-MM-dd)")
     row["task_count"] = task_number(row["task_count"], "task_count", integral=True)
     row["credits_used"] = task_number(row["credits_used"], "credits_used", optional=True)
     row["is_copilot_licensed"] = task_licence(row["is_copilot_licensed"])
@@ -114,14 +114,15 @@ def normalise_task_metadata(record):
     return row
 
 
-def viva_landing_files(fs, path):
-    """Inspect only the configured landing tree, excluding archived/hidden data."""
+def viva_landing_files(fs, path, recursive=True):
+    """Discover task inputs/companions recursively, excluding hidden directories."""
     files = []
     for entry in fs.ls(path):
         if entry.name.startswith(("_", ".")):
             continue
         if entry.isDir:
-            files.extend(viva_landing_files(fs, entry.path))
+            if recursive:
+                files.extend(viva_landing_files(fs, entry.path))
         elif entry.name.lower().endswith(".csv"):
             files.append(entry.path)
     return sorted(files)

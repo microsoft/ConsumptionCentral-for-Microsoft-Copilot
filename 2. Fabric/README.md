@@ -134,6 +134,9 @@ Place each `CoworkWeeklyMetrics.csv` and its matching `PeopleMetaData.csv` in a 
 under `Files/landing/viva/`, then run `Ingest_Viva_Consumption`. Task-only exports are supported;
 task counts/credits upsert separately and never become additional billing consumption. If the
 optional table is absent, existing reports still refresh and the task page explains the empty state.
+Only task files and companions are discovered recursively, excluding directories starting with
+`_` or `.`. Legacy `PersonServiceCreditsMetrics` and `SpendingPolicyMetadata` CSVs must remain
+at the landing folder's top level; existing dated or `old/` subfolders are not ingested as billing.
 
 The existing Viva connector/Dataflow route remains supported for consumption. It is not assumed
 to produce this separate task export automatically. See the [task guide](../docs/COWORK-TASKS.md)
