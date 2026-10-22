@@ -1,0 +1,18 @@
+[
+ "AzureAiSpendDaily.csv",
+ "AzureBillingReconciliation.csv",
+ "AzureDeploymentHealth.csv",
+ "AzureSolutionSpend.csv",
+ "CoworkTaskPeopleMetaData.csv",
+ "CoworkWeeklyMetrics.csv",
+ "GitHubAiUsage.csv",
+ "GitHubUserMap.csv",
+ "PeopleMetaData.csv",
+ "PersonPolicyMap.csv",
+ "PersonServiceCreditsMetrics.csv",
+ "SpendingPolicyMetadata.csv",
+ "StudioPerAgent.csv",
+ "StudioPerUser.csv",
+ "StudioTenantDaily.csv",
+ "entra_org.csv"
+]

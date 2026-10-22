@@ -1,0 +1,1307 @@
+[
+ {
+  "id": "intro",
+  "name": "Start here",
+  "title": "Consumption Central",
+  "subtitle": "Where your Copilot credits go - and what to do about it",
+  "cards": [
+   {
+    "title": "Cowork & Work IQ",
+    "sub": "credits per person"
+   },
+   {
+    "title": "Copilot Studio",
+    "sub": "credits per agent"
+   },
+   {
+    "title": "GitHub Copilot",
+    "sub": "credits against the monthly pool"
+   },
+   {
+    "title": "Azure AI Foundry",
+    "sub": "tokens and provisioned capacity"
+   }
+  ],
+  "sections": [
+   {
+    "heading": "How to use it",
+    "paras": [
+     [
+      {
+       "t": "1 Set the period.",
+       "b": true
+      },
+      {
+       "t": " Top right of every page."
+      }
+     ],
+     [
+      {
+       "t": "2 Choose how to group.",
+       "b": true
+      },
+      {
+       "t": " Department, region, cost centre."
+      }
+     ],
+     [
+      {
+       "t": "3 Start on Overall: Combined,",
+       "b": true
+      },
+      {
+       "t": " then follow the biggest number."
+      }
+     ],
+     [
+      {
+       "t": "Group by is what turns a total into a chargeback."
+      }
+     ],
+     [
+      {
+       "t": "Four pages per product: "
+      },
+      {
+       "t": "used → cost → wasted → what's next.",
+       "b": true
+      }
+     ],
+     [
+      {
+       "t": "Rates default to list price.",
+       "b": true
+      },
+      {
+       "t": " Change them in the parameters."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Check these three first",
+    "paras": [
+     [
+      {
+       "t": "Concentration.",
+       "b": true
+      },
+      {
+       "t": " A few people usually drive most of the bill."
+      }
+     ],
+     [
+      {
+       "t": "Dormant seats.",
+       "b": true
+      },
+      {
+       "t": " Licensed, paid for, unused."
+      }
+     ],
+     [
+      {
+       "t": "Idle capacity.",
+       "b": true
+      },
+      {
+       "t": " Prepaid credits and Azure throughput you are not using."
+      }
+     ],
+     [
+      {
+       "t": "This reports. It does not enforce.",
+       "b": true
+      }
+     ],
+     [
+      {
+       "t": "Limits and policies live in the Microsoft 365 admin centre. Use this to decide what they should be."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Where the data comes from",
+    "paras": [
+     [
+      {
+       "t": "Cowork & Work IQ",
+       "b": true
+      },
+      {
+       "t": " Viva Insights export or custom query."
+      }
+     ],
+     [
+      {
+       "t": "Copilot Studio",
+       "b": true
+      },
+      {
+       "t": " Power Platform admin centre."
+      }
+     ],
+     [
+      {
+       "t": "GitHub Copilot",
+       "b": true
+      },
+      {
+       "t": " Enterprise billing → AI usage."
+      }
+     ],
+     [
+      {
+       "t": "Azure AI Foundry",
+       "b": true
+      },
+      {
+       "t": " Cost Management export, plus Azure Monitor for tokens."
+      }
+     ],
+     [
+      {
+       "t": "Built from your own exports - nothing leaves your tenant. Department breakdowns come from your Entra or HR file; without one, every figure still works but cannot be split by team."
+      }
+     ],
+     [
+      {
+       "t": "Full click-paths and permissions: docs/DATA-SOURCES.md. Every measure on every page is defined in the Glossary."
+      }
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "id": "how-to-read",
+  "name": "How to read this",
+  "title": "How to read this",
+  "subtitle": "What the numbers mean — and what they can't tell you",
+  "cards": [
+   {
+    "title": "Cowork & Work IQ",
+    "sub": "joins on UserPrincipalName"
+   },
+   {
+    "title": "Copilot Studio",
+    "sub": "User_Email → UPN"
+   },
+   {
+    "title": "GitHub Copilot",
+    "sub": "Username → map file → UPN"
+   },
+   {
+    "title": "Azure AI Foundry",
+    "sub": "no person key — date only"
+   }
+  ],
+  "sections": [
+   {
+    "heading": "How everything joins",
+    "paras": [
+     [
+      {
+       "t": "One key holds the model together: "
+      },
+      {
+       "t": "UserPrincipalName",
+       "b": true
+      },
+      {
+       "t": ". Each product reaches it by a different route, which is why it can look as though there is no common join."
+      }
+     ],
+     [
+      {
+       "t": "Azure is the exception.",
+       "b": true
+      },
+      {
+       "t": " It bills resources, not people. There is no user identity anywhere in the billing export, so per-person attribution is not something the template chose to leave out — it is not possible. Azure joins on date and splits by "
+      },
+      {
+       "t": "DepartmentTag",
+       "b": true
+      },
+      {
+       "t": "."
+      }
+     ],
+     [
+      {
+       "t": "If Viva is de-identified",
+       "b": true
+      },
+      {
+       "t": " the Cowork route does not exist. Totals stay correct, but they stand alone: no per-person view and no departments. An admin can switch identification on in Viva Feature Access Management."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Dates — and why Studio differs",
+    "paras": [
+     [
+      {
+       "t": "Cowork is weekly, GitHub per transaction, Azure daily. All three filter by date normally."
+      }
+     ],
+     [
+      {
+       "t": "Copilot Studio's per-user and per-agent exports carry no date column at all.",
+       "b": true
+      },
+      {
+       "t": " They are snapshots of the whole extract. So the Studio period slicer scopes the tenant-level trend and entitlement figures only — the per-user and per-agent visuals always show everything, whatever period you pick. That is Microsoft's export, not a template choice."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Usage Intensity",
+    "paras": [
+     [
+      {
+       "t": "Three separate attributes, one per product. Someone using two products would otherwise land in two bands at once and be counted twice."
+      }
+     ],
+     [
+      {
+       "t": "Light",
+       "b": true
+      },
+      {
+       "t": " bottom 50%"
+      }
+     ],
+     [
+      {
+       "t": "Regular",
+       "b": true
+      },
+      {
+       "t": " top 25–50%"
+      }
+     ],
+     [
+      {
+       "t": "Engaged",
+       "b": true
+      },
+      {
+       "t": " top 10–25%"
+      }
+     ],
+     [
+      {
+       "t": "Native",
+       "b": true
+      },
+      {
+       "t": " top 5–10%"
+      }
+     ],
+     [
+      {
+       "t": "Power",
+       "b": true
+      },
+      {
+       "t": " top 1–5%"
+      }
+     ],
+     [
+      {
+       "t": "Frontier",
+       "b": true
+      },
+      {
+       "t": " top 1%"
+      }
+     ],
+     [
+      {
+       "t": "These are relative, not absolute. “Light” means lower than colleagues — in a heavily-adopted tenant that can still be real money."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "When a number looks wrong",
+    "paras": [
+     [
+      {
+       "t": "Department blank or Unknown",
+       "b": true
+      },
+      {
+       "t": " — no org data loaded, or Viva is de-identified."
+      }
+     ],
+     [
+      {
+       "t": "Cowork totals right but no per-person view",
+       "b": true
+      },
+      {
+       "t": " — enable identification, or include PersonPolicyMap.csv on the CSV path."
+      }
+     ],
+     [
+      {
+       "t": "GitHub shows usernames, not people",
+       "b": true
+      },
+      {
+       "t": " — GitHubUserMap.csv is missing."
+      }
+     ],
+     [
+      {
+       "t": "Studio per-agent ignores the date filter",
+       "b": true
+      },
+      {
+       "t": " — expected; those exports have no date."
+      }
+     ],
+     [
+      {
+       "t": "Azure will not split by person",
+       "b": true
+      },
+      {
+       "t": " — not possible; use DepartmentTag."
+      }
+     ],
+     [
+      {
+       "t": "A product's pages are empty",
+       "b": true
+      },
+      {
+       "t": " — that source was not loaded, which is supported."
+      }
+     ],
+     [
+      {
+       "t": "Forecast looks implausible",
+       "b": true
+      },
+      {
+       "t": " — too little history; load more weeks."
+      }
+     ],
+     [
+      {
+       "t": "What this dashboard cannot tell you: ",
+       "b": true
+      },
+      {
+       "t": "what anyone asked Copilot (no prompt content is collected), whether the money was well spent, per-user Azure cost, or why usage changed. Full guide: docs/INTERPRETING.md"
+      }
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "id": "guide-cowork",
+  "name": "How to read — Cowork & Work IQ",
+  "title": "How to read — Cowork & Work IQ",
+  "subtitle": "Copilot credits consumed in Microsoft 365, per person, per week",
+  "cards": [],
+  "sections": [
+   {
+    "heading": "What these pages show",
+    "paras": [
+     [
+      {
+       "t": "Credits consumed through Microsoft 365 Copilot — Cowork and Work IQ — metered per person and reported weekly by Viva Insights."
+      }
+     ],
+     [
+      {
+       "t": "Consumption",
+       "b": true
+      },
+      {
+       "t": " who is using it and how much."
+      }
+     ],
+     [
+      {
+       "t": "Cost",
+       "b": true
+      },
+      {
+       "t": " what that converts to in money."
+      }
+     ],
+     [
+      {
+       "t": "Optimization",
+       "b": true
+      },
+      {
+       "t": " where money is being wasted."
+      }
+     ],
+     [
+      {
+       "t": "Forecast",
+       "b": true
+      },
+      {
+       "t": " where it lands if nothing changes."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "How it joins",
+    "paras": [
+     [
+      {
+       "t": "Directly on "
+      },
+      {
+       "t": "UserPrincipalName",
+       "b": true
+      },
+      {
+       "t": " — but only when Viva identification is enabled. By default Viva ships a hashed PersonId instead, and nothing will join to it."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Reading the figures",
+    "paras": [
+     [
+      {
+       "t": "Usage Intensity (Cowork)",
+       "b": true
+      },
+      {
+       "t": " ranks each person against colleagues by credits used, into six bands from Light to Frontier. Relative, not absolute."
+      }
+     ],
+     [
+      {
+       "t": "Budget buckets",
+       "b": true
+      },
+      {
+       "t": " compare usage to the spending policy limit:"
+      }
+     ],
+     [
+      {
+       "t": "Under Limit",
+       "b": true
+      },
+      {
+       "t": " below 85%"
+      }
+     ],
+     [
+      {
+       "t": "Approaching",
+       "b": true
+      },
+      {
+       "t": " 85–100%"
+      }
+     ],
+     [
+      {
+       "t": "Over Limit",
+       "b": true
+      },
+      {
+       "t": " above 100%"
+      }
+     ],
+     [
+      {
+       "t": "Anyone consuming credits against a "
+      },
+      {
+       "t": "zero",
+       "b": true
+      },
+      {
+       "t": " limit counts as Over Limit — usually a policy gap rather than a spending problem."
+      }
+     ],
+     [
+      {
+       "t": "Weeks Active",
+       "b": true
+      },
+      {
+       "t": " counts distinct weeks with any consumption across the whole history. Zero means a seat that has never been used — the cheapest thing on the Optimization page to act on."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Task categories (optional)",
+    "paras": [
+     [
+      {
+       "t": "Independent task export: counts and fractional credits, not additional billing. Missing data leaves the task page blank."
+      }
+     ],
+     [
+      {
+       "t": "Typical provisional ValueLens category minutes are selected initially. In Transform data, select Cowork Task Categories > Advanced Editor to edit bands; use the matrix to inspect effective minutes."
+      }
+     ],
+     [
+      {
+       "t": "Hours = reported tasks x category minutes / 60. Monetary equivalent requires an explicit hourly value. PAYG cost uses task credits only; neither estimate is realized savings."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Watch out for",
+    "paras": [
+     [
+      {
+       "t": "Legacy consumption: de-identified totals remain valid. For person and department views, enable identification in Viva Feature Access Management or, on the CSV path, use PersonPolicyMap.csv to link hashes to UPNs."
+      }
+     ],
+     [
+      {
+       "t": "Task metadata is separate and can supply historical organization without a UPN."
+      }
+     ],
+     [
+      {
+       "t": "Forecast quality depends on the weeks loaded. A short history gives little more than a straight line."
+      }
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "id": "guide-studio",
+  "name": "How to read — Copilot Studio",
+  "title": "How to read — Copilot Studio",
+  "subtitle": "Credits consumed by Copilot Studio agents",
+  "cards": [],
+  "sections": [
+   {
+    "heading": "What these pages show",
+    "paras": [
+     [
+      {
+       "t": "Credits consumed by agents built in Copilot Studio, reported three ways: per tenant, per agent and per user."
+      }
+     ],
+     [
+      {
+       "t": "Billed credit",
+       "b": true
+      },
+      {
+       "t": " is what you pay for. "
+      },
+      {
+       "t": "Non-billed credit",
+       "b": true
+      },
+      {
+       "t": " was absorbed by an entitlement — real usage that cost nothing, which is why both are shown."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "How it joins",
+    "paras": [
+     [
+      {
+       "t": "On "
+      },
+      {
+       "t": "User_Email",
+       "b": true
+      },
+      {
+       "t": ", which maps straight to UserPrincipalName. No extra file and no admin setting needed — Studio is the most straightforward of the four."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "The date limitation",
+    "paras": [
+     [
+      {
+       "t": "Microsoft's Studio exports carry a date on the tenant-level file only. The "
+      },
+      {
+       "t": "per-user and per-agent files have no date column at all",
+       "b": true
+      },
+      {
+       "t": "."
+      }
+     ],
+     [
+      {
+       "t": "So the period slicer on these pages scopes the tenant-level trend and entitlement figures. Per-user and per-agent visuals always show the whole extract, whatever period is selected."
+      }
+     ],
+     [
+      {
+       "t": "This is worth knowing before reconciling a per-agent figure against a date-filtered total and finding they disagree — they are answering different questions."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Reading the figures",
+    "paras": [
+     [
+      {
+       "t": "Entitlement Absorbed %",
+       "b": true
+      },
+      {
+       "t": " is the share of consumption that cost nothing. High is good."
+      }
+     ],
+     [
+      {
+       "t": "Agents with No Consumption",
+       "b": true
+      },
+      {
+       "t": " are published but unused — candidates to retire."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Watch out for",
+    "paras": [
+     [
+      {
+       "t": "Per-user and per-agent grain",
+       "b": true
+      },
+      {
+       "t": " — the per-user file is one row per user per agent, so a person using three agents appears three times. Anything counting people aggregates first."
+      }
+     ],
+     [
+      {
+       "t": "LLM Model",
+       "b": true
+      },
+      {
+       "t": " — the per-agent export carries the model behind each agent, including non-Microsoft models where used."
+      }
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "id": "guide-ghcp",
+  "name": "How to read — GitHub Copilot",
+  "title": "How to read — GitHub Copilot",
+  "subtitle": "GitHub Copilot premium requests, seats and the monthly pool",
+  "cards": [],
+  "sections": [
+   {
+    "heading": "What these pages show",
+    "paras": [
+     [
+      {
+       "t": "GitHub Copilot AI credits, billed per transaction. Every seat carries a monthly allowance; consumption draws that down first and anything beyond it bills pay-as-you-go."
+      }
+     ],
+     [
+      {
+       "t": "Allowance Absorbed",
+       "b": true
+      },
+      {
+       "t": " is consumption covered by the pool."
+      }
+     ],
+     [
+      {
+       "t": "Overage",
+       "b": true
+      },
+      {
+       "t": " is what spills past it and costs money."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "How it joins",
+    "paras": [
+     [
+      {
+       "t": "GitHub reports a "
+      },
+      {
+       "t": "Username",
+       "b": true
+      },
+      {
+       "t": ", not an email. "
+      },
+      {
+       "t": "GitHubUserMap.csv",
+       "b": true
+      },
+      {
+       "t": " carries username alongside UserPrincipalName and is what bridges the two. Without that file the totals are right, but nothing can be cut by person or department."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Reading the figures",
+    "paras": [
+     [
+      {
+       "t": "Model Tier",
+       "b": true
+      },
+      {
+       "t": " separates standard from premium models. Premium requests draw more heavily on the pool, so a shift in the mix moves cost without any change in how much people are using it."
+      }
+     ],
+     [
+      {
+       "t": "Seats With No Credit Use",
+       "b": true
+      },
+      {
+       "t": " are paid seats consuming nothing — the clearest saving on the Optimization page."
+      }
+     ],
+     [
+      {
+       "t": "Cost per Developer",
+       "b": true
+      },
+      {
+       "t": " divides total cost by active developers, so it moves when either usage or headcount changes."
+      }
+     ],
+     [
+      {
+       "t": "Concentration",
+       "b": true
+      },
+      {
+       "t": " shows what share the heaviest 10% consume. High concentration is not automatically bad, but it distinguishes broad adoption from a few enthusiasts — which need different responses."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Watch out for",
+    "paras": [
+     [
+      {
+       "t": "The allowance change",
+       "b": true
+      },
+      {
+       "t": " — the included monthly credits change from the date set in the parameters, so the forecast steps at that point by design."
+      }
+     ],
+     [
+      {
+       "t": "Date formats",
+       "b": true
+      },
+      {
+       "t": " — the export is read in whatever format your tenant emits; UK and US orderings are both detected from the data."
+      }
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "id": "guide-foundry",
+  "name": "How to read — Azure AI Foundry",
+  "title": "How to read — Azure AI Foundry",
+  "subtitle": "Azure AI spend, tokens and provisioned capacity",
+  "cards": [],
+  "sections": [
+   {
+    "heading": "What this page shows",
+    "paras": [
+     [
+      {
+       "t": "Azure AI Foundry spend, taken from Azure billing rather than from a Copilot export. Cost, token volume and how much of your provisioned capacity is actually being used."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "One page, not four",
+    "paras": [
+     [
+      {
+       "t": "The other three products get Consumption, Cost, Optimization and Forecast. Foundry has a single page, because "
+      },
+      {
+       "t": "Azure bills resources, not people",
+       "b": true
+      },
+      {
+       "t": ". There is no user identity anywhere in the billing export, so the per-person split those pages are built on has nothing to hang on."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "How it joins",
+    "paras": [
+     [
+      {
+       "t": "On "
+      },
+      {
+       "t": "date",
+       "b": true
+      },
+      {
+       "t": " only. It contributes to combined cost and to the trend, but it can never be attributed to an individual."
+      }
+     ],
+     [
+      {
+       "t": "For a team-level view, tag your Azure resources and the "
+      },
+      {
+       "t": "DepartmentTag",
+       "b": true
+      },
+      {
+       "t": " column flows through to the department breakdowns. That is resource-level attribution, not per-user — a shared endpoint belongs to whoever owns the resource."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Reading the figures",
+    "paras": [
+     [
+      {
+       "t": "Token Direction",
+       "b": true
+      },
+      {
+       "t": " splits input, output and cached. Cached input is metered and priced separately, so the split is the first thing to look at when spend rises without more activity."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Watch out for",
+    "paras": [
+     [
+      {
+       "t": "Provisioned capacity",
+       "b": true
+      },
+      {
+       "t": " — charged whether used or not, so idle capacity is a real cost that no amount of consumption analysis will surface."
+      }
+     ],
+     [
+      {
+       "t": "Meter names",
+       "b": true
+      },
+      {
+       "t": " — Azure abbreviates them inconsistently; the model reads them by whole word so that shortened forms still resolve to the right direction and model."
+      }
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "id": "glossary",
+  "name": "Glossary",
+  "title": "Glossary",
+  "subtitle": "What does every term and metric on this report mean?",
+  "cards": [],
+  "sections": [
+   {
+    "heading": "Core metrics",
+    "paras": [
+     [
+      {
+       "t": "Credit — ",
+       "b": true
+      },
+      {
+       "t": "The unit of Copilot consumption metered by Microsoft. Both products bill in credits, but they are metered and reported separately."
+      }
+     ],
+     [
+      {
+       "t": "Chargeback — ",
+       "b": true
+      },
+      {
+       "t": "Billing a group only for the credits its people used above their limit. Usage within the limit is not charged."
+      }
+     ],
+     [
+      {
+       "t": "Rate per credit — ",
+       "b": true
+      },
+      {
+       "t": "The cost of one credit, set in Settings (default $0.01). Cowork and Studio each have their own pay-as-you-go and prepaid rates."
+      }
+     ],
+     [
+      {
+       "t": "User limits vs policy limits — ",
+       "b": true
+      },
+      {
+       "t": "Two separate caps. User limits add up each person's own monthly credit limit. Policy limits add up the plan limits on the spending policies. They are different numbers and the report labels which one it is showing."
+      }
+     ],
+     [
+      {
+       "t": "Prepaid capacity — ",
+       "b": true
+      },
+      {
+       "t": "Credits bought up front. Microsoft calls this entitlement in the Studio admin centre and a capacity pack for Copilot. Usage draws this down first; anything beyond it bills pay-as-you-go."
+      }
+     ],
+     [
+      {
+       "t": "Over Limit Credits / Over Limit $ — ",
+       "b": true
+      },
+      {
+       "t": "Credits, and their cost, used above the limit. This is the chargeable amount."
+      }
+     ],
+     [
+      {
+       "t": "Unused Credits — ",
+       "b": true
+      },
+      {
+       "t": "Credits inside a limit that were never used — candidates to reduce or move elsewhere."
+      }
+     ],
+     [
+      {
+       "t": "Chargeback % — ",
+       "b": true
+      },
+      {
+       "t": "Credits above the limit as a share of the limit — how far a group went over."
+      }
+     ],
+     [
+      {
+       "t": "% of Total Credits — ",
+       "b": true
+      },
+      {
+       "t": "A group's share of all credits used across the org."
+      }
+     ],
+     [
+      {
+       "t": "Standout Ratio — ",
+       "b": true
+      },
+      {
+       "t": "A user's credits divided by their department's average. 9.8 means 9.8 times the department norm."
+      }
+     ],
+     [
+      {
+       "t": "Active Users (30d) — ",
+       "b": true
+      },
+      {
+       "t": "Users with activity in the last 30 days."
+      }
+     ],
+     [
+      {
+       "t": "Prepaid vs pay-as-you-go — ",
+       "b": true
+      },
+      {
+       "t": "Prepaid credits are drawn from capacity already bought. Pay-as-you-go is everything beyond that, billed in arrears. The Studio pages report the split because Microsoft reports it; on Cowork it is inferred from the capacity pack balance you enter."
+      }
+     ],
+     [
+      {
+       "t": "Days of prepaid left — ",
+       "b": true
+      },
+      {
+       "t": "How long the prepaid capacity lasts at the current daily rate, counting only environments that hold capacity. Environments with none bill directly and cannot run it down."
+      }
+     ],
+     [
+      {
+       "t": "Recommended action — ",
+       "b": true
+      },
+      {
+       "t": "A suggestion per agent, from how much it consumes and how much of that is chargeable: Review, Investigate, Monitor, Healthy, or Unused."
+      }
+     ],
+     [
+      {
+       "t": "Covered, not charged — ",
+       "b": true
+      },
+      {
+       "t": "The share of an agent's credits absorbed by prepaid capacity, so they never reached a bill."
+      }
+     ],
+     [
+      {
+       "t": "Group By on Studio pages — ",
+       "b": true
+      },
+      {
+       "t": "Filters the user figures only. The agent and environment exports carry no person, so those figures stay unfiltered."
+      }
+     ],
+     [
+      {
+       "t": "Value /mo — ",
+       "b": true
+      },
+      {
+       "t": "What acting on a recommendation is worth each month: the credits released by reclaiming and downsizing, less the cost of the upgrades. Buckets marked no action are zero by definition."
+      }
+     ],
+     [
+      {
+       "t": "Reclaimable /mo — ",
+       "b": true
+      },
+      {
+       "t": "Capacity that could be released if every oversized seat were resized. A measure of slack, not an action -- it counts headroom wherever it sits."
+      }
+     ],
+     [
+      {
+       "t": "Dormant cost /mo — ",
+       "b": true
+      },
+      {
+       "t": "Capacity assigned to seats with no usage in the billing snapshot. One period only, so treat it as a list to check rather than a list to cancel."
+      }
+     ],
+     [
+      {
+       "t": "Monthly run rate — ",
+       "b": true
+      },
+      {
+       "t": "Consumption normalised to a month. The four products are exported over different windows, so the All products page compares run rates rather than raw totals."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Usage cohorts (percentile of credits used in the period)",
+    "paras": [
+     [
+      {
+       "t": "Light — ",
+       "b": true
+      },
+      {
+       "t": "Bottom 50% by credits used — occasional use."
+      }
+     ],
+     [
+      {
+       "t": "Regular — ",
+       "b": true
+      },
+      {
+       "t": "P50-P75 — regular collaborator."
+      }
+     ],
+     [
+      {
+       "t": "Engaged — ",
+       "b": true
+      },
+      {
+       "t": "P75-P90 — highly engaged."
+      }
+     ],
+     [
+      {
+       "t": "Native — ",
+       "b": true
+      },
+      {
+       "t": "P90-P95 — Cowork-native."
+      }
+     ],
+     [
+      {
+       "t": "Power — ",
+       "b": true
+      },
+      {
+       "t": "P95-P99 — power delegator."
+      }
+     ],
+     [
+      {
+       "t": "Frontier — ",
+       "b": true
+      },
+      {
+       "t": "Top 1% (P99+) — frontier user."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Organization & security",
+    "paras": [
+     [
+      {
+       "t": "Business Unit / Cost Center / Job Family — ",
+       "b": true
+      },
+      {
+       "t": "Grouping fields from the Microsoft Entra user export used to roll up and slice usage."
+      }
+     ],
+     [
+      {
+       "t": "Row-Level Security (RLS) — ",
+       "b": true
+      },
+      {
+       "t": "A Department Admin signing in sees only the departments mapped to them; the All Org (Admin) role sees everything."
+      }
+     ],
+     [
+      {
+       "t": "Group By — ",
+       "b": true
+      },
+      {
+       "t": "Picks the attribute usage is rolled up by - Department, Business Unit, Cost Center, Job Family, Job Title, City, Country, Manager, a per-product Usage Intensity cohort, or User. On Cowork pages it re-groups the rollup visuals. On Studio pages it filters the user figures; agent and environment figures carry no person in the export, so they stay unfiltered."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Notes",
+    "paras": [
+     [
+      {
+       "t": "· Weekly history. ",
+       "b": true
+      },
+      {
+       "t": "Viva Insights exports a weekly snapshot per person, covering the previous five complete months plus month-to-date. Cowork figures cover the period chosen in the Period control; Studio figures come from a separate daily export."
+      }
+     ],
+     [
+      {
+       "t": "· Weekly trends and forecasts ",
+       "b": true
+      },
+      {
+       "t": "are built from that weekly history. The Cowork forecast fits a trend across whatever weeks are loaded; Studio extends a daily run rate, and GitHub compounds a monthly rate fitted from its own history. Each page states its own window and confidence."
+      }
+     ],
+     [
+      {
+       "t": "· Cost is derived, ",
+       "b": true
+      },
+      {
+       "t": "from credits at the rates set in Settings (default $0.01 per credit). Rates in use is shown on every cost page."
+      }
+     ],
+     [
+      {
+       "t": "· Cohort percentiles ",
+       "b": true
+      },
+      {
+       "t": "are computed on credits used in the selected period."
+      }
+     ],
+     [
+      {
+       "t": "· Department and job data ",
+       "b": true
+      },
+      {
+       "t": "comes from the Microsoft Entra user export. Without it every page still works, but Group By has nothing to group by. Studio users share the same identities, so Group By reaches both products."
+      }
+     ],
+     [
+      {
+       "t": "· FOCUS 1.2 alignment. ",
+       "b": true
+      },
+      {
+       "t": "Costs are also expressed as FinOps FOCUS v1.2 columns on the FOCUS Cost View page: List Cost (list rate), Contracted Cost = Chargeback $ (configured rate), Effective / Billed Cost, and Savings vs List; Service = Microsoft 365 Copilot, Service Category = AI and Machine Learning, Billing Currency = USD, SubAccount = Department / Cost Center."
+      }
+     ],
+     [
+      {
+       "t": "- Chargeback = overage only. ",
+       "b": true
+      },
+      {
+       "t": "A group is charged only for the credits its people used above their limit. Usage within the limit is not billed, so an org-wide figure under 100% does not mean nothing is chargeable — individuals can still exceed their own limit."
+      }
+     ],
+     [
+      {
+       "t": "- Savings vs List ",
+       "b": true
+      },
+      {
+       "t": "= List Cost minus Contracted Cost; it is $0 while the configured rate equals the $0.01 list rate."
+      }
+     ]
+    ]
+   }
+  ]
+ }
+]
