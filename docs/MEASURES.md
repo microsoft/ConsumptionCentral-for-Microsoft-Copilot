@@ -7,7 +7,7 @@ field list.
 you see in a tooltip when you hover a field in Power BI. If a measure is missing, it has no
 description in the model and should be given one.
 
-213 documented measures.
+221 documented measures.
 
 ---
 
@@ -460,6 +460,8 @@ Names the window in prose, for chart subtitles and narrative cards.
 **`Cowork Period Weeks`** · *Cowork Period*  
 Weeks of history in scope. Defaults to the four-week billing period, so every existing figure is unchanged until someone widens the window.
 
+The Period slicers are single-select and saved on "Current period (4 weeks)", so the slicer always names the window the figures use. That option is always in the Cowork Period table; "Last 8 weeks" and "All history (N weeks)" appear only when that much history is loaded. If nothing is selected, the measure still falls back to four weeks.
+
 **`Studio Period Days`** · *Studio Period*  
 Days of history in scope. Zero means everything that was exported.
 
@@ -641,6 +643,9 @@ States the basis used to price the right-sizing opportunity, so the number on th
 
 ## Counts
 
+**`Avg Weekly Active Users`** · *CoworkBilling*  
+Average number of people active each week across the selected Cowork period. Uses the same window and seat scoping as Consuming Users, so it can never exceed it. Weekly Active Users counts anyone active in any loaded week when no week is in context, which is why it is not used on a card.
+
 **`Consuming Users`** · *CoworkBilling*  
 People who consumed the selected service in the selected period. Differs from User Count, which counts everyone holding a seat whether they used it or not.
 
@@ -664,6 +669,9 @@ What acting on this recommendation actually means, in one short phrase. Sits bes
 **`Action Value /mo`** · *CoworkBilling*  
 Monthly value of acting on the recommendation, and nothing else. Right-Size Net $ is generic headroom arithmetic: it subtracts one column from another for whoever is in scope, so slicing it by action returned that group's unused headroom rather than the value of doing what the row says. That is why 'Correctly sized' showed a $5,739 saving and 'Hold' showed $620. Here only the actionable buckets carry a number: 1 reclaim -> the whole seat is released 2 review -> the whole seat, if the check confirms it 3 downsize -> the oversized portion is released 6 upgrade -> negative, because funding those people costs money 4 hold / 5 monitor / 7 correctly sized -> nothing, by definition
 
+**`Actioned Seats`** · *CoworkBilling*  
+Seats with a recommendation that carries a monthly value: reclaim, review, downsize or upgrade (actions 1, 2, 3 and 6). The seat count behind Right-Size Net $.
+
 **`Additional Credits Needed`** · *CoworkBilling*  
 Capacity required to properly fund users who persistently exceed their current seat.
 
@@ -677,7 +685,13 @@ Assigned capacity tied up in seats that were never used this period.
 Seats with no consumption at all in the four-week billing snapshot. Not proof the seat is unused - it is one period, and the Period control does not reach this figure. Treat it as a list to check, not a list to cancel.
 
 **`Licensed but Inactive`** · *CoworkBilling*  
-Licensed people with no consumption this period - a licence-management question rather than a capacity one.
+Licensed people with no consumption in the four-week billing snapshot - a licence-management question rather than a capacity one. Not "never used": someone idle this period may have used Cowork earlier. Seat Action's "1. Reclaim - never used" is the never-used count.
+
+**`Oversized Seats`** · *CoworkBilling*  
+Seats recommended to downsize (action 3).
+
+**`Oversized Seats $`** · *CoworkBilling*  
+Monthly value released by downsizing oversized seats ("3. Downsize"): only the portion above the recommended limit. The same branch as Action Value /mo.
 
 **`Reclaimable $`** · *CoworkBilling*  
 Value of reclaimable capacity. Only a real saving under prepaid or hybrid - see Seat Saving Basis Note.
@@ -686,13 +700,27 @@ Value of reclaimable capacity. Only a real saving under prepaid or hybrid - see 
 Credits released if every oversized seat were resized to its 90th-percentile week. Excludes seats that need upgrading.
 
 **`Right-Size Net $`** · *CoworkBilling*  
-Value released each month by acting on every recommendation: reclaims and downsizes, less the cost of the upgrades. Positive is a net saving. Use this rather than Right-Size Net $, which is not scoped to the recommendation and overstates the opportunity.
+Value released each month by acting on every recommendation: reclaims and downsizes, less the cost of the upgrades. Positive is a net saving. Equals Unused Seats $ + Oversized Seats $ + Upgrade Seats $. Prefer it to Reclaimable $, which resizes every seat and is not scoped to the recommendation.
 
 **`Seats to Downsize`** · *CoworkBilling*  
 Active users whose seat materially exceeds what they consume.
 
 **`Seats to Upgrade`** · *CoworkBilling*  
 People persistently exceeding their seat, who are genuinely under-provisioned rather than merely spiky.
+
+**`Unused Seats`** · *CoworkBilling*  
+Seats recommended to reclaim or review (actions 1 and 2).
+
+**`Unused Seats $`** · *CoworkBilling*  
+Monthly value of the seats nobody is using: "1. Reclaim - never used" and "2. Review - no usage in billing period", each at its full limit. The same branches as Action Value /mo, so it ties to the Financial impact table.
+
+**`Upgrade Seats`** · *CoworkBilling*  
+Seats recommended to upgrade (action 6).
+
+**`Upgrade Seats $`** · *CoworkBilling*  
+Monthly cost of upgrading people who are persistently over their seat ("6. Upgrade - persistently over"). Negative, because it is spend rather than a saving. The same branch as Action Value /mo.
+
+The Optimisation KPI row shows these three and Right-Size Net $ as four tiles, each with its seat count. Unused + Oversized + Upgrades = Net saving, the same total as the Financial impact by action table. Reclaimable $, Dormant Seat $, Seats to Upgrade, Seats to Downsize and Licensed but Inactive stay in the model but are no longer on the page: none of them matched a recommended action.
 
 ---
 

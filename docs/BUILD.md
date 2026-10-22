@@ -213,8 +213,8 @@ To change anything in the report, round-trip through PBIP so Desktop re-signs on
 Exporting from a project with no data cache writes every parameter as `null` — issue
 [#6](https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/issues/6) all over again.
 Desktop also drops the comment blocks stored as a query `description` and trims trailing blank lines
-from M. `fix_pbit_defaults.py` repairs all of it, taking the values from the committed template, and
-refuses to overwrite any parameter that is not null:
+from M, and an offline export can drop table descriptions. `fix_pbit_defaults.py` repairs all of it,
+taking the values from the committed template, and refuses to overwrite any parameter that is not null:
 
 ```
 python docs/scripts/fix_pbit_defaults.py --dry-run
@@ -222,6 +222,23 @@ python docs/scripts/fix_pbit_defaults.py
 ```
 
 It is a model-only patch, so the freshly signed report layer is left untouched.
+
+### Cowork KPI cards and Period slicers
+
+`fix_cowork_kpi_cards.py` is the source of truth for the Consumption "Avg weekly active" tile, the
+four reconciling Optimisation tiles and the single-select Cowork Period slicers. It patches a PBIP
+project, never a `.pbit`, and is idempotent:
+
+```powershell
+python docs\scripts\cowork_tasks\prepare_offline_export.py "2. Fabric\Consumption Central - Fabric.pbit" --out C:\pbip\kpi --profile fabric --project-name fexp
+python docs\scripts\fix_cowork_kpi_cards.py C:\pbip\kpi\fexp
+# Desktop: open fexp.pbip, Apply changes, File -> Export -> Power BI template over the repo copy
+python docs\scripts\fix_pbit_defaults.py --path "2. Fabric\Consumption Central - Fabric.pbit"
+python docs\scripts\check_cowork_kpi_cards.py
+```
+
+Repeat for every variant with its own profile. `check_cowork_kpi_cards.py` replays the same patch
+against every shipped template and fails if anything would still change.
 
 ### Keep `docs/scripts/*_query_org/` in step with the templates
 

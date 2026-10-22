@@ -154,6 +154,11 @@ jobs:
       - name: Shipped Cowork task contracts
         run: python docs/scripts/check_cowork_template_contract.py
 
+      - name: Cowork KPI cards reconcile and the Period slicers default
+        run: |
+          python docs/scripts/test_cowork_kpi_cards.py
+          python docs/scripts/check_cowork_kpi_cards.py
+
       - name: Sample data carries no real identifiers
         run: |
           # The sample set is synthetic. This catches a real export being

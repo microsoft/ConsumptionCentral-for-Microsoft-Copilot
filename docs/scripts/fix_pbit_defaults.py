@@ -190,6 +190,22 @@ def patch_bodies(schema, source):
     return changed
 
 
+def patch_table_descriptions(schema, source):
+    """Restore table descriptions an offline round trip dropped.
+
+    Only a description that is missing from the export is filled in, so an
+    intentional rewording made in Desktop still wins.
+    """
+    reference = {t["name"]: t for t in source["model"].get("tables", [])}
+    changed = []
+    for table in schema["model"].get("tables", []):
+        wanted = reference.get(table["name"], {}).get("description")
+        if wanted is not None and "description" not in table:
+            table["description"] = wanted
+            changed.append(table["name"])
+    return changed
+
+
 def patch_unapplied(unapplied, defaults):
     changed = []
     lines = parameter_lines(unapplied)
@@ -235,6 +251,7 @@ def patch(path, reference=None, dry_run=False):
 
     in_schema = patch_schema(schema, defaults)
     bodies = patch_bodies(schema, source)
+    tables = patch_table_descriptions(schema, source)
     in_unapplied = patch_unapplied(unapplied, defaults)
     query_bodies = patch_query_bodies(unapplied, source)
 
@@ -243,10 +260,12 @@ def patch(path, reference=None, dry_run=False):
     print(f"  {UNAPPLIED}: {len(in_unapplied)} parameters restored")
     for name in bodies:
         print(f"  {SCHEMA}: {name} body/description restored")
+    for name in tables:
+        print(f"  {SCHEMA}: {name} table description restored")
     for name in query_bodies:
         print(f"  {UNAPPLIED}: {name} body synchronized")
 
-    if not in_schema and not in_unapplied and not bodies and not query_bodies:
+    if not in_schema and not in_unapplied and not bodies and not tables and not query_bodies:
         print("  already at shipping defaults; left byte-for-byte unchanged")
         return 0
     require(sorted(in_schema) == sorted(in_unapplied),

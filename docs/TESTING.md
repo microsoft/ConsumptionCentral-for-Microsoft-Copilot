@@ -292,6 +292,22 @@ connector refreshes require separate authorization and were not run. The exact
 all-history aggregate comparison remains out of scope; earlier private-input
 evidence above was not rerun or copied into the deliverables.
 
+### Cowork KPI card verification record
+
+The Cowork KPI card and Period slicer fixes (`fix_cowork_kpi_cards.py`) were checked on
+22 October 2026.
+
+| Check | Observed result |
+|---|---|
+| Native template construction | All four variants were patched as dedicated offline PBIP projects, applied and exported in Desktop by Keith, then repaired from their own committed reference with `fix_pbit_defaults.py` |
+| Package diff against the previous templates | Model: eight added measures, two updated descriptions and the Cowork Period expression, plus Desktop's auto-generated synonyms. Report: only the exec KPI card, the Optimisation KPI card and the four Period slicers changed. Dataverse `pages.json` also saved a different active page. SecurityBindings present in all four |
+| Shipped spec replay | `check_cowork_kpi_cards.py`: every template matches the fix script with nothing outstanding. `test_cowork_kpi_cards.py`: eight tests passed, including the three tile measures partitioning the shipped Action Value /mo branches exactly |
+| Existing checks | Parameter defaults, lineage tags, Cowork task contracts, slicer defaults, Azure contracts, forecast gate and Cowork task regressions passed |
+| Sample-data reconciliation | An independent Python replica of the DAX on `1. Local CSV/sample-data` reproduced the published demo figures before the change: Users 115, Weekly active 135, Licensed but Inactive 843, Reclaim 885, Seats to Upgrade 34, Seats to Downsize 77. After the change: Avg weekly active 93.8; Unused $48,616 / 905 seats, Oversized $2,276 / 43, Upgrades -$3,781 / 29, Net saving $47,111 / 977, which equals Action Value /mo |
+| Fresh Local CSV template | Keith loaded the shipped template against the sample data and confirmed both Cowork pages: Avg weekly active below Users, the four tiles with seat counts and the Period slicers on "Current period (4 weeks)" |
+
+Fabric, Viva Direct and Dataverse were not refreshed against live endpoints.
+
 ## Things we know we cannot test here
 
 | | Why |
