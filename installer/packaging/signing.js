@@ -1,9 +1,9 @@
 // @ts-check
 /**
  * What a published ConsumptionCentralInstaller.exe has to pass: its Authenticode signature, the
- * SHA-256 file next to it and the release notes. Shared by finish-exe.js, the installer-exe
- * workflow and the ESRP signing pipeline, so each checks the same way. Those run it without
- * `npm ci`, so it imports nothing outside Node.js, src/launch.js and script.js.
+ * SHA-256 file next to it and the release notes. Shared by finish-exe.js and the installer workflow,
+ * and by the ESRP signing pipeline once it follows from Analytics Hub, so each checks the same way.
+ * Those run it without `npm ci`, so it imports nothing outside Node.js, src/launch.js and script.js.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -13,8 +13,8 @@ import { SCRIPT_NAME, ZIP_NAME, scriptCommand } from './script.js';
 export const PUBLISHER = 'Microsoft Corporation';
 
 /**
- * An installer release's version: x.y.z, or x.y.z-rc.N for a release candidate. installer-exe
- * drafts a release candidate as a pre-release, which releases/latest and the update check skip.
+ * An installer release's version: x.y.z, or x.y.z-rc.N for a release candidate. The installer
+ * workflow drafts a release candidate as a pre-release, which the update check skips.
  */
 export const RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-rc\.\d+)?$/;
 
@@ -89,7 +89,7 @@ export function releaseNotes({ repo, sha256, signed, publisher = PUBLISHER, vers
   const lines = [];
   if (version && isReleaseCandidate(version)) {
     lines.push(
-      `**Release candidate.** This pre-release is for testing ${version.replace(/-rc\.\d+$/, '')} before it's released. The installer doesn't offer it as an update, and ${base}/releases/latest stays on the last release.`,
+      `**Release candidate.** This pre-release is for testing ${version.replace(/-rc\.\d+$/, '')} before it's released. The installer doesn't offer it as an update.`,
       '',
     );
   }

@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { SCRIPT_NAME, ZIP_NAME, installScript, scriptCommand, scriptSha256, zipUrl } from '../packaging/script.js';
-import { CLOUD_SHELL_SHIM, INSTALLED_NODE_ENV, SCRIPT_COMMAND, SCRIPT_SHIM, SCRIPT_URL } from '../src/launch.js';
+import { CLOUD_SHELL_SHIM, INSTALLED_NODE_ENV, SCRIPT_COMMAND, SCRIPT_SHIM, SCRIPT_URL, scriptUrl } from '../src/launch.js';
 import { REPO } from '../src/update-check.js';
 
 const TEMPLATE = readFileSync(fileURLToPath(new URL('../packaging/launcher/install.ps1', import.meta.url)), 'utf8');
@@ -23,7 +23,10 @@ test('script: fills in every placeholder', () => {
   assert.match(s, /^\s*\$Id = '1\.2\.3-748ed2f139'$/m);
   assert.ok(s.includes(`$ZipUrl = 'https://github.com/octo/hub/releases/download/consumption-central-installer-v1.2.3/${ZIP_NAME}'`));
   assert.match(s, /^\s*\$SizeMb = '152'$/m);
-  assert.ok(s.includes('irm https://github.com/octo/hub/releases/latest/download/install.ps1 | iex'));
+  assert.ok(s.includes('  irm https://github.com/octo/hub/releases/download/consumption-central-installer-v1.2.3/install.ps1 | iex'), 'the help names its own release');
+  assert.ok(s.includes("$Again = 'irm https://github.com/octo/hub/releases/download/consumption-central-installer-v1.2.3/install.ps1 | iex'"));
+  assert.ok(s.includes("$Releases = 'https://github.com/octo/hub/releases?q=consumption-central-installer-v'"));
+  assert.doesNotMatch(s, /releases\/latest/, "the repo's latest release needn't be an installer release");
   assert.match(s, /^\s*\$Commit = 'd793f32a{33}'$/m);
   assert.match(s, /^\s*\$NodeVersion = '24\.11\.1'$/m);
   assert.ok(s.includes("$RepoUrl = 'https://github.com/octo/hub.git'"));
@@ -62,9 +65,11 @@ test('script: the whole launcher runs in a script block, so iex leaves nothing b
 });
 
 test('script: commands and URLs agree between the launcher and the installer', () => {
+  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(SCRIPT_NAME, 'install.ps1');
-  assert.equal(scriptCommand(REPO), SCRIPT_COMMAND);
-  assert.equal(SCRIPT_URL, `https://github.com/${REPO}/releases/latest/download/install.ps1`);
+  assert.equal(scriptCommand(REPO, version), SCRIPT_COMMAND);
+  assert.equal(SCRIPT_URL, `https://github.com/${REPO}/releases/download/consumption-central-installer-v${version}/install.ps1`);
+  assert.equal(scriptUrl('1.2.3'), `https://github.com/${REPO}/releases/download/consumption-central-installer-v1.2.3/install.ps1`);
   assert.equal(scriptCommand('octo/hub', '1.2.3'), 'irm https://github.com/octo/hub/releases/download/consumption-central-installer-v1.2.3/install.ps1 | iex');
   assert.equal(zipUrl('octo/hub', '1.2.3'), 'https://github.com/octo/hub/releases/download/consumption-central-installer-v1.2.3/ConsumptionCentralInstaller.zip');
   assert.ok(TEMPLATE.includes("Join-Path $CcHome 'consumption-central.cmd'"));
@@ -241,12 +246,14 @@ test("script: a pinned release whose zip is gone says so and gives the current r
         `$ZipName = '${ZIP_NAME}'`,
         `$zip = '${join(dir, 'x.zip.partial')}'`,
         '$Proxy = $null',
-        "$Again = 'irm https://github.com/octo/hub/releases/latest/download/install.ps1 | iex'",
+        "$Again = 'irm https://github.com/octo/hub/releases/download/consumption-central-installer-v1.2.3/install.ps1 | iex'",
+        "$Releases = 'https://github.com/octo/hub/releases?q=consumption-central-installer-v'",
       ];
       const gone = await runBlock(shell, prelude('gone/ConsumptionCentralInstaller.zip'), block);
       assert.notEqual(gone.status, 0, `${shell}: ${gone.out}`);
       assert.match(gone.out, /Release consumption-central-installer-v1\.2\.3 is no longer available/, `${shell}: ${gone.out}`);
-      assert.match(gone.out, /To install the current release instead, run: irm https:\/\/github\.com\/octo\/hub\/releases\/latest\/download\/install\.ps1 \| iex/);
+      assert.match(gone.out, /Get the current installer from https:\/\/github\.com\/octo\/hub\/releases\?q=consumption-central-installer-v\./);
+      assert.doesNotMatch(gone.out, /irm /, 'its own release is gone, so it names no command to run');
       assert.doesNotMatch(gone.out, /proxy/i);
 
       const broken = await runBlock(shell, prelude('broken/ConsumptionCentralInstaller.zip'), block);
@@ -268,7 +275,7 @@ test("script: a node.exe blocked by device policy says what to do instead of the
   const block = s.slice(start, end);
   /** @param {string} node @param {boolean} [installed] */
   const prelude = (node, installed = false) => [
-    "$Again = 'irm https://github.com/octo/hub/releases/latest/download/install.ps1 | iex'",
+    "$Again = 'irm https://github.com/octo/hub/releases/download/consumption-central-installer-v1.2.3/install.ps1 | iex'",
     `$Installed = ${installed ? "'C:\\approved\\node.exe'" : '$null'}`,
     `$node = ${node}`,
   ];
@@ -282,7 +289,7 @@ test("script: a node.exe blocked by device policy says what to do instead of the
       assert.match(r.out, /Your organisation's policy blocks the Node\.js that comes with the installer/, `${shell}: ${r.out}`);
       assert.match(r.out, /Don't work around it/);
       assert.match(r.out, /Company Portal/);
-      assert.match(r.out, /\$env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE = '1'; irm https:\/\/github\.com\/octo\/hub\/releases\/latest\/download\/install\.ps1 \| iex/);
+      assert.match(r.out, /\$env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE = '1'; irm https:\/\/github\.com\/octo\/hub\/releases\/download\/consumption-central-installer-v1\.2\.3\/install\.ps1 \| iex/);
       assert.match(r.out, /docs\/INSTALL\.md#locked-down-tenant--azure-cloud-shell/);
       assert.match(r.out, /ask your IT team/);
     }

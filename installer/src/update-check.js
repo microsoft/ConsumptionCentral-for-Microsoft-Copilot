@@ -6,8 +6,13 @@
 import { ENV, REPO, TAG_PREFIX, USER_AGENT } from './product.js';
 
 export { REPO, TAG_PREFIX };
-export const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`;
-export const LATEST_PAGE = `https://github.com/${REPO}/releases/latest`;
+/**
+ * The repo's newest releases. The repo's latest release is usually the dashboard's, not the
+ * installer's, so the check looks through the list for installer releases.
+ */
+export const RELEASES_API = `https://api.github.com/repos/${REPO}/releases?per_page=50`;
+/** The installer's releases, linked when a release's own page can't be used. */
+export const RELEASES_PAGE = `https://github.com/${REPO}/releases?q=${TAG_PREFIX}&expanded=true`;
 /** Set to 1 to skip the check, for example on a computer that can't reach GitHub. */
 export const OPT_OUT = ENV.NO_UPDATE_CHECK;
 
@@ -35,6 +40,8 @@ export function newerVersion(current, tag) {
 }
 
 /**
+ * The newest published installer release that's newer than `version`. Drafts, pre-releases and the
+ * dashboard's own releases don't count.
  * @typedef {{ version: string, url: string }} Update
  * @param {{ version: string, fetch?: typeof globalThis.fetch, timeoutMs?: number, env?: Record<string, string | undefined> }} o
  * @returns {Promise<Update | null>}  Never rejects.
@@ -45,17 +52,23 @@ export async function checkForUpdate(o) {
   const fetchFn = o.fetch ?? globalThis.fetch;
   if (typeof fetchFn !== 'function') return null;
   try {
-    const res = await fetchFn(LATEST_API, {
+    const res = await fetchFn(RELEASES_API, {
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(o.timeoutMs ?? 5000),
     });
     if (!res.ok) return null;
     const body = /** @type {any} */ (await res.json());
-    if (body?.draft || body?.prerelease) return null;
-    const version = newerVersion(o.version, body?.tag_name);
-    if (!version) return null;
-    const url = typeof body.html_url === 'string' && body.html_url.startsWith(`https://github.com/${REPO}/`) ? body.html_url : LATEST_PAGE;
-    return { version, url };
+    if (!Array.isArray(body)) return null;
+    /** @type {Update | null} */
+    let best = null;
+    for (const release of body) {
+      if (!release || release.draft || release.prerelease) continue;
+      const version = newerVersion(best?.version ?? o.version, release.tag_name);
+      if (!version) continue;
+      const url = typeof release.html_url === 'string' && release.html_url.startsWith(`https://github.com/${REPO}/`) ? release.html_url : RELEASES_PAGE;
+      best = { version, url };
+    }
+    return best;
   } catch {
     return null;
   }

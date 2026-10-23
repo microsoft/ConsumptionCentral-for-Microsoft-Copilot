@@ -75,6 +75,8 @@ test('product: install.ps1 uses the same names', () => {
   assert.ok(ps.includes(`'${P.PRODUCT_TOKEN}.Power' -as [type]`) && ps.includes(`Add-Type -Namespace ${P.PRODUCT_TOKEN} -Name Power`), 'the keep-awake type');
   assert.ok(ps.includes(`installer/bin/${basename(P.BIN_SCRIPT)}`) && ps.includes(`installer\\bin\\${basename(P.BIN_SCRIPT)}`), P.BIN_SCRIPT);
   assert.ok(ps.includes(`Release ${P.TAG_PREFIX}$Version`), P.TAG_PREFIX);
+  assert.ok(ps.includes(`$Again = 'irm https://github.com/{{REPO}}/releases/download/${P.TAG_PREFIX}{{VERSION}}/install.ps1 | iex'`), 'the pinned re-run command');
+  assert.ok(ps.includes(`$Releases = 'https://github.com/{{REPO}}/releases?q=${P.TAG_PREFIX}'`), 'the installer releases page');
   assert.ok(ps.includes(P.DOCS_URL.replace(P.REPO, '{{REPO}}')), 'the install guide');
 });
 

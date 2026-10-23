@@ -5,7 +5,7 @@ Downloads the installer from GitHub (Node.js, the installer and everything it de
 zip), checks its SHA-256, unpacks it under %LOCALAPPDATA%\ConsumptionCentral and opens the installer in
 your browser. It needs no admin rights and installs nothing system-wide.
 
-  irm https://github.com/{{REPO}}/releases/latest/download/install.ps1 | iex
+  irm https://github.com/{{REPO}}/releases/download/consumption-central-installer-v{{VERSION}}/install.ps1 | iex
 
 Or download this file and run it where your execution policy allows scripts:
 
@@ -47,7 +47,8 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
   $ZipUrl = '{{ZIP_URL}}'
   $ZipName = '{{ZIP_NAME}}'
   $SizeMb = '{{SIZE_MB}}'
-  $Again = 'irm https://github.com/{{REPO}}/releases/latest/download/install.ps1 | iex'
+  $Again = 'irm https://github.com/{{REPO}}/releases/download/consumption-central-installer-v{{VERSION}}/install.ps1 | iex'
+  $Releases = 'https://github.com/{{REPO}}/releases?q=consumption-central-installer-v'
 
   # Launcher options; the rest go to the installer as typed.
   $ZipPath = $env:CONSUMPTION_CENTRAL_ZIP
@@ -303,7 +304,7 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
         $status = 0
         try { $status = [int]$_.Exception.Response.StatusCode } catch { }
         # A pinned install.ps1 whose release has gone. The current release has its own zip and SHA-256.
-        if ($status -eq 404) { throw "Release consumption-central-installer-v$Version is no longer available, so this copy of install.ps1 can't download its zip. To install the current release instead, run: $Again" }
+        if ($status -eq 404) { throw "Release consumption-central-installer-v$Version is no longer available, so this copy of install.ps1 can't download its zip. Get the current installer from $Releases." }
         throw "Couldn't download $ZipUrl ($($_.Exception.Message)). If a proxy blocks it, download $ZipName from the release in a browser and run this again with -ZipPath, or set `$env:CONSUMPTION_CENTRAL_ZIP to its path."
       }
     }

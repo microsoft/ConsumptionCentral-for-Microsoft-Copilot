@@ -20,14 +20,12 @@ export const SCRIPT_NAME = 'install.ps1';
 export const zipUrl = (repo, version) => `https://github.com/${repo}/releases/download/${TAG_PREFIX}${version}/${ZIP_NAME}`;
 
 /**
- * The PowerShell command that runs a release's install.ps1, or the latest release's.
+ * The PowerShell command that runs a release's install.ps1. It names the release, because the
+ * repo's latest release needn't be an installer release.
  * @param {string} repo
- * @param {string} [version]
+ * @param {string} version
  */
-export function scriptCommand(repo, version) {
-  const path = version ? `download/${TAG_PREFIX}${version}` : 'latest/download';
-  return `irm https://github.com/${repo}/releases/${path}/${SCRIPT_NAME} | iex`;
-}
+export const scriptCommand = (repo, version) => `irm https://github.com/${repo}/releases/download/${TAG_PREFIX}${version}/${SCRIPT_NAME} | iex`;
 
 /**
  * Fills in the launcher template.

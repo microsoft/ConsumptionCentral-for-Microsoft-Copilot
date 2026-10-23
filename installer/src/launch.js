@@ -1,10 +1,10 @@
 // @ts-check
 /** How the installer was started, so messages name the command people actually run. */
-import { copyFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { CLOUD_SHELL_HOME, COMMAND, ENV, EXE_NAME, HOME_FOLDER, PRODUCT_ID, SHIM } from './product.js';
-import { REPO } from './update-check.js';
+import { REPO, TAG_PREFIX } from './update-check.js';
 
 /** Set by the exe, which runs the installer with the Node.js it carries. */
 export const EXE_ENV = ENV.EXE;
@@ -14,8 +14,16 @@ export { EXE_NAME };
  * download as the exe, and `cloudshell` in Azure Cloud Shell, where they run the release's source.
  */
 export const LAUNCHER_ENV = ENV.LAUNCHER;
-/** The PowerShell one-liner that downloads and starts the latest installer. */
-export const SCRIPT_URL = `https://github.com/${REPO}/releases/latest/download/install.ps1`;
+/** This installer's version. */
+const VERSION = String(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+/**
+ * Where an installer release's install.ps1 is. It names the release, as the launchers do, because the
+ * repo's latest release needn't be an installer release.
+ * @param {string} version
+ */
+export const scriptUrl = (version) => `https://github.com/${REPO}/releases/download/${TAG_PREFIX}${version}/install.ps1`;
+/** The PowerShell one-liner that downloads and starts this installer's release again. */
+export const SCRIPT_URL = scriptUrl(VERSION);
 export const SCRIPT_COMMAND = `irm ${SCRIPT_URL} | iex`;
 /** The command install.ps1 leaves behind, as typed in PowerShell. */
 export const SCRIPT_SHIM = `& $env:LOCALAPPDATA\\${HOME_FOLDER}\\${SHIM}`;
@@ -127,9 +135,10 @@ export function installerWindow(env = process.env) {
 /**
  * The PowerShell install command, keeping the runtime selected by the launcher.
  * @param {NodeJS.ProcessEnv} env
+ * @param {string} [command]  The download command, by default this release's.
  */
-const powerShellCommand = (env) =>
-  env[INSTALLED_NODE_ENV] === '1' ? `$env:${INSTALLED_NODE_ENV} = '1'; ${SCRIPT_COMMAND}` : SCRIPT_COMMAND;
+const powerShellCommand = (env, command = SCRIPT_COMMAND) =>
+  env[INSTALLED_NODE_ENV] === '1' ? `$env:${INSTALLED_NODE_ENV} = '1'; ${command}` : command;
 
 /**
  * How to start the installer again once it has stopped.
@@ -147,14 +156,16 @@ export function reopenHint(env = process.env) {
 }
 
 /**
- * How to get a newer installer, after "Installer x.y.z is available."
- * @param {string} url  The release page.
+ * How to get a newer installer, after "Installer x.y.z is available." The PowerShell launchers
+ * download the newer release's install.ps1, since this release's would start this version again.
+ * @param {{ version: string, url: string }} update  The newer release, and its page.
  * @param {NodeJS.ProcessEnv} [env]
  */
-export function updateHint(url, env = process.env) {
+export function updateHint(update, env = process.env) {
   const how = launcher(env);
-  if (how === 'cloudshell') return `Run "${SCRIPT_COMMAND}" again in Cloud Shell's PowerShell, then install to repair or change.`;
+  const command = `irm ${scriptUrl(update.version)} | iex`;
+  if (how === 'cloudshell') return `Run "${command}" in Cloud Shell's PowerShell, then install to repair or change.`;
   return how === 'pwsh'
-    ? `Close the installer and run "${powerShellCommand(env)}" again in PowerShell, then choose Repair or change.`
-    : `Download it from ${url}, then choose Repair or change.`;
+    ? `Close the installer and run "${powerShellCommand(env, command)}" in PowerShell, then choose Repair or change.`
+    : `Download it from ${update.url}, then choose Repair or change.`;
 }
