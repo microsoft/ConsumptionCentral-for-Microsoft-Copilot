@@ -94,6 +94,19 @@ exports, no real data.
 
 ---
 
+## App Edition
+
+Prefer an app to a Power BI report? **[`app/`](app/)** is a web app, deployable as a Fabric App in your
+Fabric workspace or as a Copilot Managed App, with the same
+measures, charts and tables, using the same DAX definitions. It replaces the 24 report pages with six
+simpler tabs: Overview, Cowork & Work IQ, Copilot Studio, GitHub Copilot, Azure AI Foundry and Guide.
+Drop in the Local CSV exports and everything is calculated in your browser. No data leaves your
+tenant. It opens on the synthetic sample.
+
+**[App Edition setup and deploy →](app/README.md)**
+
+---
+
 ## What you'll be asked for
 
 Almost every parameter has a sensible default. Two are worth thinking about:
@@ -116,6 +129,7 @@ Almost every parameter has a sensible default. Two are worth thinking about:
 | [Rates and pricing](docs/COMMERCIAL-TERMS.md) | What to set and where to find it |
 | [Every measure explained](docs/MEASURES.md) | Reference |
 | [Advanced setup](docs/ADVANCED-SETUP.md) | Scheduling, service principals, gateway refresh |
+| [App Edition](app/README.md) | The Managed App version: tabs, data detection, develop and deploy |
 
 ---
 
