@@ -54,7 +54,8 @@ def check(path):
                 errors.append(f"Task table/unapplied query differs: {name}")
             if queries[name].get("isHidden"):
                 errors.append(f"Task query must not be marked as a managed multi-table source: {name}")
-        adapter = "TableInput.m" if "FabricSource" in expressions or "DataverseSource" in expressions else "FileInput.m"
+        adapter = ("TableInput.m" if "FabricSource" in expressions or "DataverseSource" in expressions
+                   else "SourceFileInput.m" if "SourceFiles" in expressions else "FileInput.m")
         definitions = [("CoworkTaskNormalize", "NormalizeTasks.m"), ("CoworkTaskInput", adapter)]
         if "GetVivaMetadataFile" in expressions:
             definitions.append(("GetVivaMetadataFile", "LegacyCompanion.m"))

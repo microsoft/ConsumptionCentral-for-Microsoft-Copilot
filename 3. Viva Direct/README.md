@@ -50,6 +50,43 @@ Leave `DataFolder` blank for consumption-only reporting. Leave pricing parameter
 
 ---
 
+## Reading the files from SharePoint *(optional)*
+
+One query, **`SourceFiles`**, lists every file the template reads. As shipped it reads a local
+`DataFolder`. Swap in the SharePoint form and the same files come from a SharePoint folder instead,
+so nothing reads a local file and a report published to the Power BI service can refresh on its own.
+
+1. **Transform data** → select **`SourceFiles`** → **Advanced Editor**
+2. Replace its text with the contents of [`SourceFiles.SharePoint.m`](SourceFiles.SharePoint.m) → **Done**
+3. **Manage Parameters** → set the two below → **Close & Apply**
+4. When asked, sign in to the site with an **Organizational account**. If asked for a privacy level,
+   choose **Organizational**.
+
+| | |
+|---|---|
+| **`SharePointSiteUrl`** | The site, such as `https://contoso.sharepoint.com/sites/ConsumptionCentral`. No library, folder or page. |
+| **`DataFolder`** | The folder, such as `https://contoso.sharepoint.com/sites/ConsumptionCentral/Shared Documents/Consumption Central` |
+
+`DataFolder` also takes the address bar while you're viewing the folder, encoded or not, or a path
+inside the site such as `Shared Documents/Consumption Central`. `/` and `\` both work, and a trailing
+slash makes no difference. It refuses a local or network path, and a sharing link
+(`https://…/:f:/s/…`): open the link and copy the address bar instead.
+
+Files are still found by name, in the folder or any subfolder. Put `entra_org.csv` at the top of the
+folder: when two files match, the one nearer the top wins, then the newer.
+
+**Give it a site of its own.** `SharePoint.Files` lists every file in the site before keeping the
+ones under `DataFolder`, so a busy site refreshes slowly.
+[`SourceFiles.SharePoint.Contents.m`](SourceFiles.SharePoint.Contents.m) opens the folder by name
+instead and should be faster, but hasn't been tested on a live site yet. If it reports *found no
+folder with this name*, go back to the supported form.
+
+If an address is wrong, the file-based pages come back blank, the task page says
+`Task folder unavailable`, and the Viva pages still refresh. Select **`SourceFiles`** in Transform
+data to see why.
+
+---
+
 ## Department breakdowns need a directory CSV
 
 Plan to supply one. Put `entra_org.csv` in your `DataFolder` with `UserPrincipalName` and the
@@ -59,7 +96,11 @@ match the consumption data.
 Selecting attributes in the query UI does not guarantee the connector returns them, so check the
 actual output before relying on a query-only setup.
 
-**[Detail and edge cases →](../docs/ADVANCED-SETUP.md#org-attributes-on-viva-direct)**
+[PAX](https://github.com/microsoft/PAX) can write this file on a schedule, straight into a local or
+SharePoint `DataFolder`.
+
+**[Detail and edge cases →](../docs/ADVANCED-SETUP.md#org-attributes-on-viva-direct)** ·
+**[Exporting it with PAX →](../docs/ORG-DATA.md#exporting-with-pax)**
 
 ---
 

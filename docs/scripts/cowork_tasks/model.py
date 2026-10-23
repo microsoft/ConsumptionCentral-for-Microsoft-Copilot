@@ -221,7 +221,9 @@ def apply(model, unapplied, profile):
     tables = {t["name"]: t for t in model["tables"]}
     new_expressions = {
         "CoworkTaskNormalize": source("NormalizeTasks.m"),
-        "CoworkTaskInput": source("TableInput.m" if profile in ("fabric", "dataverse") else "FileInput.m"),
+        # Viva Direct lists its files once, in SourceFiles; Local CSV lists its own.
+        "CoworkTaskInput": source("TableInput.m" if profile in ("fabric", "dataverse")
+                                  else "SourceFileInput.m" if "SourceFiles" in expressions else "FileInput.m"),
         "CoworkTaskData": "CoworkTaskNormalize(CoworkTaskInput[Data], CoworkTaskInput[People])",
     }
     if profile == "csv":

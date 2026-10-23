@@ -28,6 +28,7 @@ EXPECTED = {
     "GitHubEnterpriseSeatPrice": "39",
     "BillingPeriodWeeks": "4",
     "DataFolder": '"C:\\Consumption Central\\Data"',
+    "SharePointSiteUrl": '""',
     "FabricSQLEndpoint": '"your-endpoint.datawarehouse.fabric.microsoft.com"',
     "LakehouseName": '"consumption-central"',
 }

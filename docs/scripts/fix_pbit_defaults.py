@@ -8,8 +8,8 @@ BillingPeriodWeeks makes VivaPeriodStart throw, and every other table then
 reports only "Load was cancelled by an error in loading a previous table".
 
 Values are taken from a reference template - by default the committed version
-of the same file - so every parameter is restored, not just the nine
-check_pbit_defaults.py documents. Those nine are still cross-checked against
+of the same file - so every parameter is restored, not just the ten
+check_pbit_defaults.py documents. Those ten are still cross-checked against
 the reference, so a drifted reference cannot be copied in silently.
 
 This is a model-only repair. It touches DataModelSchema and UnappliedChanges -

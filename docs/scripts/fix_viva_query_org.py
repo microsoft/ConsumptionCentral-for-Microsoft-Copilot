@@ -69,6 +69,8 @@ PROFILES = {
             "OrgNormalised": (
                 "366b7832441c1162fa699f807b73e22b06f3298afb889fe83286594d5b63084a",
                 "90cb52b38541fb2bb268d48e492af230aaf40deefb4e503fafca152126b56ee6",
+                # Before PAX's Entra aliases (docs/scripts/fix_viva_direct_sources.py).
+                "04e88e974a8778603ac3c93944e2cf4847c1b6b48cd668ca0c5c3421ed516214",
             ),
         },
     },

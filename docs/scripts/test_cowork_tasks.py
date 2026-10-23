@@ -273,6 +273,34 @@ class ModelContractTests(unittest.TestCase):
         self.assertNotIn('Root = "C:', body)
         self.assertNotIn("else try Folder.Files(Root)", body)
 
+    def test_viva_direct_task_input_reads_the_shared_source_files_listing(self):
+        # Viva Direct lists its files once, in SourceFiles, so the SharePoint form reaches
+        # Cowork too. Local CSV has no SourceFiles and keeps its own listing.
+        for profile, directory, name, adapter in (("csv", "1. Local CSV", "Local CSV", "FileInput.m"),
+                                                  ("viva", "3. Viva Direct", "Viva Direct", "SourceFileInput.m")):
+            with self.subTest(profile=profile):
+                document, unapplied = documents(ROOT / directory / f"Consumption Central - {name}.pbit")
+                expressions = {e["name"]: e for e in document["model"]["expressions"]}
+                self.assertEqual("SourceFiles" in expressions, profile == "viva")
+                shipped = model.text(expressions["CoworkTaskInput"]["expression"]).strip()
+                self.assertEqual(shipped, model.source(adapter))
+                model.apply(document["model"], unapplied, profile)
+                applied = {e["name"]: e for e in document["model"]["expressions"]}
+                self.assertEqual(model.text(applied["CoworkTaskInput"]["expression"]).strip(), shipped)
+        body, local = model.source("SourceFileInput.m"), model.source("FileInput.m")
+        self.assertIn("Listing = SourceFiles,", body)
+        for kept in ("Attempt = try (if Listing = null then null else Table.RowCount(Listing))",
+                     "Files = if Attempt[HasError] then null else Listing",
+                     "SourceUnavailable=Attempt[HasError]"):
+            self.assertIn(kept, body)
+            self.assertIn(kept, local)
+        code = re.sub(r"//[^\n]*", "", body)
+        self.assertNotIn("Folder.", code)
+        self.assertNotIn("DataFolder", code)
+        # From the ranking on, both adapters pick and read the same file.
+        start = "    Ranked = Table.Sort("
+        self.assertEqual(body[body.index(start):], local[local.index(start):])
+
     def test_native_assertions_are_forced_before_returning_the_table(self):
         result = prepare_validation.checked_assertions('#table({"Case","Passed"}, {{"synthetic",false}})')
         self.assertIn("List.AllTrue(List.Transform(Results[Passed], each _ = true))", result)

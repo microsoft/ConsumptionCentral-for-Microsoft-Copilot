@@ -1,2 +1,5 @@
 # Built single-file app download: generated, so hide it from diffs and language stats
 app/download/*.html -diff linguist-generated
+# Viva Direct's SharePoint forms of SourceFiles: the installer publishes their
+# text as-is, so every checkout keeps it LF (check_viva_direct_sources.py)
+SourceFiles.SharePoint*.m text eol=lf
