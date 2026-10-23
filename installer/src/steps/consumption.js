@@ -2,13 +2,14 @@
 /**
  * Credit consumption, from Consumption Central: Azure AI costs read by the app registration,
  * Lakehouse folders for the Copilot Studio and Cowork exports, and the Consumption model,
- * which reads the Lakehouse through the ValueLens model's connection.
+ * which reads the Lakehouse through the Consumption Central model's connection.
  */
 import { STUDIO_LANDING, VIVA_LANDING } from '../catalog.js';
 import { ROLES } from '../clients/azure.js';
 import { semanticModelDefinition } from '../clients/fabric.js';
 import { HttpError } from '../http.js';
 import { commandLine } from '../launch.js';
+import { INSTALLER_DIR, ITEM_PREFIX } from '../product.js';
 import { COWORK_DATAFLOW_TABLE, coworkDataflowDefinition, isVivaId } from '../transform/dataflow.js';
 import { COWORK_DATAFLOW_ACTIVITY } from '../transform/pipeline.js';
 import { rlsSettings } from '../transform/access.js';
@@ -33,7 +34,7 @@ export const MAX_SUBSCRIPTIONS_TO_SEARCH = 25;
 export const DATAFLOW_GUIDE = 'https://learn.microsoft.com/viva/insights/advanced/analyst/export-query-data-microsoft-fabric';
 
 /** The Dataflow that reads Cowork credits from Viva Insights. */
-export const COWORK_DATAFLOW_NAME = 'AnalyticsHub_Cowork_Credits';
+export const COWORK_DATAFLOW_NAME = `${ITEM_PREFIX}Cowork_Credits`;
 
 /**
  * The Cowork Dataflow in Fabric, to open and sign in.
@@ -68,7 +69,7 @@ export function coworkSignInSteps(config) {
 export const STAGING_ITEMS_NOTE = 'Fabric also adds DataflowsStagingLakehouse and DataflowsStagingWarehouse items to the workspace for its Dataflows. They are expected: leave them in place.';
 
 /** Where the Viva load notebook writes how many rows it read from the Dataflow and the CSVs. */
-export const VIVA_LOAD_FILE = 'Files/valuelens_installer/viva_load.json';
+export const VIVA_LOAD_FILE = `${INSTALLER_DIR}/viva_load.json`;
 
 /**
  * Whether the Cowork Dataflow was saved with its connections. Its definition lists none until
@@ -195,7 +196,7 @@ export async function ensureCoworkDataflow(ctx) {
       delete cc.dataflowSignature;
     }
     if (!cc.dataflowId) {
-      const made = await createItem(ctx, 'Dataflow', 'Dataflow', name, items, (n, ref) => api.fabric.createDataflow(ws, n, 'Cowork Copilot credits from Viva Insights, for Analytics Hub. The pipeline refreshes it before loading them.', ref));
+      const made = await createItem(ctx, 'Dataflow', 'Dataflow', name, items, (n, ref) => api.fabric.createDataflow(ws, n, 'Cowork Copilot credits from Viva Insights, for Consumption Central. The pipeline refreshes it before loading them.', ref));
       name = made.name;
       cc.dataflowId = made.id;
       cc.dataflowName = name;
@@ -225,7 +226,7 @@ export async function ensureCoworkDataflow(ctx) {
 }
 
 /**
- * The Consumption model is deployed: credit consumption is on, the ValueLens model (whose
+ * The Consumption model is deployed: credit consumption is on, the Consumption Central model (whose
  * connection it shares) is on, and this checkout has the template.
  * @param {Ctx} ctx
  */
@@ -489,7 +490,7 @@ export async function ensureLandingFolders(ctx) {
 
 /**
  * Creates the Consumption model, or updates it when the Lakehouse changed or `force` is set,
- * and connects it through the ValueLens model's connection.
+ * and connects it through the Consumption Central model's connection.
  * @param {Ctx} ctx
  * @param {{ force?: boolean }} [opts]
  */

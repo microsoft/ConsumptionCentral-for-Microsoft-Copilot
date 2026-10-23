@@ -11,7 +11,7 @@ import { addLoadLog } from './load-log.js';
 import { addCopilotPaygSpend } from './payg.js';
 import { readZipEntry } from './zip.js';
 
-/** The ValueLens report, relative to the source folder. */
+/** The Consumption Central report, relative to the source folder. */
 export const MODEL_TEMPLATE = `${SETUP_DIR}/ValueLens - Fabric.pbit`;
 /** The credit consumption report from Consumption Central, relative to the source folder. */
 export const CONSUMPTION_TEMPLATE = `${SETUP_DIR}/Add Credit Consumption/Consumption Central - Fabric.pbit`;

@@ -560,7 +560,7 @@ export async function status(ctx) {
     ui.warn('Nothing is installed yet.');
     return;
   }
-  ui.heading('Analytics Hub');
+  ui.heading('Consumption Central');
   ui.info(`Workspace: ${f.workspaceName ?? f.workspaceId}`);
   ui.info(`Lakehouse: ${f.lakehouseName ?? f.lakehouseId}`);
   ui.info(`Pipeline:  ${f.pipelineName ?? f.pipelineId}`);

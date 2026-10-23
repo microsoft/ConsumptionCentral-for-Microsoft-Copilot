@@ -22,7 +22,7 @@ import {
 export const LOAD_LABELS = /** @type {Record<string, string>} */ ({
   Run_Audit_Log_Ingester: 'Copilot audit log',
   Run_Audit_Log_Processor: 'Copilot usage (audit log processing)',
-  [REFRESH_ACTIVITY]: 'ValueLens model refresh',
+  [REFRESH_ACTIVITY]: 'Consumption Central model refresh',
   Run_Licensed_Users_Ingester: 'Licensed users',
   [UPLOAD_ROUTER_ACTIVITY]: 'Uploaded CSV exports',
   [AGENT365_REGISTRY]: 'Agent 365 (API)',
@@ -313,7 +313,7 @@ function innerName(activities, name) {
 /**
  * Puts the rerun instruction into a fix text, capitalised at the start of a sentence.
  * @param {string} text
- * @param {string} phrase  e.g. `run "AnalyticsHubInstaller.exe rerun-failed"`.
+ * @param {string} phrase  e.g. `run "ConsumptionCentralInstaller.exe rerun-failed"`.
  */
 export function fillRerun(text, phrase) {
   const cap = phrase.charAt(0).toUpperCase() + phrase.slice(1);

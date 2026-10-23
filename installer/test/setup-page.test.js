@@ -124,7 +124,7 @@ test('run page: an install step with a ✗ line shows as failed, even when the i
     app.replay = true;
     app.run = createRun({ type: 'command', command: 'install', state: 'running', at: 0, seq: 1 });
     [
-      { type: 'step', n: 1, total: 3, title: 'Analytics Hub app', at: 1 },
+      { type: 'step', n: 1, total: 3, title: 'Consumption Central app', at: 1 },
       { type: 'line', kind: 'fail', text: "The app wasn't deployed: the deploy tool failed", at: 2 },
       { type: 'step', n: 2, total: 3, title: 'Share the app', at: 3 },
       { type: 'line', kind: 'warn', text: "There's no app yet, so there's nothing to share.", at: 4 },
@@ -135,7 +135,7 @@ test('run page: an install step with a ✗ line shows as failed, even when the i
     app.run.stages.find((s) => s.title === 'Setting up').kids.map((k) => [k.title, k.status, k.el.dataset.status]);
   `, context);
   assert.deepEqual(JSON.parse(JSON.stringify(install)), [
-    ['Analytics Hub app', 'failed', 'failed'],
+    ['Consumption Central app', 'failed', 'failed'],
     ['Share the app', 'done', 'done'],
     ['Model refresh', 'failed', 'failed'],
   ]);

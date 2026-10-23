@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * The install record, `valuelens-install.json`. It holds IDs and choices so a
+ * The install record, `consumption-central-setup.json`. It holds IDs and choices so a
  * re-run picks up where the last one stopped. It never holds a secret.
  */
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -9,9 +9,10 @@ import { isDeepStrictEqual } from 'node:util';
 import { normaliseModules } from './catalog.js';
 import { normaliseReporting } from './currency.js';
 import { normaliseDataSources } from './uploads.js';
+import { PRODUCT_NAME, RECORD_FILE, SECRET_NAME } from './product.js';
 
 export const CONFIG_VERSION = 1;
-export const DEFAULT_CONFIG_FILE = 'valuelens-install.json';
+export const DEFAULT_CONFIG_FILE = RECORD_FILE;
 
 /**
  * @typedef {object} InstallConfig
@@ -30,13 +31,13 @@ export const DEFAULT_CONFIG_FILE = 'valuelens-install.json';
  * @property {{ capacityId?: string, workspaceId?: string, workspaceName?: string, lakehouseId?: string, lakehouseName?: string, notebooks: Partial<Record<import('./catalog.js').NotebookKey, string>>, notebookNames?: Partial<Record<import('./catalog.js').NotebookKey, string>>, notebookHashes?: Partial<Record<import('./catalog.js').NotebookKey, string>>, pipelineId?: string, pipelineName?: string, pipelineModules?: string, pipelineVersion?: number, scheduleId?: string, vaultEndpointId?: string, deployedRouter?: string, secretInNotebooks?: boolean, createdWorkspace?: boolean, pendingItems?: Record<string, { name: string, ref: string, at?: string, operation?: string }> }} fabric  pendingItems: the name and description ref of each item being created, and when, so a run stopped mid-create finds that item again and nothing else. operation: Fabric's URL for the create once it accepted it, to ask how it went.
  * @property {{ jobId?: string, status?: string, startedAt?: string, finishedAt?: string, coworkSkipped?: boolean }} [firstRun]  coworkSkipped: the first load left out the Cowork Dataflow, which wasn't signed in yet.
  * @property {SemanticModelConfig} semanticModel
- * @property {AccessConfig} [access]  Who can view Analytics Hub. Absent until the installer has set it up.
+ * @property {AccessConfig} [access]  Who can view Consumption Central. Absent until the installer has set it up.
  * @property {ConsumptionConfig} consumption
  * @property {{ completed: string[], runFirstLoad?: boolean, reloadHistoryDays?: number, baseRevision?: string, approved?: boolean, uploads?: { token?: string, name: string }[] }} [setup] Browser setup draft progress; never contains secrets. runFirstLoad and reloadHistoryDays are kept only in the draft, never in the install record.
  */
 
 /**
- * The one Entra group whose members can view Analytics Hub.
+ * The one Entra group whose members can view Consumption Central.
  * @typedef {object} AccessConfig
  * @property {string} [groupId]
  * @property {string} [groupName]
@@ -186,14 +187,14 @@ export const flowIdentity = (config) => (config.uploads?.flowIdentity === 'app' 
  * @property {boolean} [bound]
  * @property {ModelReload} [reload]  Owed a reload: its definition was, or may have been, replaced and no refresh has finished since.
  * @property {boolean} [reports]  Publish the Power BI reports on the models. Records from before the choice was offered leave it unset, meaning no.
- * @property {ReportConfig} [report]  The ValueLens report.
+ * @property {ReportConfig} [report]  The Consumption Central report.
  */
 
 // Names for items a new install creates. An existing install keeps the names saved in its record.
-export const MODEL_NAME = 'Analytics Hub Model';
-export const CONSUMPTION_MODEL_NAME = 'Analytics Hub Consumption Model';
-export const REPORT_NAME = 'ValueLens';
-export const CONSUMPTION_REPORT_NAME = 'Consumption Central';
+export const MODEL_NAME = `${PRODUCT_NAME} Model`;
+export const CONSUMPTION_MODEL_NAME = `${PRODUCT_NAME} Consumption Model`;
+export const REPORT_NAME = PRODUCT_NAME;
+export const CONSUMPTION_REPORT_NAME = `${PRODUCT_NAME} Consumption`;
 
 /** @returns {InstallConfig} */
 export function emptyConfig() {
@@ -206,7 +207,7 @@ export function emptyConfig() {
     history: { days: 30 },
     schedule: { frequency: 'daily', time: '02:00', weekday: 'Sunday', timeZone: 'UTC' },
     app: {},
-    keyVault: { secretName: 'valuelens-client-secret' },
+    keyVault: { secretName: SECRET_NAME },
     fabric: { notebooks: {} },
     semanticModel: { name: MODEL_NAME },
     consumption: { model: { name: CONSUMPTION_MODEL_NAME } },
@@ -437,7 +438,7 @@ export function saveConfig(file, config, io = {}) {
 
 /**
  * Sets an install record aside so the next install starts fresh. It's renamed beside itself, as
- * `valuelens-install.<yyyyMMdd-HHmmss>.json`, so nothing in it is lost.
+ * `consumption-central-setup.<yyyyMMdd-HHmmss>.json`, so nothing in it is lost.
  * A synced folder can hold the file for a moment, so the rename is retried like saveConfig's.
  * @param {string} file
  * @param {Date} [now]

@@ -37,6 +37,7 @@ import {
   studioFlowDefinition,
 } from '../transform/flows.js';
 import { c } from '../ui.js';
+import { PRODUCT_ID, PRODUCT_NAME } from '../product.js';
 import { UPLOAD_DIR } from '../uploads.js';
 import { ensureWorkspaceRole } from './model.js';
 
@@ -45,8 +46,8 @@ import { ensureWorkspaceRole } from './model.js';
 
 const MAKER = 'https://make.powerautomate.com/';
 export const FLOW_FILES = /** @type {Record<FlowKind, string>} */ ({
-  feedback: 'analytics-hub-feedback-flow.json',
-  studio: 'analytics-hub-studio-credits-flow.json',
+  feedback: `${PRODUCT_ID}-feedback-flow.json`,
+  studio: `${PRODUCT_ID}-studio-credits-flow.json`,
 });
 
 /** @type {Record<FlowKind, string>} */
@@ -167,12 +168,12 @@ export function flowDefinitions(config, tenantId) {
   return {
     feedback: {
       name: FEEDBACK_FLOW_NAME,
-      description: `Saves product feedback exports emailed with the subject "${FEEDBACK_SUBJECT}" to ${where}. Created by the Analytics Hub installer.`,
+      description: `Saves product feedback exports emailed with the subject "${FEEDBACK_SUBJECT}" to ${where}. Created by the Consumption Central installer.`,
       definition: nameByConnection(feedbackFlowDefinition(t), t),
     },
     studio: {
       name: STUDIO_FLOW_NAME,
-      description: `Saves Copilot Studio credits from the Power Platform licensing API to ${where} each day. Created by the Analytics Hub installer.`,
+      description: `Saves Copilot Studio credits from the Power Platform licensing API to ${where} each day. Created by the Consumption Central installer.`,
       definition: nameByConnection(studioFlowDefinition(t, schedule), t),
     },
   };
@@ -306,7 +307,7 @@ function missingConnection(err) {
 function writeFlowFile(ctx, kind, name, definition) {
   const { ui, config } = ctx;
   const file = join(ctx.configFile ? dirname(ctx.configFile) : process.cwd(), FLOW_FILES[kind]);
-  const note = `Written by the Analytics Hub installer because the flow couldn't be created. In Power Automate, create an automated or scheduled cloud flow, open it in the code view (or use the Power Automate Management connector) and paste "definition". Then sign in to its connections: ${labels(connectorsUsed(definition))}.`;
+  const note = `Written by the Consumption Central installer because the flow couldn't be created. In Power Automate, create an automated or scheduled cloud flow, open it in the code view (or use the Power Automate Management connector) and paste "definition". Then sign in to its connections: ${labels(connectorsUsed(definition))}.`;
   try {
     writeFileSync(file, `${JSON.stringify(flowFile(name, definition, note), null, 2)}\n`);
     config.uploads.flowFiles = { ...config.uploads.flowFiles, [kind]: file };
@@ -321,10 +322,10 @@ function writeFlowFile(ctx, kind, name, definition) {
  * The names of the connections the installer makes. Cleaning up only ever deletes these.
  */
 export const CONNECTION_NAMES = {
-  ppApi: 'Analytics Hub - Power Platform API',
-  oneLake: 'Analytics Hub - OneLake',
+  ppApi: `${PRODUCT_NAME} - Power Platform API`,
+  oneLake: `${PRODUCT_NAME} - OneLake`,
 };
-const OWNED_NAME = /^Analytics Hub - (Power Platform API|OneLake)$/;
+const OWNED_NAME = new RegExp(`^${PRODUCT_NAME.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&')} - (Power Platform API|OneLake)$`);
 /** Whether a connection's display name is one the installer gives. @param {string | undefined} name */
 export const isOwnedConnectionName = (name) => OWNED_NAME.test(name ?? '');
 

@@ -12,7 +12,7 @@ import { createUi } from '../src/ui.js';
 /** @typedef {import('../src/clients/fabric.js').ItemRef} ItemRef */
 
 /** Where fake installs keep their record, so it stays out of the repo. */
-const TEST_RECORD_DIR = mkdtempSync(join(tmpdir(), 'valuelens-installer-test-'));
+const TEST_RECORD_DIR = mkdtempSync(join(tmpdir(), 'consumption-central-installerer-test-'));
 
 let sources;
 /** Loads the real notebooks and pipeline once. */
@@ -446,7 +446,7 @@ export function fakeGraph() {
   const failures = {};
   const api = {
     /** @param {string} _objectId @param {Date} end @param {string} [displayName] */
-    addPassword: async (_objectId, end, displayName = 'Analytics Hub installer') => {
+    addPassword: async (_objectId, end, displayName = 'Consumption Central installer') => {
       calls.push(`addPassword ${displayName}`);
       const err = failures.addPassword?.shift();
       if (err) throw err;
@@ -845,7 +845,7 @@ export function fakeAzureGraph() {
       calls.push(`fic ${id} ${fic.subject}`);
       return fic;
     },
-    addPassword: async (/** @type {string} */ _id, /** @type {Date} */ end, /** @type {string} */ displayName = 'Analytics Hub installer') => {
+    addPassword: async (/** @type {string} */ _id, /** @type {Date} */ end, /** @type {string} */ displayName = 'Consumption Central installer') => {
       calls.push(`addPassword ${displayName}`);
       const keyId = `key-${++n}`;
       passwords.push({ keyId, displayName });
@@ -982,7 +982,7 @@ export function fakeCtx(o = {}) {
     /** @type {unknown} */ ({
       ui: o.ui ?? fakeUi().ui,
       config,
-      file: join(TEST_RECORD_DIR, 'valuelens-install.json'),
+      file: join(TEST_RECORD_DIR, 'consumption-central-setup.json'),
       save: () => {
         saves++;
       },

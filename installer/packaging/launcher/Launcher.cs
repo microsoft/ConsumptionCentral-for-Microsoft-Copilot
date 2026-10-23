@@ -1,8 +1,8 @@
-// Starts the Analytics Hub installer from a single download. The exe carries Node.js, the
+// Starts the Consumption Central installer from a single download. The exe carries Node.js, the
 // installer and everything it deploys as one zip; the first run unpacks it under
-// %LOCALAPPDATA%\AnalyticsHub\<version>-<hash>, later runs of the same download start at once.
+// %LOCALAPPDATA%\ConsumptionCentral\<version>-<hash>, later runs of the same download start at once.
 // With no arguments it opens the installer in the browser. Anything else goes to the installer
-// as typed, so "AnalyticsHubInstaller.exe status" works from a terminal too.
+// as typed, so "ConsumptionCentralInstaller.exe status" works from a terminal too.
 //
 // Compiled by packaging/build-exe.js with the C# 5 compiler in the .NET Framework, which every
 // supported Windows has, so keep to C# 5.
@@ -23,8 +23,8 @@ using System.Threading;
 
 internal static class Launcher
 {
-    private const string HomeFolder = "AnalyticsHub";
-    private const string WorkFolder = "Analytics Hub";
+    private const string HomeFolder = "ConsumptionCentral";
+    private const string WorkFolder = "Consumption Central";
     private const string Marker = ".unpacked";
     private const string Partial = ".partial-";
     private const int Cancelled = 130;
@@ -54,7 +54,7 @@ internal static class Launcher
         int code;
         try
         {
-            try { Console.Title = "Analytics Hub installer"; }
+            try { Console.Title = "Consumption Central installer"; }
             catch (IOException) { }
             code = Run(args);
         }
@@ -86,12 +86,12 @@ internal static class Launcher
         Directory.CreateDirectory(work);
 
         string nodeDir = Path.Combine(root, "node");
-        string script = Path.Combine(root, "f", "installer", "bin", "valuelens-install.js");
+        string script = Path.Combine(root, "f", "installer", "bin", "consumption-central-installer.js");
         ProcessStartInfo psi = new ProcessStartInfo(Path.Combine(nodeDir, "node.exe"), Quote(script) + " " + (args.Length == 0 ? "--ui" : JoinArgs(args)));
         psi.UseShellExecute = false;
         psi.WorkingDirectory = work;
         psi.EnvironmentVariables["PATH"] = nodeDir + ";" + Environment.GetEnvironmentVariable("PATH");
-        psi.EnvironmentVariables["ANALYTICS_HUB_EXE"] = "1";
+        psi.EnvironmentVariables["CONSUMPTION_CENTRAL_EXE"] = "1";
 
         // Ctrl+C reaches the installer too; wait for it to finish cleaning up.
         Console.CancelKeyPress += delegate(object sender, ConsoleCancelEventArgs e) { e.Cancel = true; };
@@ -118,7 +118,7 @@ internal static class Launcher
         }
     }
 
-    private const string Docs = "https://github.com/microsoft/AnalyticsHub-Dashboard/blob/main/docs/INSTALL.md";
+    private const string Docs = "https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/blob/main/docs/INSTALL.md";
 
     /// <summary>ERROR_ACCESS_DISABLED_BY_POLICY (AppLocker, software restriction) or ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION (App Control).</summary>
     internal static bool BlockedByPolicy(int code)
@@ -137,7 +137,7 @@ internal static class Launcher
 
     private static void Unpack(string root)
     {
-        Console.WriteLine("Unpacking the Analytics Hub installer. This takes a minute the first time...");
+        Console.WriteLine("Unpacking the Consumption Central installer. This takes a minute the first time...");
         string partial = root + Partial + Process.GetCurrentProcess().Id;
         if (Directory.Exists(partial)) Directory.Delete(Long(partial), true);
         using (Stream s = Resource("payload.zip"))

@@ -276,7 +276,7 @@ export function addAccessScope(model, kind, opts = {}) {
     },
     {
       name: SCOPED_ROLE,
-      description: 'Org-scoped access: Analytics Hub Viewers, filtered to their scopes. Members are applied by the installer.',
+      description: 'Org-scoped access: Consumption Central Viewers, filtered to their scopes. Members are applied by the installer.',
       modelPermission: 'read',
       tablePermissions: filters,
     },

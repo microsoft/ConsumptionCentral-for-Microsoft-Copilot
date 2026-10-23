@@ -21,7 +21,9 @@
  * @property {import('../catalog.js').NotebookPatch[]} [patches]  Text changes to code cells.
  */
 
-export const MARKER = 'Set by the Analytics Hub installer';
+import { INSTALLER_DIR, INSTALLER_TITLE } from '../product.js';
+
+export const MARKER = `Set by the ${INSTALLER_TITLE}`;
 
 /** @param {Cell} cell */
 export function cellText(cell) {
@@ -104,7 +106,7 @@ export function secretExpression(secret) {
 export const INLINE_SECRET_NOTE = `${MARKER}: no Key Vault, so the secret is here. Anyone with a role in this workspace can read it. Each install, repair or update replaces it`;
 
 /** Where the data check's summary lands, relative to the Lakehouse root. */
-export const DATA_CHECK_FILE = 'Files/valuelens_installer/data_check.json';
+export const DATA_CHECK_FILE = `${INSTALLER_DIR}/data_check.json`;
 
 const DATA_CHECK_SUMMARY = `# ${MARKER}: save a short summary for the installer to read back.
 # This is the only thing the installer's copy writes: one small JSON file under ${DATA_CHECK_FILE}.

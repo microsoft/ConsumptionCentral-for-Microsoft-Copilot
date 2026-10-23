@@ -46,7 +46,7 @@ function partitionExpression(t, source) {
 }
 
 /**
- * For the ValueLens model, which reads tables with FabricTable.
+ * For the Consumption Central model, which reads tables with FabricTable.
  * @param {ArgTable} t
  * @param {boolean} on
  */

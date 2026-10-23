@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * The ValueLens semantic model: deployed from the Power BI template, connected to the
+ * The Consumption Central semantic model: deployed from the Power BI template, connected to the
  * Lakehouse through a cloud connection that signs in as the app registration, and refreshed.
  */
 import { createHash } from 'node:crypto';
@@ -8,6 +8,7 @@ import { enabledModules, MODEL_MODULES } from '../catalog.js';
 import { servicePrincipalCredentials, semanticModelDefinition, sqlConnectionBody } from '../clients/fabric.js';
 import { HttpError } from '../http.js';
 import { commandLine } from '../launch.js';
+import { PRODUCT_NAME } from '../product.js';
 import { EVERYONE_ROLE, rlsSettings, SCOPED_ROLE } from '../transform/access.js';
 import { buildModel, datasourcePath, loadTemplateModel, PBISM } from '../transform/model.js';
 import { formatDuration } from '../ui.js';
@@ -18,10 +19,10 @@ import { addTrackedSecret, adoptAttempts, promoteSecret, removeRetired, settleFa
 /** @typedef {import('../install.js').Ctx} Ctx */
 
 /** Name of the app secret that only the model's connection holds. */
-export const CONNECTION_SECRET_NAME = 'ValueLens semantic model connection';
+export const CONNECTION_SECRET_NAME = `${PRODUCT_NAME} semantic model connection`;
 
 /** @param {string} workspaceId */
-export const connectionName = (workspaceId) => `Analytics Hub SQL ${workspaceId.slice(0, 8)}`;
+export const connectionName = (workspaceId) => `${PRODUCT_NAME} SQL ${workspaceId.slice(0, 8)}`;
 
 /** @param {string} workspaceId @param {string} modelId */
 export const modelSettingsUrl = (workspaceId, modelId) => `https://app.powerbi.com/groups/${workspaceId}/settings/datasets/${modelId}`;
@@ -623,7 +624,7 @@ export async function settleReloads(ctx, opts) {
 const joinList = (names) => (names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
 
 /**
- * Refreshes a model, the ValueLens one unless `model` says otherwise. Waiting, a refresh it
+ * Refreshes a model, the main one unless `model` says otherwise. Waiting, a refresh it
  * requested that finishes cleanly takes back the model's reload obligation; not waiting, it stays
  * until a later run finds it finished cleanly. When it has to follow a refresh that was already
  * running, it refreshes once more for a model owed a reload.
@@ -717,7 +718,7 @@ function queryError(err) {
 }
 
 /**
- * Asks the ValueLens model a small DAX question. A refresh can report Completed while a
+ * Asks the Consumption Central model a small DAX question. A refresh can report Completed while a
  * calculated table, column or relationship was never calculated; this catches that.
  * @param {Ctx} ctx
  * @returns {Promise<{ ok: boolean, skipped?: boolean, calendarDays?: number, error?: string }>}

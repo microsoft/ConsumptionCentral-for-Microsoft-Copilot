@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 // @ts-check
 /**
- * Builds AnalyticsHubInstaller.exe: one file a customer downloads and double-clicks. It holds
+ * Builds ConsumptionCentralInstaller.exe: one file a customer downloads and double-clicks. It holds
  * Node.js, the installer and the templates it deploys, and unpacks them under
- * %LOCALAPPDATA%\AnalyticsHub the first time it runs.
+ * %LOCALAPPDATA%\ConsumptionCentral the first time it runs.
  *
- * Next to it go the same payload as AnalyticsHubInstaller.zip, and install.ps1, which downloads that
+ * Next to it go the same payload as ConsumptionCentralInstaller.zip, and install.ps1, which downloads that
  * zip, checks it and runs it from PowerShell, for organisations that block downloaded exes.
  *
  * Usage: npm run build:exe -- [--out <dir>] [--keep] [--release] [--repo <owner/name>]
  *   --out <dir>   Where to write the exe (default ./dist-exe)
  *   --repo <name> The repo whose releases install.ps1 downloads from (default $GITHUB_REPOSITORY,
- *                 then microsoft/AnalyticsHub-Dashboard)
+ *                 then microsoft/ConsumptionCentral-for-Microsoft-Copilot)
  *   --keep        Keep the working folder, to look at what went into the payload
  *   --release     Fail rather than warn when something a published download needs is missing
  *
@@ -34,6 +34,7 @@ import {
 import { SCRIPT_NAME, ZIP_NAME, installScript } from './script.js';
 import { sha256File, sha256Line } from './signing.js';
 import { REPO as GITHUB_REPO } from '../src/update-check.js';
+import { INSTALLER_TITLE, PRODUCT_ID, PRODUCT_NAME } from '../src/product.js';
 
 const INSTALLER = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE = resolve(INSTALLER, '..');
@@ -130,7 +131,7 @@ if (!existsSync(join(INSTALLER, 'node_modules'))) throw new Error(`Run "npm ci" 
 const version = String(readJson(join(INSTALLER, 'package.json')).version);
 const commit = git(['rev-parse', 'HEAD']).trim();
 const outDir = resolve(opts.out ?? join(INSTALLER, 'dist-exe'));
-const work = mkdtempSync(join(realpathSync.native(tmpdir()), 'ahx-'));
+const work = mkdtempSync(join(realpathSync.native(tmpdir()), 'ccx-'));
 const stage = join(work, 'stage');
 const stagedInstaller = join(stage, SOURCE_ROOT, 'installer');
 
@@ -178,7 +179,7 @@ try {
   // IDs already in the repo, such as Microsoft Graph's, are public.
   const committed = git(['grep', '-I', '-h', '-o', '-i', '-E', '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', 'HEAD', '--', ':/']).split('\n');
   const own = [
-    ...readdirSync(INSTALLER).filter((f) => /^valuelens-install.*\.json$/i.test(f)).map((f) => readIf(join(INSTALLER, f))),
+    ...readdirSync(INSTALLER).filter((f) => f.toLowerCase().startsWith(`${PRODUCT_ID}-setup`) && f.toLowerCase().endsWith('.json')).map((f) => readIf(join(INSTALLER, f))),
   ];
   const ids = localIds(own, committed.map((l) => l.replace(/^HEAD:/, '').trim()));
   for (const rel of files) {
@@ -197,9 +198,9 @@ try {
   for (const f of ['Launcher.cs', 'app.manifest']) copyFileSync(join(LAUNCHER, f), join(work, f));
   writeFileSync(join(work, 'AssemblyInfo.cs'), [
     'using System.Reflection;',
-    '[assembly: AssemblyTitle("Analytics Hub installer")]',
-    '[assembly: AssemblyDescription("Sets up Analytics Hub for Microsoft Copilot in Microsoft Fabric.")]',
-    '[assembly: AssemblyProduct("ValueLens Analytics Hub")]',
+    `[assembly: AssemblyTitle("${INSTALLER_TITLE}")]`,
+    `[assembly: AssemblyDescription("Sets up ${PRODUCT_NAME} for Microsoft Copilot in Microsoft Fabric.")]`,
+    `[assembly: AssemblyProduct("${PRODUCT_NAME}")]`,
     '[assembly: AssemblyCompany("Microsoft Corporation")]',
     '[assembly: AssemblyCopyright("Copyright (c) Microsoft Corporation. MIT License.")]',
     `[assembly: AssemblyVersion("${fileVersion(version)}")]`,

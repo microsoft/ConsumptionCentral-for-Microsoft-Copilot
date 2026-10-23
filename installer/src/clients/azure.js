@@ -2,6 +2,7 @@
 /** Azure Resource Manager and Key Vault calls for storing the client secret. */
 import { randomUUID } from 'node:crypto';
 import { HttpError, retryDelayMs } from '../http.js';
+import { RESOURCE_TAG } from '../product.js';
 
 export const KEY_VAULT_API = '2023-07-01';
 const RESOURCES_API = '2021-04-01';
@@ -400,7 +401,7 @@ export function armApi(http, opts = {}) {
 
     /** @param {string} subscriptionId @param {string} name @param {string} location */
     ensureResourceGroup: (subscriptionId, name, location, tags = {}) =>
-      http.put(`/subscriptions/${subscriptionId}/resourcegroups/${name}`, { location, tags: { app: 'ValueLens', ...tags } }, { query: { 'api-version': RESOURCES_API } }),
+      http.put(`/subscriptions/${subscriptionId}/resourcegroups/${name}`, { location, tags: { ...RESOURCE_TAG, ...tags } }, { query: { 'api-version': RESOURCES_API } }),
 
     /** @param {string} subscriptionId @param {string} resourceGroup */
     listResources: (subscriptionId, resourceGroup) =>
@@ -550,7 +551,7 @@ export function armApi(http, opts = {}) {
           ? []
           : [{ tenantId: v.tenantId, objectId: v.accessPolicyObjectId, permissions: { secrets: ['get', 'list', 'set'] } }],
       };
-      await http.put(id, { location: v.location, tags: { app: 'ValueLens' }, properties }, { query: { 'api-version': KEY_VAULT_API } });
+      await http.put(id, { location: v.location, tags: { ...RESOURCE_TAG }, properties }, { query: { 'api-version': KEY_VAULT_API } });
       for (let i = 0; i < 60; i++) {
         const vault = await http.get(id, { query: { 'api-version': KEY_VAULT_API } });
         const state = vault.properties?.provisioningState;
@@ -582,7 +583,7 @@ export function armApi(http, opts = {}) {
             contentType: o.contentType,
             attributes: o.expires ? { exp: Math.floor(o.expires.getTime() / 1000) } : undefined,
           },
-          tags: { app: 'ValueLens' },
+          tags: { ...RESOURCE_TAG },
         },
         { query: { 'api-version': KEY_VAULT_API }, once: true },
       ),
@@ -701,7 +702,7 @@ export function keyVaultApi(http) {
           value,
           contentType: o.contentType,
           attributes: o.expires ? { exp: Math.floor(o.expires.getTime() / 1000) } : undefined,
-          tags: { app: 'ValueLens' },
+          tags: { ...RESOURCE_TAG },
         },
         { query: { 'api-version': '7.4' }, ...waitForRole, once: true },
       ),

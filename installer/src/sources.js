@@ -20,7 +20,7 @@ export const PIPELINE_TEMPLATE = join(SETUP_DIR, 'pipelines', 'CopilotAdoptionPi
  */
 
 /**
- * @param {string} [dir]  The root of an Analytics Hub checkout.
+ * @param {string} [dir]  The root of an Consumption Central checkout.
  * @returns {Sources}
  */
 export function loadSources(dir = DEFAULT_SOURCE_DIR) {

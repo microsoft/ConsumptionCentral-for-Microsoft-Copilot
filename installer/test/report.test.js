@@ -22,7 +22,7 @@ function setup(o = {}) {
   config.semanticModel.enabled = true;
   config.semanticModel.reports = true;
   const made = fakeCtx({ ui: ui.ui, fabric: fabric.api, config });
-  const model = fabric.add('SemanticModel', 'Analytics Hub Model', null);
+  const model = fabric.add('SemanticModel', 'Consumption Central Model', null);
   config.semanticModel.id = model.id;
   return { ...made, fabric, ui, model };
 }
@@ -64,10 +64,10 @@ test('a template without a PBIR report is an error', () => {
 
 test('reportsWanted: off unless chosen with the model; the module reports come with their models', () => {
   const t = setup();
-  assert.deepEqual(reportsWanted(t.ctx).map((w) => w.name), ['ValueLens']);
+  assert.deepEqual(reportsWanted(t.ctx).map((w) => w.name), ['Consumption Central']);
 
   t.config.modules.consumption = true;
-  assert.deepEqual(reportsWanted(t.ctx).map((w) => w.name), ['ValueLens', 'Consumption Central']);
+  assert.deepEqual(reportsWanted(t.ctx).map((w) => w.name), ['Consumption Central', 'Consumption Central Consumption']);
   assert.equal(reportsWanted(t.ctx)[1].model, t.config.consumption.model);
 
   t.config.semanticModel.reports = undefined;
@@ -84,7 +84,7 @@ test('deployReport: publishes on the model, then leaves it alone', async () => {
   await deployReport(t.ctx, w);
   const item = t.fabric.items.find((i) => i.type === 'Report');
   assert.ok(item);
-  assert.equal(item.displayName, 'ValueLens');
+  assert.equal(item.displayName, 'Consumption Central');
   assert.equal(partJson(item, 'definition.pbir').datasetReference.byConnection.connectionString, `semanticmodelid=${t.model.id}`);
   assert.ok(part(item, 'definition/report.json'));
   const r = t.config.semanticModel.report;
@@ -94,18 +94,18 @@ test('deployReport: publishes on the model, then leaves it alone', async () => {
   assert.equal(t.saves(), 3, "the name being created, Fabric's operation for it, then the report");
 
   await deployReport(t.ctx, w);
-  assert.deepEqual(t.fabric.calls, ['createReport ValueLens']);
-  assert.match(t.ui.text(), /The ValueLens report is in place/);
+  assert.deepEqual(t.fabric.calls, ['createReport Consumption Central']);
+  assert.match(t.ui.text(), /The Consumption Central report is in place/);
   assert.equal(reportUrl('ws-1', 'r-1'), 'https://app.powerbi.com/groups/ws-1/reports/r-1');
 });
 
 test('deployReport: a same-name report that is not ours is left alone', async () => {
   const t = setup();
-  const theirs = t.fabric.add('Report', 'ValueLens', 'theirs');
+  const theirs = t.fabric.add('Report', 'Consumption Central', 'theirs');
   await deployReport(t.ctx, reportsWanted(t.ctx)[0]);
   assert.equal(theirs.content, 'theirs');
-  assert.equal(t.config.semanticModel.report?.name, 'ValueLens_2');
-  assert.deepEqual(t.fabric.calls, ['createReport ValueLens_2']);
+  assert.equal(t.config.semanticModel.report?.name, 'Consumption Central 2');
+  assert.deepEqual(t.fabric.calls, ['createReport Consumption Central 2']);
 });
 
 test('deployReport: a new template asks before replacing edits; no keeps them', async () => {
@@ -117,13 +117,13 @@ test('deployReport: a new template asks before replacing edits; no keeps them', 
 
   r.signature = 'older';
   await deployReport(t.ctx, w);
-  assert.deepEqual(t.fabric.calls, ['createReport ValueLens']);
+  assert.deepEqual(t.fabric.calls, ['createReport Consumption Central']);
   assert.equal(r.signature, 'older', 'still out of date, so the next update asks again');
   assert.match(t.ui.text(), /Save a copy/);
-  assert.match(t.ui.asked.join('\n'), /new version of the ValueLens report/);
+  assert.match(t.ui.asked.join('\n'), /new version of the Consumption Central report/);
 
   await deployReport(t.ctx, w);
-  assert.deepEqual(t.fabric.calls.slice(1), ['updateReport ValueLens']);
+  assert.deepEqual(t.fabric.calls.slice(1), ['updateReport Consumption Central']);
   assert.equal(r.signature, published);
 });
 
@@ -133,10 +133,10 @@ test('deployReport: a redeployed model is picked up without asking; a deleted re
   await deployReport(t.ctx, w);
   const r = /** @type {import('../src/config.js').ReportConfig} */ (t.config.semanticModel.report);
 
-  const model = t.fabric.add('SemanticModel', 'Analytics Hub Model 2', null);
+  const model = t.fabric.add('SemanticModel', 'Consumption Central Model 2', null);
   t.config.semanticModel.id = model.id;
   await deployReport(t.ctx, w);
-  assert.deepEqual(t.fabric.calls.slice(1), ['updateReport ValueLens']);
+  assert.deepEqual(t.fabric.calls.slice(1), ['updateReport Consumption Central']);
   assert.equal(r.modelId, model.id);
   const item = t.fabric.items.find((i) => i.id === r.id);
   assert.equal(partJson(item, 'definition.pbir').datasetReference.byConnection.connectionString, `semanticmodelid=${model.id}`);
@@ -144,19 +144,19 @@ test('deployReport: a redeployed model is picked up without asking; a deleted re
 
   t.fabric.items.splice(t.fabric.items.indexOf(/** @type {any} */ (item)), 1);
   await deployReport(t.ctx, w);
-  assert.match(t.ui.text(), /The ValueLens report was deleted/);
-  assert.deepEqual(t.fabric.calls.slice(2), ['createReport ValueLens']);
+  assert.match(t.ui.text(), /The Consumption Central report was deleted/);
+  assert.deepEqual(t.fabric.calls.slice(2), ['createReport Consumption Central']);
   assert.notEqual(r.id, item?.id);
 });
 
 test('ensureReports: one failure is reported and the rest still publish', async () => {
   const t = setup({ modules: { consumption: true } });
-  const cm = t.fabric.add('SemanticModel', 'Analytics Hub Consumption Model', null);
+  const cm = t.fabric.add('SemanticModel', 'Consumption Central Consumption Model', null);
   t.config.consumption.model.id = cm.id;
   t.fabric.failures.createReport = [httpError(400, 'The definition is not valid.')];
   assert.equal(await ensureReports(t.ctx), false);
-  assert.deepEqual(t.fabric.calls, ['createReport ValueLens', 'createReport Consumption Central']);
-  assert.match(t.ui.text(), /The ValueLens report wasn't published: .*not valid/);
+  assert.deepEqual(t.fabric.calls, ['createReport Consumption Central', 'createReport Consumption Central Consumption']);
+  assert.match(t.ui.text(), /The Consumption Central report wasn't published: .*not valid/);
   assert.match(t.ui.text(), /then run ".*update"/);
   assert.ok(t.config.consumption.model.report?.id);
   assert.equal(t.config.semanticModel.report?.id, undefined);
@@ -165,19 +165,19 @@ test('ensureReports: one failure is reported and the rest still publish', async 
 test('ensureReports: a model that is not deployed is skipped', async () => {
   const t = setup({ modules: { consumption: true } });
   assert.equal(await ensureReports(t.ctx), true, 'a skipped report is not a failure');
-  assert.deepEqual(t.fabric.calls, ['createReport ValueLens']);
-  assert.match(t.ui.text(), /Skipped the Consumption Central report/);
+  assert.deepEqual(t.fabric.calls, ['createReport Consumption Central']);
+  assert.match(t.ui.text(), /Skipped the Consumption Central Consumption report/);
 });
 
 test('plan: report names are reserved and listed for review', async () => {
   const t = setup();
-  t.fabric.add('Report', 'ValueLens', null);
+  t.fabric.add('Report', 'Consumption Central', null);
   await reserveNames(t.ctx);
-  assert.equal(t.config.semanticModel.report?.name, 'ValueLens_2');
+  assert.equal(t.config.semanticModel.report?.name, 'Consumption Central 2');
   const review = planReview(t.ctx);
   assert.deepEqual(
     review.creates.filter((i) => i.kind === 'Report').map((i) => [i.name, i.isNew]),
-    [['ValueLens_2', true]],
+    [['Consumption Central 2', true]],
   );
   assert.match(review.runsOn[0].what, /reports/);
 });

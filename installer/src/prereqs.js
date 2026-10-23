@@ -269,7 +269,7 @@ export async function checkPrereqs(ctx) {
       {
         id: 'fabric-capacity',
         label: 'Active Fabric capacity',
-        neededFor: 'The Analytics Hub workspace, Lakehouse, notebooks and pipeline run on it.',
+        neededFor: 'The Consumption Central workspace, Lakehouse, notebooks and pipeline run on it.',
         howTo: 'Start a Fabric trial, or ask a capacity admin to make you a contributor on an F2 or larger capacity.',
       },
       async () => {
@@ -353,7 +353,7 @@ export async function checkPrereqs(ctx) {
         const off = blockedSettings(Object.fromEntries(list.map((s) => [s.settingName, s])), { reports: true });
         return off.length
           ? { status: 'missing', detail: `Off: ${off.map((s) => s.title).join('; ')}.` }
-          : { status: 'met', detail: 'The settings Analytics Hub needs are on.' };
+          : { status: 'met', detail: 'The settings Consumption Central needs are on.' };
       },
     ),
   ];

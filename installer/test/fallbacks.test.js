@@ -38,8 +38,8 @@ import { fakeCtx, fakeFabric, fakeGraph, fakeUi, httpError } from './fakes.js';
 /** Graph calls without the per-run ref in a new secret's name. @param {string[]} calls */
 const unref = (calls) => calls.map((c) => c.replace(/ \(ref [0-9a-f]{12}\)$/, ''));
 
-const VAULT_ID = '/subscriptions/sub-1/resourceGroups/rg-valuelens/providers/Microsoft.KeyVault/vaults/kv-test';
-const OTHER_ID = '/subscriptions/sub-1/resourceGroups/rg-valuelens/providers/Microsoft.KeyVault/vaults/kv-mine';
+const VAULT_ID = '/subscriptions/sub-1/resourceGroups/rg-consumption-central/providers/Microsoft.KeyVault/vaults/kv-test';
+const OTHER_ID = '/subscriptions/sub-1/resourceGroups/rg-consumption-central/providers/Microsoft.KeyVault/vaults/kv-mine';
 const SUB = '/subscriptions/sub-1';
 const APP_GUID = '11111111-2222-3333-4444-555555555555';
 const READ_ONLY = [{ actions: ['*/read'] }];
@@ -148,7 +148,7 @@ test('vault admin: the commands create the secret in the vault and never hold it
   const { config } = adminCtx();
   const [only, ...rest] = handoffCommands(config, { userId: 'user-1' });
   assert.deepEqual(rest, []);
-  assert.match(only, /^az keyvault secret set --vault-name kv-test --name valuelens-client-secret /);
+  assert.match(only, /^az keyvault secret set --vault-name kv-test --name consumption-central-client-secret /);
   assert.match(only, /--value "\$\(az ad app credential reset --id app-1 --append /);
   assert.doesNotMatch(only, /secret-\d|s3cret/);
 
@@ -240,7 +240,7 @@ test('vault admin: the handoff shows the steps, can make the admin an owner, and
   assert.equal(t.config.keyVault.secretSetAt, undefined);
   const text = ui.text();
   assert.match(text, /Vault: {3}kv-test/);
-  assert.match(text, /Secret: {2}valuelens-client-secret/);
+  assert.match(text, /Secret: {2}consumption-central-client-secret/);
   assert.match(text, /az keyvault secret set --vault-name kv-test/);
   assert.match(text, /Certificates & secrets > New client secret/);
 
@@ -250,7 +250,7 @@ test('vault admin: the handoff shows the steps, can make the admin an owner, and
   assert.equal(await secretHandoff(t.ctx), true);
   assert.equal(t.config.keyVault.secretSetAt, '2026-06-01T12:00:00.000Z');
   assert.equal(t.config.keyVault.handoff?.confirmedAt, '2026-06-01T12:00:00.000Z');
-  assert.match(again.text(), /The vault admin has added the secret valuelens-client-secret/);
+  assert.match(again.text(), /The vault admin has added the secret consumption-central-client-secret/);
 
   const quiet = fakeUi({ yes: true });
   const unattended = adminCtx({ ui: quiet.ui });
@@ -263,20 +263,20 @@ test('vault admin: the handoff shows the steps, can make the admin an owner, and
 test('vault admin: a name that holds another app\'s secret in a shared vault isn\'t handed over', async () => {
   const keyVault = {
     secretInfo: async (/** @type {string} */ _uri, /** @type {string} */ name) =>
-      name === 'valuelens-client-secret' ? { contentType: 'Client secret for another-app' } : null,
+      name === 'consumption-central-client-secret' ? { contentType: 'Client secret for another-app' } : null,
   };
   const ui = fakeUi({ answers: ['', 'go'] });
   const t = adminCtx({ keyVault, ui: ui.ui });
   assert.equal(await secretHandoff(t.ctx), true);
-  assert.equal(t.config.keyVault.secretName, 'valuelens-client-secret-2');
-  assert.match(ui.text(), /--name valuelens-client-secret-2 /);
+  assert.equal(t.config.keyVault.secretName, 'consumption-central-client-secret-2');
+  assert.match(ui.text(), /--name consumption-central-client-secret-2 /);
 
   // Without read access yet, the admin is told to check the name.
   const blind = fakeUi({ answers: ['', 'go'] });
   const b = adminCtx({ keyVault: { secretInfo: async () => Promise.reject(httpError(403, 'Forbidden')) }, ui: blind.ui });
   assert.equal(await secretHandoff(b.ctx), true);
-  assert.equal(b.config.keyVault.secretName, 'valuelens-client-secret');
-  assert.match(blind.text(), /Couldn't check whether kv-test already has a secret called valuelens-client-secret/);
+  assert.equal(b.config.keyVault.secretName, 'consumption-central-client-secret');
+  assert.match(blind.text(), /Couldn't check whether kv-test already has a secret called consumption-central-client-secret/);
 });
 
 test('vault admin: an unknown email or an existing owner doesn\'t stop the handoff', async () => {
@@ -342,7 +342,7 @@ test('notebook mode: the secret is written into the notebooks and nowhere else',
   const graph = fakeGraph();
   const ui = fakeUi();
   const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: ui.ui });
-  t.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
 
   await ensureNotebooks(t.ctx);
   const holding = fabric.items.filter((i) => String(i.content).includes('secret-1'));
@@ -365,7 +365,7 @@ test('notebook mode: the secret is written into the notebooks and nowhere else',
   const rotate = fakeUi({ answers: [true] });
   t.ctx.ui = rotate.ui;
   await rotateSecret(t.ctx);
-  assert.deepEqual(unref(graph.calls), ['addPassword Analytics Hub installer', 'removePassword key-1']);
+  assert.deepEqual(unref(graph.calls), ['addPassword Consumption Central installer', 'removePassword key-1']);
   assert.equal(t.config.app.secretKeyId, 'key-2');
   assert.ok(fabric.items.every((i) => !String(i.content).includes('secret-1')));
   assert.equal(fabric.items.filter((i) => String(i.content).includes('secret-2')).length, holding.length);
@@ -377,7 +377,7 @@ test('notebook mode: each install or repair replaces the secret, then removes th
   const fabric = fakeFabric();
   const graph = fakeGraph();
   const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
-  t.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   t.config.app.secretDays = 30;
   await ensureNotebooks(t.ctx, { rotate: true });
   assert.equal(t.config.app.secretExpires, '2026-07-01T12:00:00.000Z', 'the lifetime is configurable');
@@ -386,7 +386,7 @@ test('notebook mode: each install or repair replaces the secret, then removes th
   graph.calls.length = 0;
   fabric.calls.length = 0;
   await ensureNotebooks(t.ctx, { rotate: true });
-  assert.deepEqual(unref(graph.calls), ['addPassword Analytics Hub installer', 'removePassword key-1']);
+  assert.deepEqual(unref(graph.calls), ['addPassword Consumption Central installer', 'removePassword key-1']);
   assert.equal(fabric.calls.length, holding, 'only the notebooks that hold the secret are rewritten');
   assert.equal(t.config.app.secretKeyId, 'key-2');
   assert.ok(fabric.items.every((i) => !String(i.content).includes('secret-1')));
@@ -399,7 +399,7 @@ test('notebook mode: each install or repair replaces the secret, then removes th
 
   const brought = fakeGraph();
   const b = fakeCtx({ fabric: fakeFabric().api, graph: brought.api, ui: fakeUi().ui });
-  b.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  b.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   b.config.app.existing = true;
   b.ctx.pendingSecret = 'pasted-value';
   await ensureNotebooks(b.ctx);
@@ -413,7 +413,7 @@ test('notebook mode: the secret is never written into a workspace connected to G
   fabric.git.gitConnectionState = 'ConnectedAndInitialized';
   const graph = fakeGraph();
   const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
-  t.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   await assert.rejects(ensureNotebooks(t.ctx), /connected to Git/);
   assert.deepEqual(graph.calls, [], 'no secret is made');
   assert.ok(fabric.items.every((i) => !/secret-\d/.test(String(i.content))));
@@ -423,7 +423,7 @@ test('notebook mode: the secret is never written into a workspace connected to G
   flaky.failures.getGitConnection = [new Error('Forbidden')];
   const ui = fakeUi();
   const f = fakeCtx({ fabric: flaky.api, graph: fakeGraph().api, ui: ui.ui });
-  f.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  f.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   await ensureNotebooks(f.ctx);
   assert.equal(f.config.app.secretKeyId, 'key-1');
   assert.match(ui.text(), /Git/);
@@ -433,7 +433,7 @@ test('notebook mode: a rotation that stops part-way removes the old secret on th
   const fabric = fakeFabric();
   const graph = fakeGraph();
   const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
-  t.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   await ensureNotebooks(t.ctx);
   assert.equal(t.config.fabric.secretInNotebooks, true);
 
@@ -445,14 +445,14 @@ test('notebook mode: a rotation that stops part-way removes the old secret on th
   };
   graph.calls.length = 0;
   await assert.rejects(ensureNotebooks(t.ctx, { force: true }), /Fabric is busy/);
-  assert.deepEqual(unref(graph.calls), ['addPassword Analytics Hub installer'], 'the old secret stays while notebooks still use it');
+  assert.deepEqual(unref(graph.calls), ['addPassword Consumption Central installer'], 'the old secret stays while notebooks still use it');
   assert.equal(t.config.app.secretKeyId, 'key-2');
   assert.deepEqual(t.config.app.retiredSecretKeyIds, ['key-1']);
 
   fabric.api.updateNotebook = update;
   graph.calls.length = 0;
   await ensureNotebooks(t.ctx, { force: true });
-  assert.deepEqual(unref(graph.calls), ['addPassword Analytics Hub installer', 'removePassword key-1', 'removePassword key-2']);
+  assert.deepEqual(unref(graph.calls), ['addPassword Consumption Central installer', 'removePassword key-1', 'removePassword key-2']);
   assert.equal(t.config.app.secretKeyId, 'key-3');
   assert.equal(t.config.app.retiredSecretKeyIds, undefined);
   assert.doesNotMatch(JSON.stringify(t.config), /secret-\d/);
@@ -462,7 +462,7 @@ test('a run stopped while Fabric creates a notebook: the next run uses that note
   const fabric = fakeFabric();
   const graph = fakeGraph();
   const first = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
-  first.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  first.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   // The record on disk is what the last save wrote; a stopped process saves nothing more.
   let saved = structuredClone(first.config);
   let stopped = false;
@@ -494,7 +494,7 @@ test('a run stopped while Fabric creates a notebook: the next run uses that note
   assert.equal(new Set(names).size, names.length);
   assert.ok(fabric.items.length > count, 'the rest are created');
   assert.ok(fabric.items.every((i) => !String(i.content).includes('secret-1')), 'the stopped run\'s notebook is rewritten');
-  assert.deepEqual(unref(graph.calls), ['addPassword Analytics Hub installer', 'removePassword key-1']);
+  assert.deepEqual(unref(graph.calls), ['addPassword Consumption Central installer', 'removePassword key-1']);
   assert.equal(next.config.app.secretKeyId, 'key-2');
   assert.equal(next.config.app.pendingSecretKeyIds, undefined);
   assert.equal(next.config.fabric.pendingItems, undefined);
@@ -509,30 +509,30 @@ test('a run stopped before Fabric created the item: the next run creates it unde
   fabric.calls.length = 0;
   // Fabric says that create failed, so nothing is coming.
   const failedOp = 'https://api.fabric.microsoft.com/v1/operations/op-f';
-  t.config.fabric.pendingItems = { DataPipeline: { name: 'AnalyticsHub_Pipeline', ref: 'aa11', at: t.ctx.now().toISOString(), operation: failedOp } };
+  t.config.fabric.pendingItems = { DataPipeline: { name: 'ConsumptionCentral_Pipeline', ref: 'aa11', at: t.ctx.now().toISOString(), operation: failedOp } };
   fabric.operations[failedOp] = 'Failed';
   await ensurePipeline(t.ctx);
-  assert.deepEqual(fabric.calls, ['operationStatus op-f', 'createPipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(fabric.calls, ['operationStatus op-f', 'createPipeline ConsumptionCentral_Pipeline']);
   assert.equal(t.config.fabric.pendingItems, undefined);
   assert.match(String(fabric.items.find((i) => i.type === 'DataPipeline')?.description), /^\(ref [0-9a-f]{12}\)$/, 'each create gets a fresh ref');
 
   // Not pending: a same-name item is someone else's and is left alone.
   const other = fakeFabric();
-  other.add('DataPipeline', 'AnalyticsHub_Pipeline', 'theirs');
+  other.add('DataPipeline', 'ConsumptionCentral_Pipeline', 'theirs');
   const o = fakeCtx({ fabric: other.api, graph: fakeGraph().api, ui: fakeUi().ui });
   await ensureNotebooks(o.ctx);
   await ensurePipeline(o.ctx);
-  assert.equal(o.config.fabric.pipelineName, 'AnalyticsHub_Pipeline_2');
+  assert.equal(o.config.fabric.pipelineName, 'ConsumptionCentral_Pipeline_2');
 
   // Pending and there with the stopped run's ref: that pipeline is used and brought up to date.
   const resumed = fakeFabric();
   const r = fakeCtx({ fabric: resumed.api, graph: fakeGraph().api, ui: fakeUi().ui });
   await ensureNotebooks(r.ctx);
-  const ours = resumed.add('DataPipeline', 'AnalyticsHub_Pipeline', 'half-made', 'Analytics Hub daily load. (ref aa11)');
-  r.config.fabric.pendingItems = { DataPipeline: { name: 'AnalyticsHub_Pipeline', ref: 'aa11' } };
+  const ours = resumed.add('DataPipeline', 'ConsumptionCentral_Pipeline', 'half-made', 'Consumption Central daily load. (ref aa11)');
+  r.config.fabric.pendingItems = { DataPipeline: { name: 'ConsumptionCentral_Pipeline', ref: 'aa11' } };
   resumed.calls.length = 0;
   await ensurePipeline(r.ctx);
-  assert.deepEqual(resumed.calls, ['updatePipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(resumed.calls, ['updatePipeline ConsumptionCentral_Pipeline']);
   assert.equal(r.config.fabric.pipelineId, ours.id);
   assert.notEqual(ours.content, 'half-made');
 
@@ -540,12 +540,12 @@ test('a run stopped before Fabric created the item: the next run creates it unde
   const taken = fakeFabric();
   const k = fakeCtx({ fabric: taken.api, graph: fakeGraph().api, ui: fakeUi().ui });
   await ensureNotebooks(k.ctx);
-  const theirs = taken.add('DataPipeline', 'AnalyticsHub_Pipeline', 'theirs', 'Analytics Hub daily load. (ref bb22)');
-  k.config.fabric.pendingItems = { DataPipeline: { name: 'AnalyticsHub_Pipeline', ref: 'aa11', at: k.ctx.now().toISOString(), operation: failedOp } };
+  const theirs = taken.add('DataPipeline', 'ConsumptionCentral_Pipeline', 'theirs', 'Consumption Central daily load. (ref bb22)');
+  k.config.fabric.pendingItems = { DataPipeline: { name: 'ConsumptionCentral_Pipeline', ref: 'aa11', at: k.ctx.now().toISOString(), operation: failedOp } };
   taken.operations[failedOp] = 'Failed';
   taken.calls.length = 0;
   await ensurePipeline(k.ctx);
-  assert.deepEqual(taken.calls.filter((c) => /Pipeline /.test(c)), ['createPipeline AnalyticsHub_Pipeline_2']);
+  assert.deepEqual(taken.calls.filter((c) => /Pipeline /.test(c)), ['createPipeline ConsumptionCentral_Pipeline_2']);
   assert.equal(theirs.content, 'theirs');
   assert.notEqual(k.config.fabric.pipelineId, theirs.id);
 });
@@ -555,15 +555,15 @@ test('a run stopped while Fabric creates a model: planning keeps its name and th
   const ui = fakeUi();
   const t = fakeCtx({ fabric: fabric.api, graph: fakeGraph().api, ui: ui.ui });
   t.config.semanticModel.enabled = true;
-  const ours = fabric.add('SemanticModel', 'Analytics Hub Model', 'half-made', 'ValueLens. (ref cc33)');
-  t.config.fabric.pendingItems = { 'SemanticModel:main': { name: 'Analytics Hub Model', ref: 'cc33' } };
+  const ours = fabric.add('SemanticModel', 'Consumption Central Model', 'half-made', 'ValueLens. (ref cc33)');
+  t.config.fabric.pendingItems = { 'SemanticModel:main': { name: 'Consumption Central Model', ref: 'cc33' } };
 
   await reserveNames(t.ctx);
-  assert.equal(t.config.semanticModel.name, 'Analytics Hub Model', 'not renamed to "… 2"');
+  assert.equal(t.config.semanticModel.name, 'Consumption Central Model', 'not renamed to "… 2"');
   assert.doesNotMatch(ui.text(), /not from this install/);
   fabric.calls.length = 0;
   await deployModel(t.ctx, t.config.semanticModel, { signature: 's', definition: () => ({ parts: [] }) });
-  assert.deepEqual(fabric.calls, ['updateSemanticModel Analytics Hub Model']);
+  assert.deepEqual(fabric.calls, ['updateSemanticModel Consumption Central Model']);
   assert.equal(t.config.semanticModel.id, ours.id);
   assert.equal(t.config.fabric.pendingItems, undefined);
 
@@ -571,14 +571,14 @@ test('a run stopped while Fabric creates a model: planning keeps its name and th
   const other = fakeFabric();
   const o = fakeCtx({ fabric: other.api, graph: fakeGraph().api, ui: fakeUi().ui });
   o.config.semanticModel.enabled = true;
-  const theirs = other.add('SemanticModel', 'Analytics Hub Model', 'theirs');
+  const theirs = other.add('SemanticModel', 'Consumption Central Model', 'theirs');
   const failedOp = 'https://api.fabric.microsoft.com/v1/operations/op-f';
-  o.config.fabric.pendingItems = { 'SemanticModel:main': { name: 'Analytics Hub Model', ref: 'cc33', at: o.ctx.now().toISOString(), operation: failedOp } };
+  o.config.fabric.pendingItems = { 'SemanticModel:main': { name: 'Consumption Central Model', ref: 'cc33', at: o.ctx.now().toISOString(), operation: failedOp } };
   other.operations[failedOp] = 'Failed';
   await reserveNames(o.ctx);
-  assert.equal(o.config.semanticModel.name, 'Analytics Hub Model 2');
+  assert.equal(o.config.semanticModel.name, 'Consumption Central Model 2');
   await deployModel(o.ctx, o.config.semanticModel, { signature: 's', definition: () => ({ parts: [] }) });
-  assert.deepEqual(other.calls.filter((c) => /SemanticModel /.test(c)), ['createSemanticModel Analytics Hub Model 2']);
+  assert.deepEqual(other.calls.filter((c) => /SemanticModel /.test(c)), ['createSemanticModel Consumption Central Model 2']);
   assert.equal(theirs.content, 'theirs');
   assert.equal(modelKey(o.config, o.config.consumption.model), 'consumption');
 });
@@ -588,18 +588,18 @@ test('a run stopped moments ago: waits for the item Fabric is still creating, ra
   const t = fakeCtx({ fabric: fabric.api, graph: fakeGraph().api, ui: fakeUi().ui });
   await ensureNotebooks(t.ctx);
   const at = new Date(t.ctx.now().getTime() - 60_000).toISOString();
-  t.config.fabric.pendingItems = { DataPipeline: { name: 'AnalyticsHub_Pipeline', ref: 'ee55', at } };
+  t.config.fabric.pendingItems = { DataPipeline: { name: 'ConsumptionCentral_Pipeline', ref: 'ee55', at } };
   const list = fabric.api.listItems;
   let lists = 0;
   /** @type {any} */
   let ours;
   fabric.api.listItems = async (/** @type {string} */ ws, /** @type {string} */ type) => {
-    if (type === 'DataPipeline' && ++lists === 3) ours = fabric.add('DataPipeline', 'AnalyticsHub_Pipeline', 'half-made', 'Analytics Hub daily load. (ref ee55)');
+    if (type === 'DataPipeline' && ++lists === 3) ours = fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', 'half-made', 'Consumption Central daily load. (ref ee55)');
     return list(ws, type);
   };
   fabric.calls.length = 0;
   await ensurePipeline(t.ctx);
-  assert.deepEqual(fabric.calls, ['updatePipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(fabric.calls, ['updatePipeline ConsumptionCentral_Pipeline']);
   assert.equal(t.config.fabric.pipelineId, ours.id);
   assert.equal(fabric.items.filter((i) => i.type === 'DataPipeline').length, 1);
 
@@ -609,7 +609,7 @@ test('a run stopped moments ago: waits for the item Fabric is still creating, ra
   const l = fakeCtx({ fabric: late.api, graph: fakeGraph().api, ui: lateUi.ui });
   await ensureNotebooks(l.ctx);
   const old = new Date(l.ctx.now().getTime() - CREATE_SETTLE_MS).toISOString();
-  l.config.fabric.pendingItems = { DataPipeline: { name: 'AnalyticsHub_Pipeline', ref: 'ee55', at: old } };
+  l.config.fabric.pendingItems = { DataPipeline: { name: 'ConsumptionCentral_Pipeline', ref: 'ee55', at: old } };
   late.calls.length = 0;
   const sleeps = l.sleeps.length;
   await assert.rejects(ensurePipeline(l.ctx), /wasn't created again, so there won't be two\. Run the installer again later: it uses that item if Fabric made it\. If it never appears, run the installer again without --yes and answer yes to create it\./);
@@ -622,10 +622,10 @@ test('a run stopped moments ago: waits for the item Fabric is still creating, ra
   const sure = fakeFabric();
   const s = fakeCtx({ fabric: sure.api, graph: fakeGraph().api, ui: fakeUi({ answers: [true] }).ui });
   await ensureNotebooks(s.ctx);
-  s.config.fabric.pendingItems = { DataPipeline: { name: 'AnalyticsHub_Pipeline', ref: 'ee55', at: old } };
+  s.config.fabric.pendingItems = { DataPipeline: { name: 'ConsumptionCentral_Pipeline', ref: 'ee55', at: old } };
   sure.calls.length = 0;
   await ensurePipeline(s.ctx);
-  assert.deepEqual(sure.calls.filter((c) => /Pipeline /.test(c)), ['createPipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(sure.calls.filter((c) => /Pipeline /.test(c)), ['createPipeline ConsumptionCentral_Pipeline']);
   assert.equal(s.config.fabric.pendingItems, undefined);
 
   // Days on, still not there: time alone doesn't show it isn't coming, so --yes still stops.
@@ -634,7 +634,7 @@ test('a run stopped moments ago: waits for the item Fabric is still creating, ra
   const g = fakeCtx({ fabric: gone.api, graph: fakeGraph().api, ui: goneUi.ui });
   await ensureNotebooks(g.ctx);
   const days = new Date(g.ctx.now().getTime() - 3 * 24 * 60 * 60_000).toISOString();
-  g.config.fabric.pendingItems = { DataPipeline: { name: 'AnalyticsHub_Pipeline', ref: 'ee55', at: days } };
+  g.config.fabric.pendingItems = { DataPipeline: { name: 'ConsumptionCentral_Pipeline', ref: 'ee55', at: days } };
   gone.calls.length = 0;
   await assert.rejects(ensurePipeline(g.ctx), /wasn't created again, so there won't be two/);
   assert.deepEqual(gone.calls.filter((c) => /Pipeline /.test(c)), []);
@@ -649,7 +649,7 @@ test("a stopped run's create with no time in the record: asked about at once, th
     const ui = fakeUi({ yes: true });
     const t = fakeCtx({ fabric: fabric.api, graph: fakeGraph().api, ui: ui.ui });
     await ensureNotebooks(t.ctx);
-    t.config.fabric.pendingItems = { DataPipeline: { name: 'AnalyticsHub_Pipeline', ref: 'ab12', ...(at ? { at } : {}) } };
+    t.config.fabric.pendingItems = { DataPipeline: { name: 'ConsumptionCentral_Pipeline', ref: 'ab12', ...(at ? { at } : {}) } };
     const before = JSON.stringify(t.config.fabric.pendingItems);
     fabric.calls.length = 0;
     const sleeps = t.sleeps.length;
@@ -669,10 +669,10 @@ test("a stopped run's create with no time in the record: asked about at once, th
     const sure = fakeFabric();
     const s = fakeCtx({ fabric: sure.api, graph: fakeGraph().api, ui: fakeUi({ answers: [true] }).ui });
     await ensureNotebooks(s.ctx);
-    s.config.fabric.pendingItems = { DataPipeline: { name: 'AnalyticsHub_Pipeline', ref: 'ab12', ...(at ? { at } : {}) } };
+    s.config.fabric.pendingItems = { DataPipeline: { name: 'ConsumptionCentral_Pipeline', ref: 'ab12', ...(at ? { at } : {}) } };
     sure.calls.length = 0;
     await ensurePipeline(s.ctx);
-    assert.deepEqual(sure.calls.filter((c) => /Pipeline /.test(c)), ['createPipeline AnalyticsHub_Pipeline']);
+    assert.deepEqual(sure.calls.filter((c) => /Pipeline /.test(c)), ['createPipeline ConsumptionCentral_Pipeline']);
   }
 });
 
@@ -685,7 +685,7 @@ test("a stopped run's create that Fabric gave an operation for: asked about, not
     await ensureNotebooks(t.ctx);
     // Asked a second ago, so the name-only wait would be long.
     const at = new Date(t.ctx.now().getTime() - 1000).toISOString();
-    t.config.fabric.pendingItems = { DataPipeline: { name: 'AnalyticsHub_Pipeline', ref: 'ee55', at, operation: OP } };
+    t.config.fabric.pendingItems = { DataPipeline: { name: 'ConsumptionCentral_Pipeline', ref: 'ee55', at, operation: OP } };
     if (state) fabric.operations[OP] = state;
     fabric.calls.length = 0;
     return { fabric, ui, t };
@@ -695,12 +695,12 @@ test("a stopped run's create that Fabric gave an operation for: asked about, not
   // Failed: there's nothing coming, so a new one is made at once.
   const failed = await setup('Failed');
   await ensurePipeline(failed.t.ctx);
-  assert.deepEqual(pipelineCalls(failed.fabric.calls), ['operationStatus op-x', 'createPipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(pipelineCalls(failed.fabric.calls), ['operationStatus op-x', 'createPipeline ConsumptionCentral_Pipeline']);
   assert.equal(failed.t.sleeps.length, 0);
 
   // Still running throughout: an error to run again later, and the record (with the operation) kept.
   const running = await setup('Running');
-  await assert.rejects(ensurePipeline(running.t.ctx), /Fabric is still creating AnalyticsHub_Pipeline\. Run the installer again in a few minutes/);
+  await assert.rejects(ensurePipeline(running.t.ctx), /Fabric is still creating ConsumptionCentral_Pipeline\. Run the installer again in a few minutes/);
   assert.deepEqual(running.fabric.calls.filter((c) => /Pipeline /.test(c)), []);
   assert.equal(running.t.config.fabric.pendingItems?.DataPipeline?.operation, OP);
   assert.equal(running.t.sleeps.length, CREATE_SETTLE_MS / 15_000);
@@ -712,12 +712,12 @@ test("a stopped run's create that Fabric gave an operation for: asked about, not
   done.fabric.api.operationStatus = async (/** @type {string} */ url) => {
     if (++asks === 3) {
       done.fabric.operations[OP] = 'Succeeded';
-      done.fabric.add('DataPipeline', 'AnalyticsHub_Pipeline', 'half-made', 'Analytics Hub daily load. (ref ee55)');
+      done.fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', 'half-made', 'Consumption Central daily load. (ref ee55)');
     }
     return status(url);
   };
   await ensurePipeline(done.t.ctx);
-  assert.deepEqual(done.fabric.calls.filter((c) => /Pipeline /.test(c)), ['updatePipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(done.fabric.calls.filter((c) => /Pipeline /.test(c)), ['updatePipeline ConsumptionCentral_Pipeline']);
   assert.equal(done.fabric.items.filter((i) => i.type === 'DataPipeline').length, 1);
   assert.equal(done.t.config.fabric.pendingItems, undefined);
 
@@ -726,11 +726,11 @@ test("a stopped run's create that Fabric gave an operation for: asked about, not
   const lagList = lag.fabric.api.listItems;
   let lagLists = 0;
   lag.fabric.api.listItems = async (/** @type {string} */ ws, /** @type {string} */ type) => {
-    if (type === 'DataPipeline' && ++lagLists === 3) lag.fabric.add('DataPipeline', 'AnalyticsHub_Pipeline', 'half-made', 'Analytics Hub daily load. (ref ee55)');
+    if (type === 'DataPipeline' && ++lagLists === 3) lag.fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', 'half-made', 'Consumption Central daily load. (ref ee55)');
     return lagList(ws, type);
   };
   await ensurePipeline(lag.t.ctx);
-  assert.deepEqual(lag.fabric.calls.filter((c) => /Pipeline /.test(c)), ['updatePipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(lag.fabric.calls.filter((c) => /Pipeline /.test(c)), ['updatePipeline ConsumptionCentral_Pipeline']);
   assert.equal(lag.fabric.items.filter((i) => i.type === 'DataPipeline').length, 1);
 
   // Succeeded but never there (deleted since, or still lagging): not made again without asking.
@@ -738,11 +738,11 @@ test("a stopped run's create that Fabric gave an operation for: asked about, not
   await assert.rejects(ensurePipeline(deleted.t.ctx), /wasn't created again, so there won't be two/);
   assert.deepEqual(pipelineCalls(deleted.fabric.calls), ['operationStatus op-x']);
   assert.equal(deleted.t.sleeps.length, 8, 'looked for it for two minutes');
-  assert.match(deleted.ui.text(), /Fabric says it created AnalyticsHub_Pipeline for the run that stopped, but it isn't in the workspace/);
+  assert.match(deleted.ui.text(), /Fabric says it created ConsumptionCentral_Pipeline for the run that stopped, but it isn't in the workspace/);
   assert.equal(deleted.t.config.fabric.pendingItems?.DataPipeline?.ref, 'ee55');
   const agreed = await setup('Succeeded', { answers: [true] });
   await ensurePipeline(agreed.t.ctx);
-  assert.deepEqual(pipelineCalls(agreed.fabric.calls), ['operationStatus op-x', 'createPipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(pipelineCalls(agreed.fabric.calls), ['operationStatus op-x', 'createPipeline ConsumptionCentral_Pipeline']);
   // However long ago Fabric said it made it: still not made again without asking.
   const old = await setup('Succeeded');
   /** @type {any} */ (old.t.config.fabric.pendingItems).DataPipeline.at = new Date(old.t.ctx.now().getTime() - 2 * 60 * 60_000).toISOString();
@@ -834,7 +834,7 @@ test('notebook mode: a secret Entra made just before the run stopped is found by
   const fabric = fakeFabric();
   const graph = fakeGraph();
   const first = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
-  first.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  first.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   /** @type {any} */
   let saved;
   first.ctx.save = () => {
@@ -851,7 +851,7 @@ test('notebook mode: a secret Entra made just before the run stopped is found by
   assert.equal(saved.app.pendingSecretKeyIds, undefined, 'the key ID was never saved');
 
   // Someone else's secrets, named like the installer's, are left alone.
-  graph.passwords.push({ keyId: 'theirs-1', displayName: 'Analytics Hub installer' }, { keyId: 'theirs-2', displayName: secretLabel('123456abcdef') });
+  graph.passwords.push({ keyId: 'theirs-1', displayName: 'Consumption Central installer' }, { keyId: 'theirs-2', displayName: secretLabel('123456abcdef') });
   graph.api.addPassword = add;
   const ui = fakeUi();
   const next = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: ui.ui, config: saved });
@@ -868,7 +868,7 @@ test('notebook mode: a secret attempt that matches more than one secret, or none
   const graph = fakeGraph();
   const ui = fakeUi();
   const t = fakeCtx({ fabric: fakeFabric().api, graph: graph.api, ui: ui.ui });
-  t.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   const now = t.ctx.now().getTime();
   t.config.app.secretAttempts = [
     { ref: 'aaaaaaaaaaaa', at: new Date(now - 60_000).toISOString() },
@@ -893,7 +893,7 @@ test('notebook mode: a secret attempt that matches more than one secret, or none
     ['aaaaaaaaaaaa', 'bbbbbbbbbbbb', 'cccccccccccc'],
     'two matches: left alone; none yet: checked again; old with none: kept, with a warning; already tracked: dropped',
   );
-  assert.match(ui.text(), /asked Entra for a client secret called "Analytics Hub installer \(ref cccccccccccc\)" .*the app has none by that name\. The install record keeps watching for it/);
+  assert.match(ui.text(), /asked Entra for a client secret called "Consumption Central installer \(ref cccccccccccc\)" .*the app has none by that name\. The install record keeps watching for it/);
   assert.doesNotMatch(ui.text(), /ref bbbbbbbbbbbb\)" .*has none by that name/, 'no warning while Entra may still be catching up');
   assert.deepEqual(t.config.app.pendingSecretKeyIds, ['d-1']);
 
@@ -902,7 +902,7 @@ test('notebook mode: a secret attempt that matches more than one secret, or none
   await settleSecretAttempts(t.ctx);
   assert.deepEqual(t.config.app.secretAttempts?.map((a) => a.ref), ['aaaaaaaaaaaa', 'bbbbbbbbbbbb']);
   assert.ok(graph.calls.includes('removePassword c-1'));
-  assert.match(ui.text(), /More than one client secret on the app is called "Analytics Hub installer \(ref aaaaaaaaaaaa\)" \(keys a-1, a-2\), so none is removed/);
+  assert.match(ui.text(), /More than one client secret on the app is called "Consumption Central installer \(ref aaaaaaaaaaaa\)" \(keys a-1, a-2\), so none is removed/);
   assert.ok(!graph.calls.some((c) => /removePassword (a-|d-1)/.test(c)), 'neither the ambiguous ones nor a tracked one is removed by the check');
 });
 
@@ -934,7 +934,7 @@ test('a retired secret Entra errors on removing is cleared only once the app no 
 test('notebook mode: a secret Entra turned down leaves nothing to look for', async () => {
   const graph = fakeGraph();
   const t = fakeCtx({ fabric: fakeFabric().api, graph: graph.api, ui: fakeUi().ui });
-  t.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   graph.failures.addPassword = [httpError(403, 'Forbidden')];
   await assert.rejects(ensureNotebooks(t.ctx), /Forbidden/);
   assert.equal(t.config.app.secretAttempts, undefined);
@@ -947,7 +947,7 @@ test('notebook mode: old secrets stay in the record until Entra confirms they ar
   const fabric = fakeFabric();
   const graph = fakeGraph();
   const first = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
-  first.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  first.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   await ensureNotebooks(first.ctx);
   assert.equal(first.config.app.secretKeyId, 'key-1');
 
@@ -997,7 +997,7 @@ test('notebook mode: an unused secret that can\'t be removed is kept to remove l
   const fabric = fakeFabric();
   const graph = fakeGraph();
   const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
-  t.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   fabric.api.createNotebook = async () => {
     throw new Error('Fabric is busy');
   };
@@ -1014,7 +1014,7 @@ test('notebook mode: moving to Key Vault rewrites the notebooks and removes the 
   const fabric = fakeFabric();
   const graph = fakeGraph();
   const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
-  t.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   await ensureNotebooks(t.ctx);
   const holding = fabric.items.filter((i) => String(i.content).includes('secret-1')).map((i) => i.displayName);
 
@@ -1041,7 +1041,7 @@ test('notebook mode: an app the user brought gets its pasted secret; no vault ne
   const graph = fakeGraph();
   const ui = fakeUi({ answers: ['pasted-value'] });
   const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: ui.ui });
-  t.config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   t.config.app.existing = true;
 
   await ensureKeyVault(t.ctx);
@@ -1108,7 +1108,7 @@ test('planning: a vault the user can\'t write to recommends no Key Vault, then t
   assert.equal(t.config.keyVault.mode, 'keyvault-admin');
   assert.equal(t.config.keyVault.existing, true);
   assert.equal(t.config.keyVault.name, 'kv-test');
-  assert.equal(t.config.keyVault.resourceGroup, 'rg-valuelens');
+  assert.equal(t.config.keyVault.resourceGroup, 'rg-consumption-central');
   assert.match(ui.text(), /You can't write secrets to kv-test: that needs Key Vault Secrets Officer/);
   assert.ok(ui.asked.includes('How should the client secret get there?'));
 
@@ -1162,12 +1162,12 @@ test('planning: the no Key Vault option states the trade-off and needs a yes', a
 });
 
 test('planning: no rights to create a vault recommends no Key Vault; --yes needs the flag', async () => {
-  const arm = vaultArm({ groups: ['rg-valuelens'], perms: { [SUB]: READ_ONLY } });
+  const arm = vaultArm({ groups: ['rg-consumption-central'], perms: { [SUB]: READ_ONLY } });
   const ui = fakeUi({ answers: ['sub-1', ''] });
   const t = fakeCtx({ arm: arm.api, ui: ui.ui });
   await planKeyVault(t.ctx, PRE, 'uksouth');
   assert.equal(t.config.keyVault.mode, 'notebook');
-  assert.match(ui.text(), /You can't create a Key Vault in rg-valuelens: that needs Contributor there/);
+  assert.match(ui.text(), /You can't create a Key Vault in rg-consumption-central: that needs Contributor there/);
   assert.ok(ui.asked.includes('Where should the client secret go?'));
 
   const quiet = fakeCtx({ arm: arm.api, ui: fakeUi({ yes: true, answers: ['sub-1', ''] }).ui });
@@ -1210,10 +1210,10 @@ test('planning: without Advanced settings, a new vault takes its group, region, 
   t.ctx.advanced = false;
   await planKeyVault(t.ctx, PRE, 'uksouth');
   assert.deepEqual(ui.asked, ['Azure subscription', 'Vault']);
-  assert.equal(t.config.keyVault.resourceGroup, 'rg-valuelens');
+  assert.equal(t.config.keyVault.resourceGroup, 'rg-consumption-central');
   assert.equal(t.config.keyVault.location, 'uksouth');
-  assert.match(String(t.config.keyVault.name), /^valuelens-[0-9a-f]{6}$/);
-  assert.equal(t.config.keyVault.secretName, 'valuelens-client-secret');
+  assert.match(String(t.config.keyVault.name), /^consumption-central-[0-9a-f]{4}$/);
+  assert.equal(t.config.keyVault.secretName, 'consumption-central-client-secret');
 
   // Only Contributor on another group: the default can't be made, so it asks.
   const rg = vaultArm({ groups: ['rg-mine'], perms: { [SUB]: READ_ONLY, [`${SUB}/resourceGroups/rg-mine`]: RG_CONTRIBUTOR } });
@@ -1228,7 +1228,7 @@ test('planning: without Advanced settings, a new vault takes its group, region, 
 test('new vault: Contributor on just the resource group creates it there', async () => {
   const kv = (/** @type {any} */ arm) => {
     const t = fakeCtx({ arm, ui: fakeUi().ui });
-    t.config.keyVault = { secretName: 'valuelens-client-secret', subscriptionId: 'sub-1', resourceGroup: 'rg-mine', name: 'kv-new', location: 'uksouth', rbac: false, existing: false };
+    t.config.keyVault = { secretName: 'consumption-central-client-secret', subscriptionId: 'sub-1', resourceGroup: 'rg-mine', name: 'kv-new', location: 'uksouth', rbac: false, existing: false };
     return t;
   };
   const ok = vaultArm({ groups: ['rg-mine'], providerFails: true });
@@ -1289,7 +1289,7 @@ test('app check: the user can check again once an admin has fixed it, or carry o
   assert.equal(t.config.app.appId, APP_GUID);
   assert.equal(t.config.app.displayName, 'Their app');
   assert.match(ui.text(), /Their app isn't ready yet/);
-  assert.match(ui.text(), /Their app has everything Analytics Hub needs/);
+  assert.match(ui.text(), /Their app has everything Consumption Central needs/);
 
   const stuck = appGraph({ application: THEIR_APP, sp: { id: 'their-sp' } });
   const go = fakeUi({ answers: [APP_GUID, 'go'] });
@@ -1312,11 +1312,11 @@ test('admin pack: a script and portal steps for every permission, with the secre
   const dir = mkdtempSync(join(tmpdir(), 'vl-pack-'));
   try {
     const t = fakeCtx();
-    t.ctx.configFile = join(dir, 'valuelens-install.json');
+    t.ctx.configFile = join(dir, 'consumption-central-setup.json');
     const file = writeAdminPack(t.ctx);
     assert.equal(file, join(dir, ADMIN_PACK_FILE));
     const body = readFileSync(file, 'utf8');
-    assert.match(body, /az ad app create --display-name "Analytics Hub Data Collector"/);
+    assert.match(body, /az ad app create --display-name "Consumption Central \(Fabric\)"/);
     assert.match(body, /for P in AuditLogsQuery\.Read\.All Reports\.Read\.All User\.Read\.All; do/);
     assert.match(body, /az ad app permission admin-consent --id "\$APP_ID"/);
     assert.match(body, /Grant admin consent/);
@@ -1326,7 +1326,7 @@ test('admin pack: a script and portal steps for every permission, with the secre
 
     Object.assign(t.config.keyVault, { mode: 'keyvault-admin', name: 'kv-test' });
     const vaulted = readFileSync(writeAdminPack(t.ctx), 'utf8');
-    assert.match(vaulted, /az keyvault secret set --vault-name kv-test --name valuelens-client-secret/);
+    assert.match(vaulted, /az keyvault secret set --vault-name kv-test --name consumption-central-client-secret/);
     assert.match(vaulted, /if \[ -n "\$CT" \] && \[ "\$CT" != "Client secret for \$APP_ID" \]; then/, 'another app\'s secret with that name is left alone');
     assert.match(vaulted, /They don't need the secret/);
   } finally {
@@ -1339,7 +1339,7 @@ test('admin pack: the install stops until the admin sends the client ID, then ch
   try {
     const quiet = fakeUi({ yes: true });
     const q = fakeCtx({ ui: quiet.ui });
-    q.ctx.configFile = join(dir, 'valuelens-install.json');
+    q.ctx.configFile = join(dir, 'consumption-central-setup.json');
     delete q.config.app.appId;
     await assert.rejects(planAdminPack(q.ctx, { canConsent: false }), (err) => isResumeLater(err));
     assert.equal(q.config.app.adminPack, join(dir, ADMIN_PACK_FILE));

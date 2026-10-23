@@ -175,7 +175,7 @@ test('exitWhenDone: after a sign-in was given up on, it exits only once slow std
   const auth = new URL('../src/auth.js', import.meta.url).href;
   const size = 1024 * 1024;
   const streams = [
-    ['stdout', join(dir, 'slow-stdout.txt'), '\nUpload AnalyticsHub-Teams.zip to Teams by hand.\n'],
+    ['stdout', join(dir, 'slow-stdout.txt'), '\nUpload ConsumptionCentral-Teams.zip to Teams by hand.\n'],
     ['stderr', join(dir, 'slow-stderr.txt'), '\nThe last error.\n'],
   ];
   // Slow stdout and stderr, like pipes to a slow reader on Linux or macOS, where pipes write asynchronously.
@@ -355,7 +355,7 @@ test('parseCli: commands, sign-in methods and validation', () => {
   assert.equal(d.method, 'browser');
   assert.equal(d.wait, true);
   assert.equal(d.yes, false);
-  assert.match(d.configFile, /valuelens-install\.json$/);
+  assert.match(d.configFile, /consumption-central-setup\.json$/);
 
   const r = parseCli(['run', '--backfill-days', '30', '--use-az', '-y', '--no-wait', '--config', 'x.json']);
   assert.equal(r.command, 'run');
@@ -378,7 +378,7 @@ test('parseCli: commands, sign-in methods and validation', () => {
 });
 
 test('install record round-trips, fills defaults and refuses secrets', () => {
-  const file = join(dir, 'valuelens-install.json');
+  const file = join(dir, 'consumption-central-setup.json');
   assert.equal(loadConfig(file).existed, false);
 
   const config = emptyConfig();
@@ -416,12 +416,12 @@ test('messages name the exe when it started the installer', () => {
   assert.equal(fromExe({}), false);
   assert.equal(fromExe({ [EXE_ENV]: '0' }), false);
   assert.equal(fromExe(exe), true);
-  assert.equal(commandLine('status', {}), 'valuelens-install status');
-  assert.equal(commandLine('status', exe), 'AnalyticsHubInstaller.exe status');
-  assert.equal(commandLine('', exe), 'AnalyticsHubInstaller.exe');
+  assert.equal(commandLine('status', {}), 'consumption-central-installer status');
+  assert.equal(commandLine('status', exe), 'ConsumptionCentralInstaller.exe status');
+  assert.equal(commandLine('', exe), 'ConsumptionCentralInstaller.exe');
   assert.equal(installerWindow({}), 'your terminal');
   assert.equal(installerWindow(exe), 'the installer window');
-  assert.match(help(), /Usage: (valuelens-install|AnalyticsHubInstaller\.exe) \[command\] \[options\]/);
+  assert.match(help(), /Usage: (consumption-central-installer|ConsumptionCentralInstaller\.exe) \[command\] \[options\]/);
 });
 
 test('messages name the PowerShell command when install.ps1 started the installer', () => {
@@ -433,22 +433,22 @@ test('messages name the PowerShell command when install.ps1 started the installe
   assert.equal(bundled(pwsh), true);
   assert.equal(bundled({ [EXE_ENV]: '1' }), true);
   assert.equal(bundled({}), false);
-  assert.equal(commandLine('status', pwsh), '& $env:LOCALAPPDATA\\AnalyticsHub\\analytics-hub.cmd status');
+  assert.equal(commandLine('status', pwsh), '& $env:LOCALAPPDATA\\ConsumptionCentral\\consumption-central.cmd status');
   assert.equal(installerWindow(pwsh), 'the PowerShell window');
-  assert.match(reopenHint(pwsh), /analytics-hub\.cmd in PowerShell/);
-  assert.match(reopenHint({ [EXE_ENV]: '1' }), /AnalyticsHubInstaller\.exe/);
-  assert.match(reopenHint({}), /valuelens-install --ui/);
-  assert.match(updateHint('https://example.test/r', pwsh), /irm https:\/\/github\.com\/microsoft\/AnalyticsHub-Dashboard\/releases\/latest\/download\/install\.ps1 \| iex/);
+  assert.match(reopenHint(pwsh), /consumption-central\.cmd in PowerShell/);
+  assert.match(reopenHint({ [EXE_ENV]: '1' }), /ConsumptionCentralInstaller\.exe/);
+  assert.match(reopenHint({}), /consumption-central-installer --ui/);
+  assert.match(updateHint('https://example.test/r', pwsh), /irm https:\/\/github\.com\/microsoft\/ConsumptionCentral-for-Microsoft-Copilot\/releases\/latest\/download\/install\.ps1 \| iex/);
   assert.equal(updateHint('https://example.test/r', {}), 'Download it from https://example.test/r, then choose Repair or change.');
   assert.equal(SCRIPT_COMMAND, `irm ${SCRIPT_URL} | iex`);
 });
 
 test('messages keep -UseInstalledNode when install.ps1 ran the installer with the installed Node.js', () => {
   const installed = { [LAUNCHER_ENV]: 'pwsh', [INSTALLED_NODE_ENV]: '1' };
-  assert.equal(INSTALLED_NODE_ENV, 'ANALYTICS_HUB_USE_INSTALLED_NODE');
+  assert.equal(INSTALLED_NODE_ENV, 'CONSUMPTION_CENTRAL_USE_INSTALLED_NODE');
   assert.equal(bundled(installed), true, "the installer is still the zip's");
-  assert.ok(reopenHint(installed).includes(`"$env:ANALYTICS_HUB_USE_INSTALLED_NODE = '1'; ${SCRIPT_COMMAND}" again`));
-  assert.ok(updateHint('https://example.test/r', installed).includes(`"$env:ANALYTICS_HUB_USE_INSTALLED_NODE = '1'; ${SCRIPT_COMMAND}" again in PowerShell`));
+  assert.ok(reopenHint(installed).includes(`"$env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE = '1'; ${SCRIPT_COMMAND}" again`));
+  assert.ok(updateHint('https://example.test/r', installed).includes(`"$env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE = '1'; ${SCRIPT_COMMAND}" again in PowerShell`));
   assert.doesNotMatch(reopenHint({ [LAUNCHER_ENV]: 'pwsh' }), /INSTALLED_NODE/);
   assert.doesNotMatch(reopenHint({ [LAUNCHER_ENV]: 'cloudshell', [INSTALLED_NODE_ENV]: '1' }), /INSTALLED_NODE/);
   assert.doesNotMatch(reopenHint({ [EXE_ENV]: '1', [INSTALLED_NODE_ENV]: '1' }), /INSTALLED_NODE/);
@@ -466,9 +466,9 @@ test('in Azure Cloud Shell: noticed from its environment, with commands for its 
   assert.equal(inCloudShell({ [CLOUD_SHELL_ENV]: '0', ACC_CLOUD: 'PROD' }), false, 'the override wins');
   assert.equal(launcher(cs), 'cloudshell');
   assert.equal(bundled(cs), false, 'it runs from source');
-  assert.equal(commandLine('status', cs), '~/.analytics-hub/analytics-hub status');
+  assert.equal(commandLine('status', cs), '~/.consumption-central/consumption-central status');
   assert.equal(installerWindow(cs), 'Cloud Shell');
-  assert.match(reopenHint(cs), /~\/\.analytics-hub\/analytics-hub in Cloud Shell/);
+  assert.match(reopenHint(cs), /~\/\.consumption-central\/consumption-central in Cloud Shell/);
   assert.match(updateHint('https://example.test/r', cs), /install\.ps1 \| iex" again in Cloud Shell's PowerShell/);
 });
 

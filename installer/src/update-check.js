@@ -3,12 +3,13 @@
  * proxy or when GitHub is slow, the check gives up quietly and the installer carries on.
  */
 
-export const REPO = 'microsoft/AnalyticsHub-Dashboard';
+import { ENV, REPO, TAG_PREFIX, USER_AGENT } from './product.js';
+
+export { REPO, TAG_PREFIX };
 export const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 export const LATEST_PAGE = `https://github.com/${REPO}/releases/latest`;
-export const TAG_PREFIX = 'installer-v';
 /** Set to 1 to skip the check, for example on a computer that can't reach GitHub. */
-export const OPT_OUT = 'ANALYTICS_HUB_NO_UPDATE_CHECK';
+export const OPT_OUT = ENV.NO_UPDATE_CHECK;
 
 /** @param {string} v @returns {number[] | null} */
 function parse(v) {
@@ -20,7 +21,7 @@ function parse(v) {
  * The release's version when it's newer than `current`, otherwise null. Pre-release and
  * unparseable versions never count as newer.
  * @param {string} current
- * @param {string} tag  A release tag such as `installer-v0.5.1`.
+ * @param {string} tag  A release tag such as `consumption-central-installer-v0.5.1`.
  */
 export function newerVersion(current, tag) {
   if (!String(tag ?? '').startsWith(TAG_PREFIX)) return null;
@@ -45,7 +46,7 @@ export async function checkForUpdate(o) {
   if (typeof fetchFn !== 'function') return null;
   try {
     const res = await fetchFn(LATEST_API, {
-      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'AnalyticsHubInstaller' },
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(o.timeoutMs ?? 5000),
     });
     if (!res.ok) return null;

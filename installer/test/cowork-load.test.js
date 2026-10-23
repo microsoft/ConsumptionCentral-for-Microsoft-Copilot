@@ -60,9 +60,9 @@ function coworkConfig() {
   config.modules.consumption = true;
   config.dataSources.coworkCredits = 'api';
   config.consumption.dataflowId = 'df-1';
-  config.consumption.dataflowName = 'AnalyticsHub_Cowork_Credits';
+  config.consumption.dataflowName = 'ConsumptionCentral_Cowork_Credits';
   config.fabric.workspaceId = 'ws-1';
-  config.fabric.workspaceName = 'Analytics Hub';
+  config.fabric.workspaceName = 'Consumption Central';
   config.fabric.lakehouseName = 'ValueLens';
   return config;
 }
@@ -161,12 +161,12 @@ test('coworkNextStep: the sign-in to-do, with the real names, only when the Data
   const step = coworkNextStep(config, todo);
   assert.ok(step);
   assert.equal(step.title, 'To do: sign in to the Cowork Dataflow');
-  assert.equal(step.name, 'AnalyticsHub_Cowork_Credits');
+  assert.equal(step.name, 'ConsumptionCentral_Cowork_Credits');
   assert.equal(step.url, 'https://app.fabric.microsoft.com/groups/ws-1/dataflows-gen2/df-1');
   assert.equal(step.action, 'load-cowork');
   assert.equal(step.note, STAGING_ITEMS_NOTE);
   assert.match(step.note, /DataflowsStagingLakehouse and DataflowsStagingWarehouse.*expected/);
-  assert.match(step.steps[0], /Open AnalyticsHub_Cowork_Credits in Analytics Hub: https:\/\/app\.fabric\.microsoft\.com\/groups\/ws-1\/dataflows-gen2\/df-1/);
+  assert.match(step.steps[0], /Open ConsumptionCentral_Cowork_Credits in Consumption Central: https:\/\/app\.fabric\.microsoft\.com\/groups\/ws-1\/dataflows-gen2\/df-1/);
   assert.match(step.steps[1], /"Configure connection" twice.*Viva Insights source.*Lakehouse destination \(ValueLens\)/);
   assert.match(step.steps[3], /Save.*finished publishing/);
   assert.match(step.steps[4], /Load Cowork now/);
@@ -206,7 +206,7 @@ function workspace() {
   const fabric = fakeFabric();
   const ui = fakeUi();
   const made = fakeCtx({ fabric: fabric.api, ui: ui.ui, config: coworkConfig() });
-  const pipe = fabric.add('DataPipeline', 'AnalyticsHub_Pipeline', build());
+  const pipe = fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', build());
   made.config.fabric.pipelineId = pipe.id;
   made.config.history.days = 30;
   return { ...made, fabric, ui };
@@ -309,7 +309,7 @@ function signedIn(summary = { dataflowRows: 1234, csvRows: 0 }) {
     },
   };
   const made = fakeCtx({ fabric: fabric.api, ui: ui.ui, config: coworkConfig(), oneLake });
-  made.config.fabric.pipelineId = fabric.add('DataPipeline', 'AnalyticsHub_Pipeline', build()).id;
+  made.config.fabric.pipelineId = fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', build()).id;
   made.config.firstRun = { jobId: 'j-1', status: 'Completed', coworkSkipped: true };
   const getJob = fabric.api.getJob;
   fabric.api.getJob = async () => {

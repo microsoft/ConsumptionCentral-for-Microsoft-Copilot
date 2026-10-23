@@ -12,10 +12,11 @@
  * Where storage takes no public traffic, they can write to a SharePoint folder through the
  * SharePoint connector instead.
  */
+import { FLOWS_DIR, PRODUCT_NAME } from '../product.js';
 import { UPLOAD_DIR } from '../uploads.js';
 
-export const FEEDBACK_FLOW_NAME = 'Analytics Hub - Product feedback';
-export const STUDIO_FLOW_NAME = 'Analytics Hub - Copilot Studio credits';
+export const FEEDBACK_FLOW_NAME = `${PRODUCT_NAME} - Product feedback`;
+export const STUDIO_FLOW_NAME = `${PRODUCT_NAME} - Copilot Studio credits`;
 /** The subject the product feedback export is emailed under. */
 export const FEEDBACK_SUBJECT = 'Copilot Product Feedback';
 /** Days of credits each Studio flow run restates; the licensing API revises recent days. */
@@ -28,7 +29,7 @@ export const PPAPI = 'https://api.powerplatform.com';
 export const ONELAKE_DFS = 'https://onelake.dfs.fabric.microsoft.com';
 export const STORAGE_RESOURCE = 'https://storage.azure.com';
 /** Where the flows keep their own state, outside the folders the pipeline reads. */
-export const FLOW_STATE_DIR = 'Files/analytics_hub_flows';
+export const FLOW_STATE_DIR = FLOWS_DIR;
 /** Written once the Studio flow's first run has read the full history. */
 export const BACKFILL_MARKER = 'studio_backfill_done';
 const LICENSING_VERSION = '2024-10-01';
@@ -116,7 +117,7 @@ const EMPTY_STRING = "@string('')";
  * @property {string} [dropDir]  The drop folder under the endpoint. Default the Lakehouse's.
  * @property {string} [stateDir]  Where the flow keeps its state. Default {@link FLOW_STATE_DIR}.
  * @property {{ siteUrl: string, folder: string }} [sharePoint]  Write to this SharePoint folder (its
- *   server-relative path, e.g. /sites/Analytics/Shared Documents/ValueLens) instead of the endpoint. User identity only.
+ *   server-relative path, e.g. /sites/Analytics/Shared Documents/Consumption Central) instead of the endpoint. User identity only.
  * @property {string} [tenantId]  The app identity's tenant, app and Key Vault secret.
  * @property {string} [clientId]
  * @property {string} [secretName]

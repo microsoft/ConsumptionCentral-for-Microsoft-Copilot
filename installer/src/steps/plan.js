@@ -10,6 +10,7 @@ import { allowsAction, armLocation, validateVaultName } from '../clients/azure.j
 import { APP_ROLES, CONSENT_ROLES } from '../clients/graph.js';
 import { HttpError } from '../http.js';
 import { inCloudShell } from '../launch.js';
+import { APP_REGISTRATION, KEY_VAULT_PREFIX, LAKEHOUSE_NAME, PRODUCT_NAME, RESOURCE_GROUP, WORKSPACE_NAME } from '../product.js';
 import { c } from '../ui.js';
 import { CURRENCIES, DEFAULT_CURRENCY, parseRate } from '../currency.js';
 import { CONSUMPTION_MODEL_NAME, flowIdentity, MODEL_NAME, secretMode } from '../config.js';
@@ -26,7 +27,7 @@ import { DATA_SOURCES, modulesFromSources, routerWanted, UPLOAD_DIR } from '../u
 
 /** @typedef {import('../install.js').Ctx} Ctx */
 
-export const APP_NAME = 'Analytics Hub Data Collector';
+export const APP_NAME = APP_REGISTRATION;
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** @param {string} v */
@@ -53,7 +54,7 @@ export const validateNewLakehouseName = (taken) => (/** @type {string} */ v) => 
   const ok = validateLakehouseName(name);
   if (ok !== true) return ok;
   return taken.some((t) => t.toLowerCase() === name.toLowerCase())
-    ? `There's already a Lakehouse called ${name} here. Analytics Hub only writes to a Lakehouse it creates, so choose another name.`
+    ? `There's already a Lakehouse called ${name} here. Consumption Central only writes to a Lakehouse it creates, so choose another name.`
     : true;
 };
 
@@ -243,7 +244,7 @@ async function planPowerBi(ctx, pre) {
     : await ui.select(
     'Deploy the semantic model?',
     [
-      { name: 'Semantic model and Power BI reports (recommended)', value: 'reports', description: 'The ValueLens reports, published to the workspace and ready to share.' },
+      { name: 'Semantic model and Power BI reports (recommended)', value: 'reports', description: 'The Consumption Central reports, published to the workspace and ready to share.' },
       { name: 'Semantic model only', value: 'model', description: 'Build your own reports on it in Power BI.' },
       { name: 'Neither', value: 'none', description: 'You publish "ValueLens - Fabric.pbit" yourself.' },
     ],
@@ -654,7 +655,7 @@ export async function planKeyVault(ctx, pre, location) {
         continue;
       }
       kv.location = asksAdvanced(ctx) ? await ui.input('Azure region', { default: kv.location ?? location }) : kv.location ?? location;
-      const suggested = kv.name ?? `valuelens-${randomBytes(3).toString('hex')}`;
+      const suggested = kv.name ?? `${KEY_VAULT_PREFIX}${randomBytes(2).toString('hex')}`;
       kv.name = asksAdvanced(ctx) ? await ui.input('Vault name (globally unique)', { default: suggested, validate: validateVaultName }) : suggested;
       const available = await api.arm.checkVaultName(subscriptionId, kv.name);
       if (!available.nameAvailable) throw new Error(`Key Vault name "${kv.name}" is taken: ${available.message ?? 'choose another'}.`);
@@ -716,7 +717,7 @@ async function askResourceGroup(ctx, subscriptionId, askFirst = asksAdvanced(ctx
   const { ui, config, api } = ctx;
   const kv = config.keyVault;
   for (let ask = askFirst; ; ask = true) {
-    const name = kv.resourceGroup ?? 'rg-valuelens';
+    const name = kv.resourceGroup ?? RESOURCE_GROUP;
     kv.resourceGroup = (ask ? await ui.input('Resource group (created if missing)', { default: name }) : name).trim();
     if (await api.arm.getResourceGroup(subscriptionId, kv.resourceGroup).catch(() => null)) return;
     const perms = await api.arm.permissions(`/subscriptions/${subscriptionId}`).catch(() => null);
@@ -836,9 +837,9 @@ export function uniqueName(base, taken) {
 }
 
 /** Names a new install suggests. Existing installs keep the names in their record. */
-export const DEFAULT_WORKSPACE_NAME = 'Analytics Hub';
+export const DEFAULT_WORKSPACE_NAME = WORKSPACE_NAME;
 /** Fabric Lakehouse names can't have spaces. */
-export const DEFAULT_LAKEHOUSE_NAME = 'Analytics_Hub';
+export const DEFAULT_LAKEHOUSE_NAME = LAKEHOUSE_NAME;
 
 export const CAPACITY_HINT = 'F64 or larger is recommended for more than 10,000 people; small or trial capacities work but loads are slower.';
 
@@ -914,7 +915,7 @@ export async function reserveNames(ctx) {
 
   if (renamed.length) {
     ui.note(
-      `The workspace already has ${renamed.map((n) => `"${n}"`).join(', ')}, not from this install. They're left as they are; Analytics Hub's own items get the names shown in the plan.`,
+      `The workspace already has ${renamed.map((n) => `"${n}"`).join(', ')}, not from this install. They're left as they are; Consumption Central's own items get the names shown in the plan.`,
     );
   }
 }
@@ -1042,7 +1043,7 @@ export function planReview(ctx, pre) {
     if (consumptionModelWanted(ctx)) creates.push(modelItem(cc.model));
     creates.push({
       kind: 'Connection',
-      name: sm.connectionName ?? (f.workspaceId ? connectionName(f.workspaceId) : 'Analytics Hub SQL connection'),
+      name: sm.connectionName ?? (f.workspaceId ? connectionName(f.workspaceId) : `${PRODUCT_NAME} SQL connection`),
       isNew: !sm.connectionId,
       detail: 'Lets the models read the Lakehouse, with a second client secret that only the connection holds.',
     });

@@ -22,7 +22,7 @@ const load = (file, dir = NOTEBOOKS_DIR) => JSON.parse(readFileSync(join(here, '
 
 const TENANT = '11111111-2222-3333-4444-555555555555';
 const CLIENT = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
-const SECRET = { vaultUri: 'https://vl-kv-test.vault.azure.net/', secretName: 'valuelens-client-secret' };
+const SECRET = { vaultUri: 'https://vl-kv-test.vault.azure.net/', secretName: 'consumption-central-client-secret' };
 const LAKEHOUSE = { id: '99999999-0000-0000-0000-000000000001', name: 'ValueLens', workspaceId: '88888888-0000-0000-0000-000000000002' };
 
 test('setAssignment keeps the comment column', () => {
@@ -71,7 +71,7 @@ for (const info of NOTEBOOKS.filter((n) => n.credentials)) {
     assert.match(all, new RegExp(`^CLIENT_ID\\s*=\\s*'${CLIENT}'`, 'm'));
     assert.match(
       all,
-      /^import notebookutils\nCLIENT_SECRET\s*=\s*notebookutils\.credentials\.getSecret\('https:\/\/vl-kv-test\.vault\.azure\.net\/', 'valuelens-client-secret'\)/m,
+      /^import notebookutils\nCLIENT_SECRET\s*=\s*notebookutils\.credentials\.getSecret\('https:\/\/vl-kv-test\.vault\.azure\.net\/', 'consumption-central-client-secret'\)/m,
     );
     assert.doesNotMatch(all, /^CLIENT_SECRET\s*=\s*'/m, 'no literal secret left');
     assert.doesNotMatch(all, /^(TENANT_ID|CLIENT_ID)\s*=\s*'</m, 'no placeholder left');
@@ -161,7 +161,7 @@ test('Studio consumption: per-user API files fill studio_user_daily, look up UPN
   const nb = prepareNotebook(load(info.file, info.dir), { lakehouse: LAKEHOUSE, tenantId: TENANT, clientId: CLIENT, secret: SECRET });
   const all = nb.cells.map(cellText).join('\n');
   assert.match(all, new RegExp(`^TENANT_ID = '${TENANT}'`, 'm'));
-  assert.match(all, /^CLIENT_SECRET = notebookutils\.credentials\.getSecret\('https:\/\/vl-kv-test\.vault\.azure\.net\/', 'valuelens-client-secret'\)/m);
+  assert.match(all, /^CLIENT_SECRET = notebookutils\.credentials\.getSecret\('https:\/\/vl-kv-test\.vault\.azure\.net\/', 'consumption-central-client-secret'\)/m);
   assert.match(all, /PAT_API_USER = \("StudioApiUserDaily\*\.csv",\)/);
   assert.match(all, /TBL_USER_DAILY = "studio_user_daily"/);
   assert.match(all, /user_raw = read\(\*PAT_API_USER, api=True\)\nif user_raw is None:\n\s+print\("no licensing API user files - skipping"\)/);
@@ -189,6 +189,6 @@ test('Azure AI: the subscription, app and Key Vault secret are filled in', () =>
   assert.match(all, new RegExp(`^SUBSCRIPTION_ID = '${TENANT}'`, 'm'));
   assert.match(all, new RegExp(`^CLIENT_ID = '${CLIENT}'`, 'm'));
   assert.match(all, /^KEY_VAULT_URL = 'https:\/\/vl-kv-test\.vault\.azure\.net\/'/m);
-  assert.match(all, /^CLIENT_SECRET_NAME = 'valuelens-client-secret'/m);
+  assert.match(all, /^CLIENT_SECRET_NAME = 'consumption-central-client-secret'/m);
   assert.match(all, /notebookutils\.credentials\.getSecret\(KEY_VAULT_URL, CLIENT_SECRET_NAME\)/);
 });

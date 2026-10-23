@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * How the loads went, as a model table: the pipeline's dbo.load_log in the ValueLens model. Before
+ * How the loads went, as a model table: the pipeline's dbo.load_log in the Consumption Central model. Before
  * the first load it's there but empty, so queries against it never fail.
  */
 import { addTable, cols, valueLensExpression } from './tables.js';

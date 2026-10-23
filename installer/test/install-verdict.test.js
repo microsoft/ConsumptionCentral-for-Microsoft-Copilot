@@ -52,7 +52,7 @@ const unsigned = { status: 'Failed', error: { errorCode: 'JobInstanceFailed', me
 async function runInstall(t, o = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'installer-verdict-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const file = join(dir, 'valuelens-install.json');
+  const file = join(dir, 'consumption-central-setup.json');
   const config = loadConfig(file).config;
   config.target = 'fabric';
   config.tenantId = 'tenant-1';
@@ -105,7 +105,7 @@ async function runInstall(t, o = {}) {
     ...loads.flatMap(([activityName, attempts]) => attempts.map((a, i) => ({ activityName, activityRunStart: `2026-06-01T12:0${i + 2}:00Z`, ...a }))),
   ];
   const graph = fakeAzureGraph();
-  graph.applications.push({ id: 'obj-1', appId: 'app-1', displayName: 'Analytics Hub' });
+  graph.applications.push({ id: 'obj-1', appId: 'app-1', displayName: 'Consumption Central' });
   const powerBi = fakePowerBi();
   const ui = fakeUi();
   if (o.reload) {
@@ -128,7 +128,7 @@ async function runInstall(t, o = {}) {
         usersCanRegisterApps: async () => true,
         ensureRequiredAccess: async () => false,
         findGroupByName: async (/** @type {string} */ name) => ({ id: 'group-1', displayName: name }),
-        getGroup: async (/** @type {string} */ id) => ({ id, displayName: 'Analytics Hub Viewers' }),
+        getGroup: async (/** @type {string} */ id) => ({ id, displayName: 'Consumption Central Viewers' }),
         appRoleAssignments: async () => (await graph.api.graphServicePrincipal()).appRoles.map((r) => ({ resourceId: 'graph-sp', appRoleId: r.id })),
       },
       powerBi: { ...powerBi.api, datasetUsers: async () => [], addDatasetUser: async () => null },
@@ -172,21 +172,21 @@ async function runInstall(t, o = {}) {
 /** @param {{ ok: boolean, text: string }} run */
 function setUp({ ok, text }) {
   assert.equal(ok, true);
-  assert.match(text, /Analytics Hub is set up/);
+  assert.match(text, /Consumption Central is set up/);
   assert.doesNotMatch(text, /partly set up/);
 }
 
 /** @param {{ ok: boolean, text: string }} run */
 function partlySetUp({ ok, text }) {
   assert.equal(ok, false);
-  assert.match(text, /Analytics Hub is partly set up/);
+  assert.match(text, /Consumption Central is partly set up/);
   assert.match(text, /A step above didn't finish\. Fix what it says, then run the installer again/);
-  assert.doesNotMatch(text, /Analytics Hub is set up/);
+  assert.doesNotMatch(text, /Consumption Central is set up/);
 }
 
 test('install: a report that fails to publish leaves it partly set up', async (t) => {
   const run = await runInstall(t, { report: true });
-  assert.match(run.text, /The ValueLens report wasn't published: Report publish failed/);
+  assert.match(run.text, /The Consumption Central report wasn't published: Report publish failed/);
   partlySetUp(run);
 });
 
@@ -273,7 +273,7 @@ test('update: a step that fails leaves it not finished, never "Up to date"', asy
   /** @type {import('../src/config.js').ReportConfig} */ (run.config.semanticModel.report).signature = 'from an older version';
   run.fabric.failures.updateReport = [new Error('Report update failed')];
   assert.equal(await update(run.ctx, { wait: true }), false);
-  assert.match(since(), /✗ The ValueLens report wasn't published: Report update failed/);
+  assert.match(since(), /✗ The Consumption Central report wasn't published: Report update failed/);
   assert.match(since(), /✗ The update isn't finished: a step above failed\. Fix what it says, then run ".*update" again\./);
   assert.doesNotMatch(since(), /Up to date|Updated\./);
 });

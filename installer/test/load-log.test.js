@@ -16,7 +16,7 @@ const modules = { orgData: true, agent365: false, productFeedback: false, consum
 /** @param {any} table */
 const partition = (table) => [table.partitions[0].source.expression].flat().join('\n');
 
-test('the ValueLens model reads dbo.load_log, falling back to an empty table', () => {
+test('the Consumption Central model reads dbo.load_log, falling back to an empty table', () => {
   const model = buildModel(loadTemplateModel(/** @type {string} */ (sources.modelFile)), { ...lake, modules }).model;
   const table = model.tables.find((t) => t.name === LOAD_LOG_TABLE);
   assert.ok(table, 'the Load Log table is added whatever the sources');

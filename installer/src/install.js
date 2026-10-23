@@ -18,6 +18,7 @@ import { POWER_PLATFORM_URL, powerPlatformApi } from './clients/powerplatform.js
 import { saveConfig, secretMode } from './config.js';
 import { createClient, defaultSleep } from './http.js';
 import { commandLine } from './launch.js';
+import { LAKEHOUSE_NAME, RECORD_FILE } from './product.js';
 import { ensureConsent, ensureApp, ensureKeyVault, newSecret, notebookSecretDays } from './steps/identity.js';
 import { COWORK_DATAFLOW_NAME, consumptionModelWanted, consumptionSummary, ensureAzureAiAccess, ensureConsumptionModel, ensureCoworkDataflow, ensureLandingFolders } from './steps/consumption.js';
 import { coworkDataflowDefinition, isVivaId } from './transform/dataflow.js';
@@ -440,7 +441,7 @@ async function consumptionSteps(ctx, opts = {}) {
 }
 
 /**
- * The deployed models that read the Lakehouse, ValueLens's first.
+ * The deployed models that read the Lakehouse, Consumption Central's first.
  * @param {import('./config.js').InstallConfig} config
  * @returns {{ name: string, id?: string }[]}
  */
@@ -469,7 +470,7 @@ export function fabricViewerModels(config) {
 }
 
 /**
- * Refreshes the ValueLens model and the other deployed models that share its connection.
+ * Refreshes the Consumption Central model and the other deployed models that share its connection.
  * @param {Ctx} ctx
  * @param {{ wait?: boolean }} opts
  */
@@ -487,7 +488,7 @@ async function refreshModels(ctx, opts) {
 }
 
 /**
- * Refreshes the models and, when it waits, checks ValueLens answers queries. Not waiting, it's
+ * Refreshes the models and, when it waits, checks the model answers queries. Not waiting, it's
  * enough that the refreshes started; a model owed a reload is settled after (see settleReloads).
  * @param {Ctx} ctx
  * @param {{ wait: boolean }} opts
@@ -517,7 +518,7 @@ export async function update(ctx, opts = {}) {
   const { ui, config } = ctx;
   if (!config.fabric.workspaceId || !config.fabric.lakehouseId) throw new Error('Nothing is installed yet. Run the installer first.');
   const sm = config.semanticModel;
-  ui.heading('Updating Analytics Hub');
+  ui.heading('Updating Consumption Central');
   ui.note(`From ${ctx.sources.dir}`);
   await ensureKeyVault(ctx);
   await ensureApp(ctx);
@@ -733,14 +734,14 @@ export async function summary(ctx, opts = {}) {
   const sql = lakehouse?.properties?.sqlEndpointProperties;
 
   if (opts.ok === false) {
-    ui.heading('Analytics Hub is partly set up');
+    ui.heading('Consumption Central is partly set up');
     ui.warn('A step above didn\'t finish. Fix what it says, then run the installer again: it picks up where it stopped.');
     if (opts.pending?.length) ui.warn(reloadingNote(opts.pending));
   } else if (opts.pending?.length) {
-    ui.heading('Analytics Hub is set up, still reloading');
+    ui.heading('Consumption Central is set up, still reloading');
     ui.warn(reloadingNote(opts.pending));
   } else {
-    ui.heading('Analytics Hub is set up');
+    ui.heading('Consumption Central is set up');
   }
   const left = nextSteps(config, ctx.user);
   if (left.length) ui.nextSteps(stepsLeftTitle(left), left);
@@ -778,7 +779,7 @@ export async function summary(ctx, opts = {}) {
       ui.info('2. Scheduled runs read the Key Vault secret as you, the schedule\'s owner, and refresh the model');
       ui.info('   as you. Anyone who takes over the pipeline needs "get" on the secret and Contributor on the workspace.');
     }
-    ui.info(`3. Keep ${c.bold('valuelens-install.json')}. It holds no secrets; re-run the installer with it to change or repair the set-up.`);
+    ui.info(`3. Keep ${c.bold(RECORD_FILE)}. It holds no secrets; re-run the installer with it to change or repair the set-up.`);
     if (config.modules.consumption) consumptionSummary(ctx);
     dataSourcesSummary(ctx);
     flowsSummary(ctx);
@@ -805,7 +806,7 @@ export async function summary(ctx, opts = {}) {
     ui.info('3. Scheduled runs read the Key Vault secret as you, the schedule\'s owner. Anyone who edits the');
     ui.info('   pipeline or takes over the schedule needs "get" on the secret first.');
   }
-  ui.info(`4. Keep ${c.bold('valuelens-install.json')}. It holds no secrets; re-run the installer with it to change or repair the set-up.`);
+  ui.info(`4. Keep ${c.bold(RECORD_FILE)}. It holds no secrets; re-run the installer with it to change or repair the set-up.`);
   if (config.modules.consumption) consumptionSummary(ctx);
   dataSourcesSummary(ctx);
   flowsSummary(ctx);
@@ -836,7 +837,7 @@ export function preview(o) {
         ...f,
         workspaceId: f.workspaceId ?? fake(2),
         lakehouseId: f.lakehouseId ?? fake(3),
-        lakehouseName: f.lakehouseName ?? 'ValueLens',
+        lakehouseName: f.lakehouseName ?? LAKEHOUSE_NAME,
         notebooks: { ...f.notebooks },
       },
       semanticModel: withModel ? { ...sm, id: sm.id ?? fake(4), bound: true } : { ...sm, enabled: false },

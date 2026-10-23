@@ -4,6 +4,7 @@
  * branches out, and run-time parameters for the audit load mode.
  */
 import { NOTEBOOKS } from '../catalog.js';
+import { PRODUCT_NAME, PRODUCT_SNAKE, UPLOAD_DIR } from '../product.js';
 
 /** Activities whose notebooks are archived. The installer never deploys them. */
 export const ARCHIVED_ACTIVITIES = ['Conditionally_Run_Dataverse_Transcripts', 'Conditionally_Run_Credit_Consumption'];
@@ -171,7 +172,7 @@ export const PIPELINE_CHANGE =
   'This version gives the Agent 365 registry load more time, sized by tenant size, and gives it a time budget so a long weekly refresh finishes on the next run instead of timing out. Your data and settings are kept.';
 
 /** Notebooks with the same tag share one high-concurrency Spark session (letters, digits and underscores only). */
-export const SESSION_TAG = 'analytics_hub';
+export const SESSION_TAG = PRODUCT_SNAKE;
 /** Last step: records each load's outcome in dbo.load_log and fails the run when a load failed. */
 export const STATUS_ACTIVITY = 'Record_Load_Status';
 
@@ -334,7 +335,7 @@ function refreshActivity(activities, settings) {
   }
   return refreshStep(settings, {
     name: REFRESH_ACTIVITY,
-    description: 'Refreshes ValueLens, including historical audit partitions changed by processing or conversation updates.',
+    description: `Refreshes the ${PRODUCT_NAME} model.`,
     modelId: /** @type {string} */ (settings.semanticModelId),
     dependsOn,
     writeMode: { value: '@pipeline().parameters.ProcessorWriteMode', type: 'Expression' },
@@ -524,7 +525,7 @@ export function buildPipeline(template, settings) {
       notebookStep(settings, {
         key: 'uploadRouter',
         name: UPLOAD_ROUTER_ACTIVITY,
-        description: 'Moves each CSV export dropped in Files/analytics_hub_uploads to the folder its load reads, recognised by its headers. Does nothing when the folder is empty.',
+        description: `Moves each CSV export dropped in ${UPLOAD_DIR} to the folder its load reads, recognised by its headers. Does nothing when the folder is empty.`,
         timeout: '0.00:30:00',
       }),
     );
@@ -545,7 +546,7 @@ export function buildPipeline(template, settings) {
       notebookStep(settings, {
         key: 'accessScope',
         name: ACCESS_ACTIVITY,
-        description: 'Org-scoped access: loads who sees what from Files/analytics_hub_access/access_scope.csv into access_scope, and rebuilds access_people from org data, so the models refresh with current scopes.',
+        description: `Org-scoped access: loads who sees what from Files/${PRODUCT_SNAKE}_access/access_scope.csv into access_scope, and rebuilds access_people from org data, so the models refresh with current scopes.`,
         timeout: '0.00:20:00',
       }),
     );
@@ -565,11 +566,11 @@ export function buildPipeline(template, settings) {
   applySessionTag(filled.properties.activities);
 
   filled.properties.description =
-    'Created by the Analytics Hub installer. The loads run in two lanes rather than all at once, so a trial or small capacity isn\'t overloaded. ' +
+    'Created by the Consumption Central installer. The loads run in two lanes rather than all at once, so a trial or small capacity isn\'t overloaded. ' +
     'Every notebook shares one Spark session (high concurrency for pipelines must be on in the workspace\'s Spark settings). ' +
     `Lane 1 loads the audit log, then runs the Audit Log Processor${settings.semanticModelId ? ', then refreshes the semantic model' : ''}. ` +
     'Lane 2 runs the other loads one after another; a load that fails doesn\'t stop the next. ' +
-    `${settings.uploadRouter ? 'Lane 2 starts by routing any CSV exports dropped in Files/analytics_hub_uploads to the loads that read them. ' : ''}` +
+    `${settings.uploadRouter ? `Lane 2 starts by routing any CSV exports dropped in ${UPLOAD_DIR} to the loads that read them. ` : ''}` +
     `${settings.modules.consumption ? `The credit consumption loads run in lane 2${settings.consumptionModelId ? ' and refresh the consumption model when they all succeed' : ''}. ` : ''}` +
     `${status ? `${STATUS_ACTIVITY} runs last: it writes each load's outcome to dbo.load_log and fails the run if any load failed. ` : ''}` +
     `Each load retries up to 3 times, ${RETRY_INTERVAL_SECONDS / 60} minutes apart. ` +

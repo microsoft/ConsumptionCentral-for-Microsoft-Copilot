@@ -16,7 +16,7 @@ const PRE = /** @type {any} */ ({
 /** The questions behind Advanced settings, which a default install doesn't ask. */
 const ADVANCED_QUESTIONS = [
   'Deploy the semantic model?',
-  'Who can view Analytics Hub?',
+  'Who can view Consumption Central?',
   'Who should people ask for access? (email)',
   'How much audit history should the first load pull?',
   'How many people are in the tenant?',
@@ -57,13 +57,13 @@ test('advanced: a Fabric plan with No asks only the essentials and keeps the def
   assert.equal(config.reporting, undefined, 'the Value page stays in US dollars');
   assert.equal(config.history.days, 30);
   assert.equal(config.scale, 'large', 'from the F64');
-  assert.equal(config.fabric.lakehouseName, 'Analytics_Hub', 'a new install suggests the new name');
+  assert.equal(config.fabric.lakehouseName, 'ConsumptionCentral', 'a new install suggests the new name');
   assert.equal(config.schedule.frequency, 'daily');
   assert.equal(ctx.runFirstLoad, true);
-  assert.equal(config.access?.groupName, 'Analytics Hub Viewers');
+  assert.equal(config.access?.groupName, 'Consumption Central Viewers');
 });
 
-test('plan: a new install suggests Analytics Hub names and says what capacity size suits', async () => {
+test('plan: a new install suggests Consumption Central names and says what capacity size suits', async () => {
   const t = fakeUi();
   const fabric = fakeFabric().api;
   const { ctx, config } = fakeCtx({ ui: t.ui, fabric: { ...fabric, listWorkspaces: async () => [{ id: 'ws-x', type: 'Workspace', displayName: 'Other' }] } });
@@ -72,8 +72,8 @@ test('plan: a new install suggests Analytics Hub names and says what capacity si
   delete config.fabric.lakehouseId;
   delete config.fabric.lakehouseName;
   await plan(ctx, PRE);
-  assert.equal(config.fabric.workspaceName, 'Analytics Hub');
-  assert.equal(config.fabric.lakehouseName, 'Analytics_Hub');
+  assert.equal(config.fabric.workspaceName, 'Consumption Central');
+  assert.equal(config.fabric.lakehouseName, 'ConsumptionCentral');
   assert.match(t.text(), /F64 or larger is recommended for more than 10,000 people; small or trial capacities work but loads are slower\./);
 });
 
@@ -89,7 +89,7 @@ test('plan: an existing record keeps its names', async () => {
 test('plan: a new Fabric install keeps the secret in the notebooks by default; Key Vault is a choice', async () => {
   const fresh = (/** @type {any} */ u, /** @type {any} */ extra = {}) => {
     const t = fakeCtx({ ui: u.ui, fabric: fakeFabric().api, arm: fakeArm().api, ...extra });
-    t.config.keyVault = { secretName: 'valuelens-client-secret' };
+    t.config.keyVault = { secretName: 'consumption-central-client-secret' };
     return t;
   };
   const u = fakeUi();

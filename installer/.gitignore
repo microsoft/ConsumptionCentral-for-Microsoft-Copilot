@@ -1,7 +1,7 @@
 node_modules/
-valuelens-install*.json
+consumption-central-setup*.json
 *.draft.json
 *.tmp
-valuelens-preview/
+consumption-central-preview/
 dist-exe/
-analytics-hub-feedback-flow.json
+consumption-central-feedback-flow.json

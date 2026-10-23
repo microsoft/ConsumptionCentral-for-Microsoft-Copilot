@@ -102,7 +102,7 @@ function flowsStep(config, user) {
     steps,
     message: letter(
       [
-        `Could you sign in to the connections of the Analytics Hub ${one ? 'flow' : 'flows'} in Power Automate and turn ${one ? 'it' : 'them'} on? ${one ? 'It is' : 'They are'} in ${where}: ${link}`,
+        `Could you sign in to the connections of the Consumption Central ${one ? 'flow' : 'flows'} in Power Automate and turn ${one ? 'it' : 'them'} on? ${one ? 'It is' : 'They are'} in ${where}: ${link}`,
         '',
         ...details,
         'Signing in with a dedicated admin account and adding a co-owner keeps the flows running if people move on.',
@@ -160,7 +160,7 @@ function vivaQueryStep(config, user) {
     optional: true,
     message: letter(
       [
-        'Could you set up a Viva Insights query for Analytics Hub? It reads Copilot Cowork credits from it every day.',
+        'Could you set up a Viva Insights query for Consumption Central? It reads Copilot Cowork credits from it every day.',
         '',
         ...numbered(steps),
         '',
@@ -195,7 +195,7 @@ function m365ExportStep(config, user) {
     steps,
     message: letter(
       [
-        'Could you schedule the Microsoft 365 product feedback export for Analytics Hub? A flow saves it when it arrives by email.',
+        'Could you schedule the Microsoft 365 product feedback export for Consumption Central? A flow saves it when it arrives by email.',
         '',
         ...numbered(steps),
         `The subject must be exactly "${FEEDBACK_SUBJECT}", so the flow picks it up.`,

@@ -9,7 +9,7 @@ import { runsFabric } from '../src/steps/plan.js';
 import { createUi } from '../src/ui.js';
 import { fakeCtx, fakeUi } from './fakes.js';
 
-const VAULT_ID = '/subscriptions/sub-1/resourceGroups/rg-valuelens/providers/Microsoft.KeyVault/vaults/kv-test';
+const VAULT_ID = '/subscriptions/sub-1/resourceGroups/rg-consumption-central/providers/Microsoft.KeyVault/vaults/kv-test';
 const NETWORK_403 = {
   error: {
     code: 'Forbidden',
@@ -62,7 +62,7 @@ test('private vaults, network blocks and Fabric capacities are recognised', () =
     ['F64', 'FTL64', 'P1'],
   );
 
-  assert.equal(endpointName('kv-test'), 'valuelens-kv-test');
+  assert.equal(endpointName('kv-test'), 'consumption-central-kv-test');
   assert.ok(endpointRequest('ws-1').includes('ws-1'));
   assert.ok(endpointRequest('00000000-0000-0000-0000-000000000000').length <= 140);
 });
@@ -149,7 +149,7 @@ test('new secret: checks the vault first, then writes straight to it', async () 
   const apis = fakeSecretApis();
   const { ctx, config } = secretCtx(apis);
   await newSecret(ctx);
-  assert.deepEqual(apis.calls, ['kv.waitForAccess', 'addPassword', 'kv.setSecret valuelens-client-secret']);
+  assert.deepEqual(apis.calls, ['kv.waitForAccess', 'addPassword', 'kv.setSecret consumption-central-client-secret']);
   assert.equal(config.app.secretExpires, '2027-06-01T12:00:00Z');
   assert.ok(config.keyVault.secretSetAt);
   assert.notEqual(config.keyVault.private, true);
@@ -160,7 +160,7 @@ test('new secret: a vault that blocks public access is written through Resource 
   const ui = fakeUi();
   const { ctx, config } = secretCtx(apis, { ui: ui.ui });
   await newSecret(ctx);
-  assert.deepEqual(apis.calls, ['kv.waitForAccess', 'arm.permissions', 'addPassword', 'arm.setSecret valuelens-client-secret']);
+  assert.deepEqual(apis.calls, ['kv.waitForAccess', 'arm.permissions', 'addPassword', 'arm.setSecret consumption-central-client-secret']);
   assert.equal(config.keyVault.private, true);
   assert.match(ui.text(), /blocks public network access/);
   assert.doesNotMatch(ui.text() + JSON.stringify(config), /s3cret-value/);
@@ -175,7 +175,7 @@ test('new secret: without write access none is made; a failed write keeps it tra
   const failing = fakeSecretApis({ armFails: true });
   const f = secretCtx(failing, { private: true });
   await assert.rejects(newSecret(f.ctx), /Run the installer again: it makes a new one, and keeps track of this one/);
-  assert.deepEqual(failing.calls, ['arm.permissions', 'addPassword', 'arm.setSecret valuelens-client-secret']);
+  assert.deepEqual(failing.calls, ['arm.permissions', 'addPassword', 'arm.setSecret consumption-central-client-secret']);
   assert.deepEqual(f.config.keyVault.pendingSecretKeyIds, ['key-1']);
   assert.equal(f.config.keyVault.secretAttempts, undefined);
   assert.equal(f.config.keyVault.secretSetAt, undefined);
@@ -184,7 +184,7 @@ test('new secret: without write access none is made; a failed write keeps it tra
   const refusedApis = fakeSecretApis({ armFails: 400 });
   const r = secretCtx(refusedApis, { private: true });
   await assert.rejects(newSecret(r.ctx), /removed from the app again/);
-  assert.deepEqual(refusedApis.calls, ['arm.permissions', 'addPassword', 'arm.setSecret valuelens-client-secret', 'removePassword key-1']);
+  assert.deepEqual(refusedApis.calls, ['arm.permissions', 'addPassword', 'arm.setSecret consumption-central-client-secret', 'removePassword key-1']);
   assert.equal(r.config.keyVault.pendingSecretKeyIds, undefined);
   assert.equal(r.config.keyVault.retiredSecretKeyIds, undefined);
 });
@@ -197,7 +197,7 @@ test('new secret: one a stopped run may have put in the vault is replaced, then 
   Object.assign(t.config.keyVault, { secretSetAt: '2026-05-01T00:00:00Z', secretKeyId: 'key-old', pendingSecretKeyIds: ['key-maybe'] });
   t.config.app.existing = false;
   await ensureSecret(t.ctx);
-  assert.deepEqual(apis.calls, ['kv.waitForAccess', 'addPassword', 'kv.setSecret valuelens-client-secret']);
+  assert.deepEqual(apis.calls, ['kv.waitForAccess', 'addPassword', 'kv.setSecret consumption-central-client-secret']);
   assert.equal(t.config.keyVault.secretKeyId, 'key-1');
   assert.equal(t.config.keyVault.pendingSecretKeyIds, undefined);
   assert.deepEqual(t.config.keyVault.previousSecretKeyIds, ['key-old', 'key-maybe'], 'left on the app, as a run already going may use either');
@@ -207,7 +207,7 @@ test('new secret: one a stopped run may have put in the vault is replaced, then 
 
 test('new secret: a stopped run that Entra gave a secret before its key was saved: found by its ref and tracked', async () => {
   // Stopped between addPassword and saving the key: only the attempt is in the record.
-  const apis = fakeSecretApis({ passwords: [{ keyId: 'key-lost', displayName: 'Analytics Hub installer (ref aaaaaaaaaaaa)' }, { keyId: 'key-theirs', displayName: 'Analytics Hub installer' }] });
+  const apis = fakeSecretApis({ passwords: [{ keyId: 'key-lost', displayName: 'Consumption Central installer (ref aaaaaaaaaaaa)' }, { keyId: 'key-theirs', displayName: 'Consumption Central installer' }] });
   const ui = fakeUi();
   const t = secretCtx(apis, { ui: ui.ui });
   t.config.app.existing = false;
@@ -222,8 +222,8 @@ test('new secret: a stopped run that Entra gave a secret before its key was save
   // Two with the same ref: neither is adopted or removed, and the attempt stays.
   const twice = fakeSecretApis({
     passwords: [
-      { keyId: 'k1', displayName: 'Analytics Hub installer (ref bbbbbbbbbbbb)' },
-      { keyId: 'k2', displayName: 'Analytics Hub installer (ref bbbbbbbbbbbb)' },
+      { keyId: 'k1', displayName: 'Consumption Central installer (ref bbbbbbbbbbbb)' },
+      { keyId: 'k2', displayName: 'Consumption Central installer (ref bbbbbbbbbbbb)' },
     ],
   });
   const tw = fakeUi();
@@ -239,52 +239,52 @@ test('new secret: a stopped run that Entra gave a secret before its key was save
 
 test('secret name: an existing vault keeps another install\'s secret and the new one takes a free name', async () => {
   const apis = fakeSecretApis({
-    existing: { 'valuelens-client-secret': 'Client secret for other-app', 'valuelens-client-secret-2': undefined },
+    existing: { 'consumption-central-client-secret': 'Client secret for other-app', 'consumption-central-client-secret-2': undefined },
   });
   const ui = fakeUi();
   const { ctx, config } = secretCtx(apis, { existing: true, ui: ui.ui });
   await newSecret(ctx);
   assert.deepEqual(apis.calls, [
     'kv.waitForAccess',
-    'kv.secretInfo valuelens-client-secret',
-    'kv.secretInfo valuelens-client-secret-2',
-    'kv.secretInfo valuelens-client-secret-3',
+    'kv.secretInfo consumption-central-client-secret',
+    'kv.secretInfo consumption-central-client-secret-2',
+    'kv.secretInfo consumption-central-client-secret-3',
     'addPassword',
-    'kv.setSecret valuelens-client-secret-3',
+    'kv.setSecret consumption-central-client-secret-3',
   ]);
-  assert.equal(config.keyVault.secretName, 'valuelens-client-secret-3');
+  assert.equal(config.keyVault.secretName, 'consumption-central-client-secret-3');
   assert.match(ui.text(), /isn't this app's/);
 });
 
 test('secret name: this app\'s own secret, a new vault, or one already written are reused without a check', async () => {
-  const own = fakeSecretApis({ existing: { 'valuelens-client-secret': 'Client secret for app-1' } });
+  const own = fakeSecretApis({ existing: { 'consumption-central-client-secret': 'Client secret for app-1' } });
   await newSecret(secretCtx(own, { existing: true }).ctx);
-  assert.deepEqual(own.calls, ['kv.waitForAccess', 'kv.secretInfo valuelens-client-secret', 'addPassword', 'kv.setSecret valuelens-client-secret']);
+  assert.deepEqual(own.calls, ['kv.waitForAccess', 'kv.secretInfo consumption-central-client-secret', 'addPassword', 'kv.setSecret consumption-central-client-secret']);
 
-  const foreign = { existing: { 'valuelens-client-secret': 'Client secret for other-app' } };
+  const foreign = { existing: { 'consumption-central-client-secret': 'Client secret for other-app' } };
   const fresh = fakeSecretApis(foreign);
   await newSecret(secretCtx(fresh).ctx);
-  assert.deepEqual(fresh.calls, ['kv.waitForAccess', 'addPassword', 'kv.setSecret valuelens-client-secret']);
+  assert.deepEqual(fresh.calls, ['kv.waitForAccess', 'addPassword', 'kv.setSecret consumption-central-client-secret']);
 
   const rotated = fakeSecretApis(foreign);
   const made = secretCtx(rotated, { existing: true });
   made.config.keyVault.secretSetAt = '2026-10-01T00:00:00Z';
   await newSecret(made.ctx);
-  assert.deepEqual(rotated.calls, ['kv.waitForAccess', 'addPassword', 'kv.setSecret valuelens-client-secret']);
+  assert.deepEqual(rotated.calls, ['kv.waitForAccess', 'addPassword', 'kv.setSecret consumption-central-client-secret']);
 });
 
 test('secret name: a pasted secret for an existing app is checked too, through Resource Manager on a private vault', async () => {
-  const apis = fakeSecretApis({ existing: { 'valuelens-client-secret': undefined } });
+  const apis = fakeSecretApis({ existing: { 'consumption-central-client-secret': undefined } });
   const { ctx, config } = secretCtx(apis, { existing: true, private: true });
   ctx.pendingSecret = 'pasted';
   await ensureSecret(ctx);
   assert.deepEqual(apis.calls, [
     'arm.permissions',
-    'arm.secretInfo valuelens-client-secret',
-    'arm.secretInfo valuelens-client-secret-2',
-    'arm.setSecret valuelens-client-secret-2',
+    'arm.secretInfo consumption-central-client-secret',
+    'arm.secretInfo consumption-central-client-secret-2',
+    'arm.setSecret consumption-central-client-secret-2',
   ]);
-  assert.equal(config.keyVault.secretName, 'valuelens-client-secret-2');
+  assert.equal(config.keyVault.secretName, 'consumption-central-client-secret-2');
   assert.equal(ctx.pendingSecret, undefined);
   assert.ok(config.keyVault.secretSetAt);
 });
@@ -308,11 +308,11 @@ function fakeEndpointApis(o = {}) {
     ...(o.earlierInstall
       ? [
           {
-            id: `${VAULT_ID}/privateEndpointConnections/ws-0.valuelens-kv-test-conn`,
-            name: 'ws-0.valuelens-kv-test-conn',
+            id: `${VAULT_ID}/privateEndpointConnections/ws-0.consumption-central-kv-test-conn`,
+            name: 'ws-0.consumption-central-kv-test-conn',
             properties: {
-              privateEndpoint: { id: '/subscriptions/fabric/resourceGroups/managed/providers/Microsoft.Network/privateEndpoints/ws-0.valuelens-kv-test' },
-              privateLinkServiceConnectionState: { status: 'Approved', description: 'Approved by the ValueLens installer.' },
+              privateEndpoint: { id: '/subscriptions/fabric/resourceGroups/managed/providers/Microsoft.Network/privateEndpoints/ws-0.consumption-central-kv-test' },
+              privateLinkServiceConnectionState: { status: 'Approved', description: 'Approved by the Consumption Central installer.' },
             },
           },
         ]
@@ -369,7 +369,7 @@ test('private vault: the workspace gets a managed private endpoint, approved on 
   assert.equal(await ensureVaultEndpoint(ctx), true);
   assert.deepEqual(apis.calls, [
     'ensureProvider sub-1 Microsoft.Network',
-    'createPrivateEndpoint valuelens-kv-test vault',
+    'createPrivateEndpoint consumption-central-kv-test vault',
     'getPrivateEndpoint',
     'approve pec-1',
     'getPrivateEndpoint',
@@ -390,8 +390,8 @@ test('private vault: another workspace\'s approved endpoint with the same name i
   const { ctx } = endpointCtx(apis);
   assert.equal(await ensureVaultEndpoint(ctx), true);
   assert.deepEqual(apis.calls.filter((c) => c.startsWith('approve')), ['approve pec-1']);
-  assert.deepEqual(apis.state('pec-1'), { status: 'Approved', description: 'Approved by the Analytics Hub installer for Fabric workspace ws-1.' });
-  assert.deepEqual(apis.state('ws-0.valuelens-kv-test-conn'), { status: 'Approved', description: 'Approved by the ValueLens installer.' }, 'the other workspace\'s is left alone');
+  assert.deepEqual(apis.state('pec-1'), { status: 'Approved', description: 'Approved by the Consumption Central installer for Fabric workspace ws-1.' });
+  assert.deepEqual(apis.state('ws-0.consumption-central-kv-test-conn'), { status: 'Approved', description: 'Approved by the Consumption Central installer.' }, 'the other workspace\'s is left alone');
 });
 
 test('a vault connection belongs to the workspace whose ID it carries, before and after approval', () => {
@@ -404,7 +404,7 @@ test('a vault connection belongs to the workspace whose ID it carries, before an
   assert.equal(fromWorkspace(conn(ws, 'Pending', endpointRequest(ws)), ws), true);
   assert.equal(fromWorkspace(conn(ws, 'Approved', 'Approved in the portal.'), ws), true, 'approval replaces the request message');
   assert.equal(fromWorkspace(conn(ws, 'Pending', endpointRequest(ws)), ws.toUpperCase()), true);
-  assert.equal(fromWorkspace(conn('7d1c2b3a-4e5f-4a6b-8c7d-9e0f1a2b3c4d', 'Approved', 'Approved by the ValueLens installer.'), ws), false);
+  assert.equal(fromWorkspace(conn('7d1c2b3a-4e5f-4a6b-8c7d-9e0f1a2b3c4d', 'Approved', 'Approved by the Consumption Central installer.'), ws), false);
   assert.equal(fromWorkspace({ properties: { privateLinkServiceConnectionState: { status: 'Pending', description: 'Another team' } } }, ws), false);
 });
 

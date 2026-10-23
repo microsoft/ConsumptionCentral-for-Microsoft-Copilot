@@ -1,8 +1,8 @@
 <#
-Analytics Hub installer {{VERSION}}, started from PowerShell.
+Consumption Central installer {{VERSION}}, started from PowerShell.
 
 Downloads the installer from GitHub (Node.js, the installer and everything it deploys, in one
-zip), checks its SHA-256, unpacks it under %LOCALAPPDATA%\AnalyticsHub and opens the installer in
+zip), checks its SHA-256, unpacks it under %LOCALAPPDATA%\ConsumptionCentral and opens the installer in
 your browser. It needs no admin rights and installs nothing system-wide.
 
   irm https://github.com/{{REPO}}/releases/latest/download/install.ps1 | iex
@@ -15,24 +15,24 @@ If your organisation's policy blocks this, don't work around it: use another rou
 https://github.com/{{REPO}}/blob/main/docs/INSTALL.md or ask your IT team.
 
 Options:
-  -ZipPath <file>    Use an AnalyticsHubInstaller.zip you downloaded yourself, for example when a
+  -ZipPath <file>    Use a ConsumptionCentralInstaller.zip you downloaded yourself, for example when a
                      proxy blocks GitHub's download host. It must be the zip from the same release.
   -Proxy <url>       Download through this proxy, signed in as you.
   -UseInstalledNode  Run the installer with the Node.js already on this PC, such as one your IT
                      team approved, instead of the zip's. It needs x64 Node.js 22.13 or later on
                      22.x, or 24.x. The zip is still downloaded: it holds the installer.
   -Uninstall         Remove the unpacked installer and its command. Your install record in
-                     Documents\Analytics Hub stays.
+                     Documents\Consumption Central stays.
 Anything else goes to the installer, for example: status, or install --device-code.
-With irm | iex, set $env:ANALYTICS_HUB_ZIP, $env:ANALYTICS_HUB_PROXY or
-$env:ANALYTICS_HUB_USE_INSTALLED_NODE = '1' instead.
+With irm | iex, set $env:CONSUMPTION_CENTRAL_ZIP, $env:CONSUMPTION_CENTRAL_PROXY or
+$env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE = '1' instead.
 
 In Azure Cloud Shell's PowerShell, for tenants where no PC may run the installer, the same command
 gets this release's commit from GitHub with git, installs the installer's packages with npm and
 runs it in the terminal. It uses Cloud Shell's Node.js when that is 22.13 or later, or downloads
 Node.js {{NODE_VERSION}} and checks it against nodejs.org's SHA-256 list. The installer goes under
-~/.analytics-hub and the install record under ~/analytics-hub. -Uninstall removes the first.
-Set $env:ANALYTICS_HUB_CLOUD_SHELL to 1 or 0 if Cloud Shell isn't detected, or is wrongly.
+~/.consumption-central and the install record under ~/consumption-central. -Uninstall removes the first.
+Set $env:CONSUMPTION_CENTRAL_CLOUD_SHELL to 1 or 0 if Cloud Shell isn't detected, or is wrongly.
 
 Works in Windows PowerShell 5.1 and PowerShell 7, including Constrained Language Mode. Generated
 by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps1.
@@ -50,9 +50,9 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
   $Again = 'irm https://github.com/{{REPO}}/releases/latest/download/install.ps1 | iex'
 
   # Launcher options; the rest go to the installer as typed.
-  $ZipPath = $env:ANALYTICS_HUB_ZIP
-  $Proxy = $env:ANALYTICS_HUB_PROXY
-  $UseInstalledNode = $env:ANALYTICS_HUB_USE_INSTALLED_NODE -eq '1'
+  $ZipPath = $env:CONSUMPTION_CENTRAL_ZIP
+  $Proxy = $env:CONSUMPTION_CENTRAL_PROXY
+  $UseInstalledNode = $env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE -eq '1'
   $Uninstall = $false
   $Forward = @()
   for ($i = 0; $i -lt $args.Count; $i++) {
@@ -75,23 +75,23 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
   }
 
   # Azure Cloud Shell runs Linux, so the zip's Windows Node.js and packages are no use there.
-  $CloudShell = $env:ANALYTICS_HUB_CLOUD_SHELL -eq '1' -or ($env:ANALYTICS_HUB_CLOUD_SHELL -ne '0' -and ([string]$env:AZUREPS_HOST_ENVIRONMENT -like 'cloud-shell*' -or [bool]$env:ACC_CLOUD))
+  $CloudShell = $env:CONSUMPTION_CENTRAL_CLOUD_SHELL -eq '1' -or ($env:CONSUMPTION_CENTRAL_CLOUD_SHELL -ne '0' -and ([string]$env:AZUREPS_HOST_ENVIRONMENT -like 'cloud-shell*' -or [bool]$env:ACC_CLOUD))
   if ($CloudShell) {
     $Commit = '{{COMMIT}}'
     $NodeVersion = '{{NODE_VERSION}}'
     $RepoUrl = 'https://github.com/{{REPO}}.git'
     if ($ZipPath) { throw '-ZipPath is for Windows. In Cloud Shell the installer comes from GitHub.' }
-    $AhHome = Join-Path $HOME '.analytics-hub'
-    $Root = Join-Path $AhHome $Id
-    $Shim = Join-Path $AhHome 'analytics-hub'
-    $Work = Join-Path $HOME 'analytics-hub'
+    $CcHome = Join-Path $HOME '.consumption-central'
+    $Root = Join-Path $CcHome $Id
+    $Shim = Join-Path $CcHome 'consumption-central'
+    $Work = Join-Path $HOME 'consumption-central'
     $Marker = '.unpacked'
     $Sep = [IO.Path]::PathSeparator
 
     if ($Uninstall) {
-      if (-not (Test-Path -LiteralPath $AhHome)) { Write-Host 'Nothing to remove.'; return }
-      Remove-Item -LiteralPath $AhHome -Recurse -Force
-      Write-Host "Removed $AhHome. Your install record in $Work is still there."
+      if (-not (Test-Path -LiteralPath $CcHome)) { Write-Host 'Nothing to remove.'; return }
+      Remove-Item -LiteralPath $CcHome -Recurse -Force
+      Write-Host "Removed $CcHome. Your install record in $Work is still there."
       return
     }
 
@@ -106,14 +106,14 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
     $sys = Get-SystemNode
     if ($sys -and ($sys.Major -gt 22 -or ($sys.Major -eq 22 -and $sys.Minor -ge 13))) { $NodeExe = $sys.Path }
     if (-not $NodeExe) {
-      $NodeDir = Join-Path $AhHome "node-v$NodeVersion-linux-x64"
+      $NodeDir = Join-Path $CcHome "node-v$NodeVersion-linux-x64"
       $NodeExe = Join-Path $NodeDir 'bin/node'
       if (-not (Test-Path -LiteralPath $NodeExe)) {
         if (-not $IsLinux -or [string][Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne 'X64') { throw 'The installer needs Node.js 22.13 or later. Install it, then run this again.' }
-        New-Item -ItemType Directory -Path $AhHome -Force | Out-Null
+        New-Item -ItemType Directory -Path $CcHome -Force | Out-Null
         $file = "node-v$NodeVersion-linux-x64.tar.gz"
         $base = "https://nodejs.org/dist/v$NodeVersion"
-        $tgz = Join-Path $AhHome "$file.partial-$PID"
+        $tgz = Join-Path $CcHome "$file.partial-$PID"
         $partial = "$NodeDir.partial-$PID"
         Write-Host "Cloud Shell's Node.js is older than 22.13, so downloading Node.js $NodeVersion for the installer..."
         try {
@@ -139,12 +139,12 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
 
     if (-not (Test-Path -LiteralPath (Join-Path $Root $Marker))) {
       if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'The installer needs git, which Azure Cloud Shell has.' }
-      New-Item -ItemType Directory -Path $AhHome -Force | Out-Null
+      New-Item -ItemType Directory -Path $CcHome -Force | Out-Null
       $partial = "$Root.partial-$PID"
       if (Test-Path -LiteralPath $partial) { Remove-Item -LiteralPath $partial -Recurse -Force }
       $savedPath = $env:PATH
       try {
-        Write-Host "Getting the Analytics Hub installer $Version ($($Commit.Substring(0, 7))) from GitHub..."
+        Write-Host "Getting the Consumption Central installer $Version ($($Commit.Substring(0, 7))) from GitHub..."
         Invoke-Checked 'git init' { git init --quiet $partial }
         Invoke-Checked 'git fetch' { git -C $partial fetch --quiet --depth 1 $RepoUrl $Commit }
         Invoke-Checked 'git checkout' { git -C $partial -c advice.detachedHead=false checkout --quiet FETCH_HEAD }
@@ -168,25 +168,25 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
     }
 
     # Remove other versions, and a Node.js this version doesn't use.
-    foreach ($dir in @(Get-ChildItem -LiteralPath $AhHome -Directory -ErrorAction SilentlyContinue)) {
+    foreach ($dir in @(Get-ChildItem -LiteralPath $CcHome -Directory -ErrorAction SilentlyContinue)) {
       if ($dir.Name -eq $Id -or ($NodeDir -and $dir.FullName -eq $NodeDir)) { continue }
       if ($dir.Name -like '*.partial-*' -and $dir.LastWriteTimeUtc -gt (Get-Date).ToUniversalTime().AddHours(-1)) { continue }
       Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    # A command for later, such as "~/.analytics-hub/analytics-hub status", that runs this version.
+    # A command for later, such as "~/.consumption-central/consumption-central status", that runs this version.
     $shell = @(
       '#!/bin/sh'
-      '# Runs the Analytics Hub installer that install.ps1 got. install.ps1 writes this file.'
-      "AH_ROOT='$Root'"
-      'if [ ! -f "$AH_ROOT/.unpacked" ]; then'
-      "  echo 'This copy of the Analytics Hub installer has been removed or replaced. In PowerShell, run: $Again'"
+      '# Runs the Consumption Central installer that install.ps1 got. install.ps1 writes this file.'
+      "CC_ROOT='$Root'"
+      'if [ ! -f "$CC_ROOT/.unpacked" ]; then'
+      "  echo 'This copy of the Consumption Central installer has been removed or replaced. In PowerShell, run: $Again'"
       '  exit 1'
       'fi'
-      'export ANALYTICS_HUB_LAUNCHER=cloudshell'
+      'export CONSUMPTION_CENTRAL_LAUNCHER=cloudshell'
       "export PATH='$NodeBin'`"$Sep`$PATH`""
       "mkdir -p '$Work' && cd '$Work' || exit 1"
-      "exec '$NodeExe' `"`$AH_ROOT/installer/bin/valuelens-install.js`" `"`$@`""
+      "exec '$NodeExe' `"`$CC_ROOT/installer/bin/consumption-central-installer.js`" `"`$@`""
     )
     [IO.File]::WriteAllText($Shim, (($shell -join "`n") + "`n"))
     if (Get-Command chmod -CommandType Application -ErrorAction SilentlyContinue) { chmod +x $Shim }
@@ -197,16 +197,16 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
     }
 
     New-Item -ItemType Directory -Path $Work -Force | Out-Null
-    $saved = @{ Launcher = $env:ANALYTICS_HUB_LAUNCHER; Path = $env:PATH }
+    $saved = @{ Launcher = $env:CONSUMPTION_CENTRAL_LAUNCHER; Path = $env:PATH }
     Push-Location -LiteralPath $Work
     try {
-      $env:ANALYTICS_HUB_LAUNCHER = 'cloudshell'
+      $env:CONSUMPTION_CENTRAL_LAUNCHER = 'cloudshell'
       $env:PATH = $NodeBin + $Sep + $env:PATH
-      & $NodeExe (Join-Path $Root 'installer/bin/valuelens-install.js') @Forward
+      & $NodeExe (Join-Path $Root 'installer/bin/consumption-central-installer.js') @Forward
       $global:LASTEXITCODE = $LASTEXITCODE
     } finally {
       Pop-Location
-      $env:ANALYTICS_HUB_LAUNCHER = $saved.Launcher
+      $env:CONSUMPTION_CENTRAL_LAUNCHER = $saved.Launcher
       $env:PATH = $saved.Path
     }
     return
@@ -214,9 +214,9 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
 
   if ($env:OS -ne 'Windows_NT') { throw 'This launcher runs on Windows and in Azure Cloud Shell. Elsewhere, run the installer with Node.js: see https://github.com/{{REPO}}/blob/main/docs/INSTALL.md#without-the-exe' }
   $FullLanguage = $ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'
-  $AhHome = Join-Path $env:LOCALAPPDATA 'AnalyticsHub'
-  $Root = Join-Path $AhHome $Id
-  $Shim = Join-Path $AhHome 'analytics-hub.cmd'
+  $CcHome = Join-Path $env:LOCALAPPDATA 'ConsumptionCentral'
+  $Root = Join-Path $CcHome $Id
+  $Shim = Join-Path $CcHome 'consumption-central.cmd'
   $Marker = '.unpacked'
   $Tar = Join-Path $env:SystemRoot 'System32\tar.exe'
 
@@ -235,7 +235,7 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
   }
 
   function Find-Node {
-    Get-ChildItem -LiteralPath $AhHome -Directory -ErrorAction SilentlyContinue |
+    Get-ChildItem -LiteralPath $CcHome -Directory -ErrorAction SilentlyContinue |
       ForEach-Object { Join-Path $_.FullName 'node\node.exe' } |
       Where-Object { Test-Path -LiteralPath $_ } |
       Select-Object -First 1
@@ -252,41 +252,41 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
     $arch = ([string](& $sys.Path -p 'process.arch')).Trim()
     if ($arch -ne 'x64') { throw "$($sys.Path) is Node.js for $arch. The packages in the zip are for x64, so the installer needs x64 Node.js. $routes" }
     $Installed = $sys.Path
-    $Again = "`$env:ANALYTICS_HUB_USE_INSTALLED_NODE = '1'; $Again"
+    $Again = "`$env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE = '1'; $Again"
     Write-Host "Using Node.js $($sys.Version) from $Installed."
   }
 
   if ($Uninstall) {
-    if (-not (Test-Path -LiteralPath $AhHome)) { Write-Host 'Nothing to remove.'; return }
+    if (-not (Test-Path -LiteralPath $CcHome)) { Write-Host 'Nothing to remove.'; return }
     $node = $null
     if (-not $Installed) { $node = Find-Node }
     if ($Installed) {
-      Remove-Tree $AhHome $Installed
+      Remove-Tree $CcHome $Installed
     } elseif ($node) {
       # Node.js can't remove the folder it runs from, so run a copy.
-      $copy = Join-Path $env:TEMP "analytics-hub-node-$PID.exe"
+      $copy = Join-Path $env:TEMP "consumption-central-node-$PID.exe"
       Copy-Item -LiteralPath $node -Destination $copy -Force
-      Remove-Tree $AhHome $copy
+      Remove-Tree $CcHome $copy
       Remove-Item -LiteralPath $copy -Force -ErrorAction SilentlyContinue
     } else {
-      Remove-Tree $AhHome $null
+      Remove-Tree $CcHome $null
     }
-    if (Test-Path -LiteralPath $AhHome) { throw "Couldn't remove all of $AhHome. Close the installer and try again." }
-    Write-Host "Removed $AhHome. Your install record in Documents\Analytics Hub is still there."
+    if (Test-Path -LiteralPath $CcHome) { throw "Couldn't remove all of $CcHome. Close the installer and try again." }
+    Write-Host "Removed $CcHome. Your install record in Documents\Consumption Central is still there."
     return
   }
 
   if (-not (Test-Path -LiteralPath (Join-Path $Root $Marker))) {
-    New-Item -ItemType Directory -Path $AhHome -Force | Out-Null
+    New-Item -ItemType Directory -Path $CcHome -Force | Out-Null
     $zip = $ZipPath
     $downloaded = $false
     if ($zip) {
       if (-not (Test-Path -LiteralPath $zip)) { throw "Can't find $zip." }
       $zip = (Resolve-Path -LiteralPath $zip).Path
     } else {
-      $zip = Join-Path $AhHome "$Id.zip.partial-$PID"
+      $zip = Join-Path $CcHome "$Id.zip.partial-$PID"
       $downloaded = $true
-      Write-Host "Downloading the Analytics Hub installer $Version (about $SizeMb MB)..."
+      Write-Host "Downloading the Consumption Central installer $Version (about $SizeMb MB)..."
       if ($FullLanguage) {
         # Windows PowerShell 5.1 may not offer TLS 1.2 by default, and doesn't sign in to the system proxy.
         try {
@@ -303,8 +303,8 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
         $status = 0
         try { $status = [int]$_.Exception.Response.StatusCode } catch { }
         # A pinned install.ps1 whose release has gone. The current release has its own zip and SHA-256.
-        if ($status -eq 404) { throw "Release installer-v$Version is no longer available, so this copy of install.ps1 can't download its zip. To install the current release instead, run: $Again" }
-        throw "Couldn't download $ZipUrl ($($_.Exception.Message)). If a proxy blocks it, download $ZipName from the release in a browser and run this again with -ZipPath, or set `$env:ANALYTICS_HUB_ZIP to its path."
+        if ($status -eq 404) { throw "Release consumption-central-installer-v$Version is no longer available, so this copy of install.ps1 can't download its zip. To install the current release instead, run: $Again" }
+        throw "Couldn't download $ZipUrl ($($_.Exception.Message)). If a proxy blocks it, download $ZipName from the release in a browser and run this again with -ZipPath, or set `$env:CONSUMPTION_CENTRAL_ZIP to its path."
       }
     }
 
@@ -319,7 +319,7 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
     $actual = $actual.ToLowerInvariant()
     if ($actual -ne $Sha256) {
       if ($downloaded) { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }
-      throw "$zip isn't the Analytics Hub installer $Version (its SHA-256 is $actual, not $Sha256). Download $ZipName from release installer-v$Version again."
+      throw "$zip isn't the Consumption Central installer $Version (its SHA-256 is $actual, not $Sha256). Download $ZipName from release consumption-central-installer-v$Version again."
     }
 
     Write-Host 'Unpacking it. This takes a minute the first time...'
@@ -356,7 +356,7 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
     } catch {
       if (-not (Test-Path -LiteralPath (Join-Path $Root $Marker))) {
         Remove-Tree $partial $Installed
-        throw "Couldn't finish unpacking the installer: $($_.Exception.Message) Run the command again. If it keeps failing, antivirus may be holding the files in $AhHome."
+        throw "Couldn't finish unpacking the installer: $($_.Exception.Message) Run the command again. If it keeps failing, antivirus may be holding the files in $CcHome."
       }
       # Another copy of the installer unpacked it first.
       $tool = $Installed
@@ -369,7 +369,7 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
   $node = $Installed
   if (-not $node) { $node = Join-Path $Root 'node\node.exe' }
   $NodeDir = Split-Path $node
-  $script = Join-Path $Root 'f\installer\bin\valuelens-install.js'
+  $script = Join-Path $Root 'f\installer\bin\consumption-central-installer.js'
 
   # AppLocker or App Control may block node.exe. Say what to do instead of the raw error.
   $ranNode = $null
@@ -381,16 +381,16 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
     if (-not $byPolicy) { throw $ranNode }
     $docs = 'https://github.com/{{REPO}}/blob/main/docs/INSTALL.md'
     if ($Installed) { throw "Your organisation's policy blocks $node, so the installer can't run here. Don't work around it: run it in Azure Cloud Shell ($docs#locked-down-tenant--azure-cloud-shell), or ask your IT team." }
-    throw "Your organisation's policy blocks the Node.js that comes with the installer ($node). Don't work around it. If your IT team offers Node.js, for example in Company Portal, install the x64 LTS version, then run: `$env:ANALYTICS_HUB_USE_INSTALLED_NODE = '1'; $Again ($docs#it-approved-nodejs). Otherwise run the installer in Azure Cloud Shell ($docs#locked-down-tenant--azure-cloud-shell), or ask your IT team."
+    throw "Your organisation's policy blocks the Node.js that comes with the installer ($node). Don't work around it. If your IT team offers Node.js, for example in Company Portal, install the x64 LTS version, then run: `$env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE = '1'; $Again ($docs#it-approved-nodejs). Otherwise run the installer in Azure Cloud Shell ($docs#locked-down-tenant--azure-cloud-shell), or ask your IT team."
   }
 
   # Remove what other versions unpacked, unless they're still running.
-  foreach ($dir in @(Get-ChildItem -LiteralPath $AhHome -Directory -ErrorAction SilentlyContinue)) {
+  foreach ($dir in @(Get-ChildItem -LiteralPath $CcHome -Directory -ErrorAction SilentlyContinue)) {
     if ($dir.Name -eq $Id) { continue }
     if ($dir.Name -like '*.partial-*' -and $dir.LastWriteTimeUtc -gt (Get-Date).ToUniversalTime().AddHours(-1)) { continue }
     $doomed = $dir.FullName
     if (-not $dir.Name.StartsWith('~')) {
-      $doomed = Join-Path $AhHome ('~' + [string](Get-Random) + [string]$PID)
+      $doomed = Join-Path $CcHome ('~' + [string](Get-Random) + [string]$PID)
       # Moving it first fails while any file in it is in use, and leaves nothing half deleted.
       try { Rename-Item -LiteralPath $dir.FullName -NewName (Split-Path $doomed -Leaf) } catch { continue }
     }
@@ -405,59 +405,59 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
     $Docs = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders' -ErrorAction SilentlyContinue).Personal
   }
   if (-not $Docs) { $Docs = Join-Path $env:USERPROFILE 'Documents' }
-  $Work = Join-Path $Docs 'Analytics Hub'
+  $Work = Join-Path $Docs 'Consumption Central'
   New-Item -ItemType Directory -Path $Work -Force | Out-Null
 
-  # A command for later, such as "analytics-hub.cmd status", that runs this version with the same Node.js.
-  $shimNode = @('set "AH_NODE=%AH_ROOT%\node\node.exe"', 'set "PATH=%AH_ROOT%\node;%PATH%"')
-  if ($Installed) { $shimNode = @("set `"AH_NODE=$Installed`"", "set `"PATH=$NodeDir;%PATH%`"", 'set "ANALYTICS_HUB_USE_INSTALLED_NODE=1"') }
+  # A command for later, such as "consumption-central.cmd status", that runs this version with the same Node.js.
+  $shimNode = @('set "CC_NODE=%CC_ROOT%\node\node.exe"', 'set "PATH=%CC_ROOT%\node;%PATH%"')
+  if ($Installed) { $shimNode = @("set `"CC_NODE=$Installed`"", "set `"PATH=$NodeDir;%PATH%`"", 'set "CONSUMPTION_CENTRAL_USE_INSTALLED_NODE=1"') }
   # cmd.exe would read the | in the command as a pipe.
   $AgainCmd = $Again -replace '\|', '^|'
   Set-Content -LiteralPath $Shim -Encoding Ascii -Value @(
     '@echo off'
-    'rem Runs the Analytics Hub installer that install.ps1 unpacked. install.ps1 writes this file.'
+    'rem Runs the Consumption Central installer that install.ps1 unpacked. install.ps1 writes this file.'
     'setlocal'
-    "set `"AH_ROOT=%~dp0$Id`""
-    'if not exist "%AH_ROOT%\.unpacked" ('
-    "  echo This copy of the Analytics Hub installer has been removed or replaced. In PowerShell, run: $AgainCmd"
+    "set `"CC_ROOT=%~dp0$Id`""
+    'if not exist "%CC_ROOT%\.unpacked" ('
+    "  echo This copy of the Consumption Central installer has been removed or replaced. In PowerShell, run: $AgainCmd"
     '  exit /b 1'
     ')'
     $shimNode
-    'if not exist "%AH_NODE%" ('
-    "  echo Can't find Node.js at `"%AH_NODE%`". In PowerShell, run: $AgainCmd"
+    'if not exist "%CC_NODE%" ('
+    "  echo Can't find Node.js at `"%CC_NODE%`". In PowerShell, run: $AgainCmd"
     '  exit /b 1'
     ')'
-    'set "ANALYTICS_HUB_LAUNCHER=pwsh"'
+    'set "CONSUMPTION_CENTRAL_LAUNCHER=pwsh"'
     "cd /d `"$Work`""
-    'if "%~1"=="" ("%AH_NODE%" "%AH_ROOT%\f\installer\bin\valuelens-install.js" --ui) else ("%AH_NODE%" "%AH_ROOT%\f\installer\bin\valuelens-install.js" %*)'
+    'if "%~1"=="" ("%CC_NODE%" "%CC_ROOT%\f\installer\bin\consumption-central-installer.js" --ui) else ("%CC_NODE%" "%CC_ROOT%\f\installer\bin\consumption-central-installer.js" %*)'
   )
 
   if (-not $Forward.Count) { $Forward = @('--ui') }
-  $saved = @{ Launcher = $env:ANALYTICS_HUB_LAUNCHER; Path = $env:PATH; Installed = $env:ANALYTICS_HUB_USE_INSTALLED_NODE }
+  $saved = @{ Launcher = $env:CONSUMPTION_CENTRAL_LAUNCHER; Path = $env:PATH; Installed = $env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE }
   $awake = $false
   if ($FullLanguage) {
     # A PC that sleeps part way through setup stops it. Best effort: Add-Type may be blocked.
     try {
-      if (-not ('AnalyticsHub.Power' -as [type])) {
-        Add-Type -Namespace AnalyticsHub -Name Power -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint flags);'
+      if (-not ('ConsumptionCentral.Power' -as [type])) {
+        Add-Type -Namespace ConsumptionCentral -Name Power -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint flags);'
       }
-      $awake = [AnalyticsHub.Power]::SetThreadExecutionState([uint32]2147483649) -ne 0
+      $awake = [ConsumptionCentral.Power]::SetThreadExecutionState([uint32]2147483649) -ne 0
     } catch { }
   }
   Push-Location -LiteralPath $Work
   try {
-    $env:ANALYTICS_HUB_LAUNCHER = 'pwsh'
-    $env:ANALYTICS_HUB_USE_INSTALLED_NODE = $null
-    if ($Installed) { $env:ANALYTICS_HUB_USE_INSTALLED_NODE = '1' }
+    $env:CONSUMPTION_CENTRAL_LAUNCHER = 'pwsh'
+    $env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE = $null
+    if ($Installed) { $env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE = '1' }
     $env:PATH = $NodeDir + ';' + $env:PATH
     & $node $script @Forward
     $global:LASTEXITCODE = $LASTEXITCODE
   } finally {
     Pop-Location
-    $env:ANALYTICS_HUB_LAUNCHER = $saved.Launcher
-    $env:ANALYTICS_HUB_USE_INSTALLED_NODE = $saved.Installed
+    $env:CONSUMPTION_CENTRAL_LAUNCHER = $saved.Launcher
+    $env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE = $saved.Installed
     $env:PATH = $saved.Path
-    if ($awake) { try { [AnalyticsHub.Power]::SetThreadExecutionState([uint32]2147483648) | Out-Null } catch { } }
+    if ($awake) { try { [ConsumptionCentral.Power]::SetThreadExecutionState([uint32]2147483648) | Out-Null } catch { } }
   }
 } @args
 if ($MyInvocation.MyCommand.Path -and $LASTEXITCODE) { exit $LASTEXITCODE }

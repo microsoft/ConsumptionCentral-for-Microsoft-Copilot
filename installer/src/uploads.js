@@ -1,15 +1,16 @@
 // @ts-check
 /**
- * The data sources Analytics Hub reads, how each one arrives (an API, a CSV the admin exports, or
+ * The data sources Consumption Central reads, how each one arrives (an API, a CSV the admin exports, or
  * not at all), and how an uploaded CSV is recognised from its headers. The upload router notebook
  * gets the same signatures, so the installer and the scheduled pipeline always agree.
  */
 
+import { UPLOAD_DIR, UPLOAD_LOG_TABLE } from './product.js';
+
 /** The one drop folder. The installer, the email flow, OneLake File Explorer and Fabric uploads all write here. */
-export const UPLOAD_DIR = 'Files/analytics_hub_uploads';
-/** Where an optional OneLake shortcut to a SharePoint "Analytics Hub uploads" folder goes. Read-only: files there are never moved. */
+export { UPLOAD_DIR, UPLOAD_LOG_TABLE };
+/** Where an optional OneLake shortcut to a SharePoint "Consumption Central uploads" folder goes. Read-only: files there are never moved. */
 export const SHAREPOINT_SUBDIR = `${UPLOAD_DIR}/sharepoint`;
-export const UPLOAD_LOG_TABLE = 'dbo.analytics_hub_upload_log';
 export const FEEDBACK_DIR = 'Files/product_feedback';
 export const AGENT365_DIR = 'Files/agent365';
 export const WORKDAY_DIR = 'Files/org_workday';
@@ -230,7 +231,7 @@ export const UPLOAD_KINDS = [
     name: 'EntitlementConsumptionTenantPerUserDetailsReport_MCSMessages_{stamp}.csv',
     policy: 'replaceKind',
   },
-  // Written each day by the Analytics Hub Copilot Studio credits flow from the licensing API. Each
+  // Written each day by the Consumption Central Copilot Studio credits flow from the licensing API. Each
   // file restates the last ten days, so only the newest is kept; the notebook merges by day.
   {
     kind: 'studioAgentDaily',
@@ -353,7 +354,7 @@ export function detectSource(headers, enabled) {
     .filter((k) => k.groups.every((g) => g.some((h) => have.has(h))))
     .map((k) => ({ k, score: k.groups.length }))
     .sort((a, b) => b.score - a.score);
-  if (!scored.length) return { ok: false, reason: `It doesn't look like any export Analytics Hub reads. ${expectedHint()}`, headers };
+  if (!scored.length) return { ok: false, reason: `It doesn't look like any export Consumption Central reads. ${expectedHint()}`, headers };
   if (scored.length > 1 && scored[0].score === scored[1].score) {
     return { ok: false, reason: `It matches more than one export (${scored.filter((s) => s.score === scored[0].score).map((s) => s.k.kind).join(', ')}).`, headers };
   }
@@ -366,7 +367,7 @@ export function detectSource(headers, enabled) {
 }
 
 function expectedHint() {
-  return 'Expected one of: product feedback, Agent 365 agents, Copilot Studio credits (including the Analytics Hub flow\'s files), Cowork credits or a Workday report.';
+  return 'Expected one of: product feedback, Agent 365 agents, Copilot Studio credits (including the Consumption Central flow\'s files), Cowork credits or a Workday report.';
 }
 
 /**

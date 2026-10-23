@@ -81,7 +81,7 @@ export function oneLakeApi(http) {
      * Writes a file, replacing any file already at that path.
      * @param {string} workspaceId
      * @param {string} lakehouseId
-     * @param {string} path  Relative to the Lakehouse root, e.g. Files/analytics_hub_uploads/x.csv.
+     * @param {string} path  Relative to the Lakehouse root, e.g. Files/consumption_central_uploads/x.csv.
      * @param {Uint8Array} data
      */
     async writeFile(workspaceId, lakehouseId, path, data) {

@@ -40,7 +40,7 @@ test('currency: a saved choice is cleaned; USD never keeps a rate', () => {
 test('currency: the install record keeps the choice and older records have none', () => {
   const dir = mkdtempSync(join(tmpdir(), 'vl-currency-'));
   try {
-    const file = join(dir, 'valuelens-install.json');
+    const file = join(dir, 'consumption-central-setup.json');
     writeFileSync(file, JSON.stringify({ version: 1, reporting: { currency: 'gbp', exchangeRate: 0.79 } }));
     assert.deepEqual(loadConfig(file).config.reporting, { currency: 'GBP', exchangeRate: 0.79 });
     writeFileSync(file, JSON.stringify({ version: 1 }));

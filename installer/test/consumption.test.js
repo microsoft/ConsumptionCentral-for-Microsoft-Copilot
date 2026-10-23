@@ -188,7 +188,7 @@ test('Azure AI notebook: subscription, tenant, app and Key Vault secret are fill
   assert.match(all, /^TENANT_ID = 'tenant-1'/m);
   assert.match(all, /^CLIENT_ID = 'app-1'/m);
   assert.match(all, /^KEY_VAULT_URL = 'https:\/\/kv-test\.vault\.azure\.net\/'/m);
-  assert.match(all, /^CLIENT_SECRET_NAME = 'valuelens-client-secret'/m);
+  assert.match(all, /^CLIENT_SECRET_NAME = 'consumption-central-client-secret'/m);
   assert.equal(nb.metadata.dependencies.lakehouse.default_lakehouse, 'lh-1');
 });
 
@@ -524,7 +524,7 @@ test('summary: Azure AI status and the Studio and Cowork upload steps', () => {
   assert.match(flowing.ui.text(), /Sign in to the flow and turn it on/);
   assert.match(flowing.ui.text(), /Optional: drop the Power Platform admin center exports/);
   assert.doesNotMatch(flowing.ui.text(), /download the EntitlementConsumption/);
-  assert.match(flowing.ui.text(), /Dataflow AnalyticsHub_Cowork_Credits, refreshed by the pipeline/);
+  assert.match(flowing.ui.text(), /Dataflow ConsumptionCentral_Cowork_Credits, refreshed by the pipeline/);
 
   const skipped = setup();
   Object.assign(skipped.config.dataSources, { studioCredits: 'skip', coworkCredits: 'skip' });
@@ -549,7 +549,7 @@ test('summary: Azure AI status and the Studio and Cowork upload steps', () => {
 test('install record: older records gain the consumption defaults', () => {
   const dir = mkdtempSync(join(tmpdir(), 'vl-cfg-'));
   try {
-    const file = join(dir, 'valuelens-install.json');
+    const file = join(dir, 'consumption-central-setup.json');
     writeFileSync(file, JSON.stringify({ version: CONFIG_VERSION, modules: { orgData: true } }));
     const { config } = loadConfig(file);
     assert.equal(config.modules.consumption, false);

@@ -11,6 +11,7 @@ import { connect, createCtx, preview, runCommand } from './install.js';
 import { adoptUploadedRecord, cloudShellKeepsFiles, cloudShellRecordMessage, commandLine, inCloudShell } from './launch.js';
 import { runWizard } from './server.js';
 import { loadSources } from './sources.js';
+import { PRODUCT_ID, UPLOAD_DIR } from './product.js';
 import { recordWorkspaceGone, staleRecordMessage } from './steps/fabric.js';
 import { isResumeLater, MAX_SECRET_DAYS, NOTEBOOK_SECRET_DAYS } from './steps/identity.js';
 import { isVivaId } from './transform/dataflow.js';
@@ -21,13 +22,13 @@ import { DATA_SOURCE_IDS, modulesFromSources, parseDataFlags } from './uploads.j
 const COMMANDS = ['install', 'update', 'run', 'rerun-failed', 'load-cowork', 'check', 'refresh', 'status', 'rotate-secret', 'access', 'upload', 'uninstall', 'prereqs', 'preview'];
 
 /** The `--help` text, naming the command the way it was started. */
-export const help = () => `Sets up Analytics Hub in Microsoft Fabric: the data pipeline and the semantic model.
+export const help = () => `Sets up Consumption Central in Microsoft Fabric: the data pipeline and the semantic model.
 
 Usage: ${commandLine('[command] [options]')}
        ${commandLine('--ui [options]')}
 
 Commands:
-  install          Set up Analytics Hub, or repair it from the install record (default)
+  install          Set up Consumption Central, or repair it from the install record (default)
   update           Push the notebooks, pipeline and semantic model from this checkout to Fabric
   run              Run the pipeline now, then the data check
   rerun-failed     Run again only the loads that failed in the latest pipeline run
@@ -38,7 +39,7 @@ Commands:
   status           Show recent runs and refreshes, the last data check and when secrets expire
   rotate-secret    Create new client secrets for Key Vault and the model's connection
   access           Who can view: the viewer group, its members and owners, and its Build on the models
-  upload [files]   Upload CSV exports to the drop folder (Files/analytics_hub_uploads)
+  upload [files]   Upload CSV exports to the drop folder (${UPLOAD_DIR})
   uninstall        Delete the workspace's managed private endpoints, then the workspace
   prereqs          Check the roles, licences, capacities and Azure access you have and lack.
                    Read-only; works before anything is installed
@@ -51,13 +52,13 @@ Options:
   --config <file>      Install record (default ./${DEFAULT_CONFIG_FILE})
   --source <dir>       The repo folder to deploy from (default: this checkout)
   --tenant <id>        Tenant ID or domain to sign in to
-  --target <target>    Where Analytics Hub runs: fabric (default, and the only target)
+  --target <target>    Where Consumption Central runs: fabric (default, and the only target)
   --device-code        Sign in with a code on another device instead of a browser. The default
                        in Azure Cloud Shell
   --use-az             Use the account you are signed in to with the Azure CLI. In Azure Cloud
                        Shell, run ${AZ_LOGIN} first
   --backfill-days <n>  With run: reload n days of audit history and rebuild the curated table
-  --out <dir>          With preview: where to write (default ./valuelens-preview)
+  --out <dir>          With preview: where to write (default ./${PRODUCT_ID}-preview)
   --data <id=mode>     With install: how a source arrives, api, csv or skip. Repeat it or use
                        commas, e.g. --data productFeedback=flow,agent365=api. flow is the
                        Power Automate flow, the api mode of productFeedback and studioCredits.
@@ -216,7 +217,7 @@ export function parseCli(argv, env = process.env) {
     method: /** @type {'browser' | 'device-code' | 'azure-cli'} */ (values['use-az'] ? 'azure-cli' : values['device-code'] || cloudShell ? 'device-code' : 'browser'),
     cloudShell,
     backfillDays,
-    outDir: values.out ?? 'valuelens-preview',
+    outDir: values.out ?? `${PRODUCT_ID}-preview`,
     yes: !!values.yes,
     wait: !values['no-wait'],
     ui: !!values.ui,
@@ -323,7 +324,7 @@ export async function main(argv) {
     const sources = loadSources(args.sourceDir);
     applyDataFlags(config, args);
 
-    ui.line(c.bold(`Analytics Hub installer ${version()}`));
+    ui.line(c.bold(`Consumption Central installer ${version()}`));
     if (args.command === 'preview') {
       preview({ ui, config, sources, outDir: args.outDir });
       return 0;

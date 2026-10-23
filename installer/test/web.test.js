@@ -49,7 +49,7 @@ async function serve(session = {}) {
   session.state ??= () => ({ installed: false });
   session.start ??= () => ({ ok: true });
   const server = await startServer({ ui, session: /** @type {any} */ (session), token: 'tok' });
-  const cookie = `valuelens_${server.port}=tok`;
+  const cookie = `consumption_central_${server.port}=tok`;
   const post = (/** @type {string} */ path, /** @type {unknown} */ body, /** @type {Record<string, string>} */ headers = {}) =>
     call(server.port, {
       method: 'POST',
@@ -326,14 +326,14 @@ test('server: only the printed link opens it, and every call needs its cookie', 
     assert.equal((await call(server.port, { path: '/?t=wrong' })).status, 403);
     const opened = await call(server.port, { path: '/?t=tok' });
     assert.equal(opened.status, 303);
-    assert.match(String(opened.headers['set-cookie']), new RegExp(`^valuelens_${server.port}=tok; HttpOnly; SameSite=Strict`));
+    assert.match(String(opened.headers['set-cookie']), new RegExp(`^consumption_central_${server.port}=tok; HttpOnly; SameSite=Strict`));
     assert.equal((await call(server.port, { path: '/' })).status, 401);
-    assert.equal((await call(server.port, { path: '/api/state', headers: { Cookie: `valuelens_${server.port}=nope` } })).status, 401);
+    assert.equal((await call(server.port, { path: '/api/state', headers: { Cookie: `consumption_central_${server.port}=nope` } })).status, 401);
     const state = await call(server.port, { path: '/api/state', headers: { Cookie: cookie } });
     assert.equal(state.status, 200);
     assert.deepEqual(JSON.parse(state.body), { installed: false });
     const html = await call(server.port, { path: '/', headers: { Cookie: cookie } });
-    assert.match(html.body, /<title>Analytics Hub installer<\/title>/);
+    assert.match(html.body, /<title>Consumption Central installer<\/title>/);
     assert.match(String(html.headers['content-security-policy']), /default-src 'none'/);
   } finally {
     server.close();
@@ -348,7 +348,7 @@ test('server: refuses another host name, another site and anything but JSON', as
     assert.equal((await post('/api/cancel', {}, { Origin: 'http://evil.example' })).status, 403);
     assert.equal((await post('/api/cancel', {}, { Origin: '' })).status, 403);
     assert.equal((await post('/api/cancel', {}, { 'Content-Type': 'text/plain' })).status, 415);
-    assert.equal((await call(server.port, { method: 'PUT', path: '/api/cancel', headers: { Cookie: `valuelens_${server.port}=tok` } })).status, 405);
+    assert.equal((await call(server.port, { method: 'PUT', path: '/api/cancel', headers: { Cookie: `consumption_central_${server.port}=tok` } })).status, 405);
   } finally {
     server.close();
     await server.done;
@@ -404,7 +404,7 @@ test('server: start passes through; quit waits for a running command', async () 
 });
 
 test('server: start fresh and keep the record pass through, behind the same checks', async () => {
-  let fresh = /** @type {any} */ ({ ok: true, archived: 'C:\\Docs\\valuelens-install.20260507-090302.json' });
+  let fresh = /** @type {any} */ ({ ok: true, archived: 'C:\\Docs\\consumption-central-setup.20260507-090302.json' });
   let kept = 0;
   const { server, post } = await serve({ startFresh: () => fresh, keepRecord: () => (kept++, { ok: true }) });
   try {

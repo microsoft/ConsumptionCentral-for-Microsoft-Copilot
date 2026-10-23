@@ -26,7 +26,7 @@ test('notebooks: first run creates, a re-run changes nothing, update pushes cont
   );
   for (const nb of defaultNotebooks) assert.ok(config.fabric.notebooks[nb.key], `${nb.key} is recorded`);
   const audit = fabric.items.find((i) => i.displayName === 'Copilot_Audit_Log_Direct_Ingester');
-  assert.match(audit?.content, /notebookutils\.credentials\.getSecret\('https:\/\/kv-test\.vault\.azure\.net\/', 'valuelens-client-secret'\)/);
+  assert.match(audit?.content, /notebookutils\.credentials\.getSecret\('https:\/\/kv-test\.vault\.azure\.net\/', 'consumption-central-client-secret'\)/);
   assert.match(audit?.content, /tenant-1/);
   assert.doesNotMatch(audit?.content, /"default_lakehouse": "00000000/);
 
@@ -68,7 +68,7 @@ test('notebooks: with the secret in the notebooks, only those without it are has
   const fabric = fakeFabric();
   const graph = fakeGraphApi();
   const { ctx, config } = fakeCtx({ fabric: fabric.api, graph: graph.api });
-  config.keyVault = { secretName: 'valuelens-client-secret', mode: 'notebook' };
+  config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   await ensureNotebooks(ctx);
   const plain = defaultNotebooks.filter((nb) => !usesSecret(nb));
   assert.ok(plain.length > 0);
@@ -88,11 +88,11 @@ test('notebooks: a deleted one is deployed again; one with the same name that is
   const { ctx, config } = fakeCtx({ fabric: fabric.api });
   await ensureNotebooks(ctx);
 
-  const gone = fabric.items.findIndex((i) => i.displayName === 'AnalyticsHub_Data_Check');
+  const gone = fabric.items.findIndex((i) => i.displayName === 'ConsumptionCentral_Data_Check');
   fabric.items.splice(gone, 1);
   fabric.calls.length = 0;
   await ensureNotebooks(ctx);
-  assert.deepEqual(fabric.calls, ['createNotebook AnalyticsHub_Data_Check']);
+  assert.deepEqual(fabric.calls, ['createNotebook ConsumptionCentral_Data_Check']);
   assert.ok(config.fabric.notebooks.dataCheck);
 
   const other = fakeFabric();
@@ -119,12 +119,12 @@ test('freeName: numbers a clash, with a space for names that have spaces', () =>
   assert.equal(freeName('ValueLens', []), 'ValueLens');
   assert.equal(freeName('ValueLens', ['valuelens']), 'ValueLens_2');
   assert.equal(freeName('ValueLens', ['ValueLens', 'ValueLens_2']), 'ValueLens_3');
-  assert.equal(freeName('Analytics Hub Model', ['Analytics Hub Model']), 'Analytics Hub Model 2');
+  assert.equal(freeName('Consumption Central Model', ['Consumption Central Model']), 'Consumption Central Model 2');
 });
 
 test('plan: a new Lakehouse needs a name no Lakehouse in the workspace has', () => {
   const check = validateNewLakehouseName(['ValueLens']);
-  assert.match(String(check(' valuelens ')), /already a Lakehouse called valuelens here\. Analytics Hub only writes to a Lakehouse it creates/);
+  assert.match(String(check(' valuelens ')), /already a Lakehouse called valuelens here\. Consumption Central only writes to a Lakehouse it creates/);
   assert.equal(check('ValueLens_2'), true);
   assert.match(String(check('2bad')), /Start with a letter/);
 });
@@ -141,8 +141,8 @@ test('plan: spaces and hyphens in a Lakehouse name become underscores', () => {
 test('plan: new items get names nothing in the workspace has; a name someone chose stays', async () => {
   const fabric = fakeFabric();
   fabric.add('Notebook', 'Copilot_Audit_Log_Processor', null);
-  fabric.add('DataPipeline', 'AnalyticsHub_Pipeline', null);
-  fabric.add('SemanticModel', 'Analytics Hub Model', null);
+  fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', null);
+  fabric.add('SemanticModel', 'Consumption Central Model', null);
   const ui = fakeUi();
   const { ctx, config } = fakeCtx({ fabric: fabric.api, ui: ui.ui });
   config.semanticModel.enabled = true;
@@ -150,19 +150,19 @@ test('plan: new items get names nothing in the workspace has; a name someone cho
   await reserveNames(ctx);
   assert.equal(fabric.calls.length, 0, 'planning changes nothing');
   assert.equal(config.fabric.notebookNames?.processor, 'Copilot_Audit_Log_Processor_2');
-  assert.equal(config.fabric.notebookNames?.dataCheck, 'AnalyticsHub_Data_Check');
-  assert.equal(config.fabric.pipelineName, 'AnalyticsHub_Pipeline_2');
-  assert.equal(config.semanticModel.name, 'Analytics Hub Model 2');
-  assert.match(ui.text(), /already has "Copilot_Audit_Log_Processor", "AnalyticsHub_Pipeline", "Analytics Hub Model", not from this install/);
+  assert.equal(config.fabric.notebookNames?.dataCheck, 'ConsumptionCentral_Data_Check');
+  assert.equal(config.fabric.pipelineName, 'ConsumptionCentral_Pipeline_2');
+  assert.equal(config.semanticModel.name, 'Consumption Central Model 2');
+  assert.match(ui.text(), /already has "Copilot_Audit_Log_Processor", "ConsumptionCentral_Pipeline", "Consumption Central Model", not from this install/);
   const review = planReview(ctx);
   assert.match(String(review.creates.find((i) => i.kind === 'Notebooks')?.detail), /Copilot_Audit_Log_Processor_2/);
-  assert.equal(review.creates.find((i) => i.kind === 'Pipeline')?.name, 'AnalyticsHub_Pipeline_2');
+  assert.equal(review.creates.find((i) => i.kind === 'Pipeline')?.name, 'ConsumptionCentral_Pipeline_2');
 
   fabric.items.length = 0;
   config.semanticModel.name = 'Contoso Model';
   await reserveNames(ctx);
   assert.equal(config.fabric.notebookNames?.processor, 'Copilot_Audit_Log_Processor', 'back to the usual name once it is free');
-  assert.equal(config.fabric.pipelineName, 'AnalyticsHub_Pipeline');
+  assert.equal(config.fabric.pipelineName, 'ConsumptionCentral_Pipeline');
   assert.equal(config.semanticModel.name, 'Contoso Model');
 
   await ensureNotebooks(ctx);
@@ -199,25 +199,25 @@ test('lakehouse: never writes to one it did not create', async () => {
 
 test('pipeline: one with the same name that is not ours is left alone', async () => {
   const fabric = fakeFabric();
-  const theirs = fabric.add('DataPipeline', 'AnalyticsHub_Pipeline', 'theirs');
+  const theirs = fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', 'theirs');
   const ui = fakeUi();
   const { ctx, config } = fakeCtx({ fabric: fabric.api, ui: ui.ui });
   await ensureNotebooks(ctx);
   fabric.calls.length = 0;
   await ensurePipeline(ctx);
   assert.deepEqual(ui.asked, []);
-  assert.deepEqual(fabric.calls, ['createPipeline AnalyticsHub_Pipeline_2']);
+  assert.deepEqual(fabric.calls, ['createPipeline ConsumptionCentral_Pipeline_2']);
   assert.equal(theirs.content, 'theirs');
   assert.notEqual(config.fabric.pipelineId, theirs.id);
-  assert.equal(config.fabric.pipelineName, 'AnalyticsHub_Pipeline_2');
+  assert.equal(config.fabric.pipelineName, 'ConsumptionCentral_Pipeline_2');
 });
 
-test('names: new installs use Analytics Hub names; an older install keeps the names its items have', async () => {
+test('names: new installs use Consumption Central names; an older install keeps the names its items have', async () => {
   const config = emptyConfig();
-  assert.equal(config.semanticModel.name, 'Analytics Hub Model');
-  assert.equal(config.consumption.model.name, 'Analytics Hub Consumption Model');
-  assert.equal(APP_NAME, 'Analytics Hub Data Collector');
-  assert.equal(connectionName('12345678-aaaa'), 'Analytics Hub SQL 12345678');
+  assert.equal(config.semanticModel.name, 'Consumption Central Model');
+  assert.equal(config.consumption.model.name, 'Consumption Central Consumption Model');
+  assert.equal(APP_NAME, 'Consumption Central (Fabric)');
+  assert.equal(connectionName('12345678-aaaa'), 'Consumption Central SQL 12345678');
 
   const fabric = fakeFabric();
   const ui = fakeUi();
@@ -247,7 +247,7 @@ test('pipeline: created once, left alone on re-run, updated when modules change'
   fabric.calls.length = 0;
 
   await ensurePipeline(ctx);
-  assert.deepEqual(fabric.calls, ['createPipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(fabric.calls, ['createPipeline ConsumptionCentral_Pipeline']);
   const pipeline = fabric.items.find((i) => i.type === 'DataPipeline');
   assert.equal(config.fabric.pipelineId, pipeline?.id, 'ID found by name when the create returns no body');
   assert.equal(config.fabric.pipelineModules, 'core,orgData');
@@ -261,7 +261,7 @@ test('pipeline: created once, left alone on re-run, updated when modules change'
 
   config.modules.orgData = false;
   await ensurePipeline(ctx);
-  assert.deepEqual(fabric.calls, ['updatePipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(fabric.calls, ['updatePipeline ConsumptionCentral_Pipeline']);
   assert.equal(config.fabric.pipelineModules, 'core');
   assert.match(ui.text(), /replaces the pipeline definition/);
 });
@@ -279,7 +279,7 @@ test('pipeline: rewritten when a deleted notebook comes back with a new ID', asy
   assert.notEqual(config.fabric.notebooks.processor, old);
   fabric.calls.length = 0;
   await ensurePipeline(ctx);
-  assert.deepEqual(fabric.calls, ['updatePipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(fabric.calls, ['updatePipeline ConsumptionCentral_Pipeline']);
   assert.equal(config.fabric.pipelineModules, 'core,orgData');
 });
 
@@ -287,8 +287,8 @@ test('pipeline: declining an update keeps the old module signature', async () =>
   const fabric = fakeFabric();
   const { ctx, config } = fakeCtx({ fabric: fabric.api, ui: fakeUi({ answers: [false] }).ui });
   await ensureNotebooks(ctx);
-  config.fabric.pipelineId = fabric.add('DataPipeline', 'AnalyticsHub_Pipeline', {}).id;
-  config.fabric.pipelineName = 'AnalyticsHub_Pipeline';
+  config.fabric.pipelineId = fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', {}).id;
+  config.fabric.pipelineName = 'ConsumptionCentral_Pipeline';
   config.fabric.pipelineModules = 'core';
   fabric.calls.length = 0;
 
@@ -310,7 +310,7 @@ test('pipeline: one an older installer built is updated to run in lanes', async 
   delete config.fabric.pipelineVersion;
   fabric.calls.length = 0;
   await ensurePipeline(ctx);
-  assert.deepEqual(fabric.calls, ['updatePipeline AnalyticsHub_Pipeline']);
+  assert.deepEqual(fabric.calls, ['updatePipeline ConsumptionCentral_Pipeline']);
   assert.ok(ui.text().includes(PIPELINE_CHANGE));
   assert.equal(config.fabric.pipelineVersion, PIPELINE_VERSION);
 
@@ -525,7 +525,7 @@ test('a run that completed with a failed load says which, and still checks the d
   const ui = fakeUi();
   const { ctx, config } = fakeCtx({ fabric: fabric.api, oneLake, ui: ui.ui });
   config.fabric.pipelineId = 'pipe-1';
-  config.fabric.pipelineName = 'AnalyticsHub_Pipeline';
+  config.fabric.pipelineName = 'ConsumptionCentral_Pipeline';
   config.fabric.notebooks.dataCheck = 'nb-check';
   config.firstRun = { jobId: 'job-0', status: 'Completed' };
 
@@ -534,7 +534,7 @@ test('a run that completed with a failed load says which, and still checks the d
   assert.match(text, /✓ Pipeline finished in 30m/);
   assert.match(text, /✗ Org data \(Entra ID\): failed/);
   assert.match(text, /couldn't sign in/);
-  assert.match(text, /then run "valuelens-install rerun-failed"\./);
+  assert.match(text, /then run "consumption-central-installer rerun-failed"\./);
   assert.doesNotMatch(text, /Conditionally/);
   assert.deepEqual(fabric.calls, ['runJob Pipeline', 'runJob RunNotebook'], 'the data check still runs');
   assert.match(text, /✓ Licensed users: 5 rows/);
@@ -556,7 +556,7 @@ test('a run a busy capacity turned away says to wait and run it again', async ()
   assert.deepEqual(result.failed, ['Run_Audit_Log_Ingester']);
   const text = ui.text();
   assert.match(text, /✗ Copilot audit log: failed/);
-  assert.match(text, /capacity was too busy to start it\.\n.*Nothing is lost\. Run "valuelens-install rerun-failed" once the capacity is quieter/);
+  assert.match(text, /capacity was too busy to start it\.\n.*Nothing is lost\. Run "consumption-central-installer rerun-failed" once the capacity is quieter/);
   assert.equal(text.split('too busy').length, 2, 'said once');
   assert.match(text, /✓ Licensed users/);
 });
@@ -883,7 +883,7 @@ test('status says when the last data check is out of date, or has never run', as
   let text = await run();
   assert.match(text, /Last data check \(2026-06-01 12:30 UTC\)/);
   assert.match(text, /! The pipeline has run since this check, so these results may be out of date/);
-  assert.match(text, /Run "valuelens-install check" to check the data again/);
+  assert.match(text, /Run "consumption-central-installer check" to check the data again/);
   assert.match(text, /Agents: not loaded/);
 
   saved = { ...saved, checkedAt: '2026-06-02T02:40:00+00:00' };
@@ -892,7 +892,7 @@ test('status says when the last data check is out of date, or has never run', as
 
   saved = null;
   text = await run();
-  assert.match(text, /It hasn't run yet. Run "valuelens-install check"/);
+  assert.match(text, /It hasn't run yet. Run "consumption-central-installer check"/);
 
   jobs = [];
   text = await run();

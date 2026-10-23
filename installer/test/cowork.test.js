@@ -114,7 +114,7 @@ test('ensureCoworkDataflow: created once, left alone on re-run, redefined when t
   assert.ok(t.config.consumption.dataflowId);
   assert.equal(t.config.consumption.dataflowName, COWORK_DATAFLOW_NAME);
   assert.ok(coworkDataflowOn(t.config));
-  assert.match(t.ui.text(), /1\. Open AnalyticsHub_Cowork_Credits in [^\n]*: https:\/\/app\.fabric\.microsoft\.com\/groups\/ws-1\/dataflows-gen2\/\S+\.\n[\s\S]*2\. It shows "Configure connection" twice[^\n]*Viva Insights source[^\n]*Lakehouse destination \(ValueLens\)[\s\S]*3\. On each one, choose Configure connection, sign in, then Connect[\s\S]*4\. Choose Save, then wait until the Dataflow shows it has finished publishing[\s\S]*5\. Then choose Load Cowork now, or run "[^"]*load-cowork"/);
+  assert.match(t.ui.text(), /1\. Open ConsumptionCentral_Cowork_Credits in [^\n]*: https:\/\/app\.fabric\.microsoft\.com\/groups\/ws-1\/dataflows-gen2\/\S+\.\n[\s\S]*2\. It shows "Configure connection" twice[^\n]*Viva Insights source[^\n]*Lakehouse destination \(ValueLens\)[\s\S]*3\. On each one, choose Configure connection, sign in, then Connect[\s\S]*4\. Choose Save, then wait until the Dataflow shows it has finished publishing[\s\S]*5\. Then choose Load Cowork now, or run "[^"]*load-cowork"/);
 
   t.fabric.calls.length = 0;
   await ensureCoworkDataflow(t.ctx);

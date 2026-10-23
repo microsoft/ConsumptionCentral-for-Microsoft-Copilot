@@ -410,7 +410,7 @@ test('catalog and pipeline: the router is deployed and runs first in lane 2 only
   const router = withRouter.properties.activities.find((/** @type {any} */ a) => a.name === UPLOAD_ROUTER_ACTIVITY);
   assert.ok(router, 'the router step is there');
   assert.equal(router.typeProperties.notebookId, 'r');
-  assert.match(withRouter.properties.description, /analytics_hub_uploads/);
+  assert.match(withRouter.properties.description, /consumption_central_uploads/);
 });
 
 /**
@@ -437,7 +437,7 @@ test('server: /api/upload stages a CSV for a signed-in page from the same origin
   const server = await startServer({ ui, session: /** @type {any} */ ({ running: null, state: () => ({ installed: false }), start: () => ({ ok: true }) }), token: 'tok' });
   try {
     const port = server.port;
-    const auth = { Cookie: `valuelens_${port}=tok`, Origin: `http://127.0.0.1:${port}` };
+    const auth = { Cookie: `consumption_central_${port}=tok`, Origin: `http://127.0.0.1:${port}` };
     const body = new TextEncoder().encode(`${HEADERS.productFeedback}\n1,2,3,4,5,6\n`);
     const file = { 'Content-Type': 'application/octet-stream', 'x-file-name': encodeURIComponent('My feedback.csv') };
 

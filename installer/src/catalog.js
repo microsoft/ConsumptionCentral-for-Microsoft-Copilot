@@ -3,6 +3,7 @@
  * What the installer deploys: the notebooks, the modules that switch them on,
  * and the Graph application permissions each module needs.
  */
+import { ITEM_PREFIX } from './product.js';
 import { routerWanted } from './uploads.js';
 
 /** Microsoft Graph's application ID. Same in every tenant. */
@@ -70,7 +71,7 @@ export const MODULES = {
   },
 };
 
-/** Modules that change the ValueLens semantic model. The others have their own model or none. */
+/** Modules that change the Consumption Central semantic model. The others have their own model or none. */
 export const MODEL_MODULES = /** @type {const} */ (['core', 'orgData', 'agent365', 'productFeedback']);
 
 /** Always collected: the dashboard is built on them. Shown locked on the Data sources screen. */
@@ -147,7 +148,7 @@ export const NOTEBOOKS = [
   {
     key: 'dataCheck',
     file: 'ValueLens_Data_Check.ipynb',
-    displayName: 'AnalyticsHub_Data_Check',
+    displayName: `${ITEM_PREFIX}Data_Check`,
     module: 'core',
     credentials: false,
     parameters: [],
@@ -179,7 +180,7 @@ export const NOTEBOOKS = [
   {
     key: 'uploadRouter',
     file: 'AnalyticsHub_Upload_Router.ipynb',
-    displayName: 'AnalyticsHub_Upload_Router',
+    displayName: `${ITEM_PREFIX}Upload_Router`,
     module: 'core',
     credentials: false,
     parameters: [],
@@ -189,7 +190,7 @@ export const NOTEBOOKS = [
   {
     key: 'loadStatus',
     file: 'AnalyticsHub_Load_Status.ipynb',
-    displayName: 'AnalyticsHub_Load_Status',
+    displayName: `${ITEM_PREFIX}Load_Status`,
     module: 'core',
     credentials: false,
     parameters: ['PIPELINE_RUN_ID', 'PIPELINE_TRIGGER_TIME'],
@@ -218,7 +219,7 @@ export const NOTEBOOKS = [
       {
         find: '          f"Preserving any existing {OUTPUT_TABLE} snapshot.")\n',
         replace: `          f"Preserving any existing {OUTPUT_TABLE} snapshot.")
-    if not _table_exists(OUTPUT_TABLE):  # Set by the Analytics Hub installer: an empty table, not a missing one
+    if not _table_exists(OUTPUT_TABLE):  # Set by the Consumption Central installer: an empty table, not a missing one
         from pyspark.sql.types import StructField, StructType, StringType, TimestampType
         _empty_cols, _ = _build_alias_plan()
         (spark.createDataFrame([], StructType([StructField(c, StringType(), True) for c in _empty_cols]
@@ -247,7 +248,7 @@ export const NOTEBOOKS = [
   {
     key: 'refreshModel',
     file: 'ValueLens_Refresh_Model.ipynb',
-    displayName: 'AnalyticsHub_Refresh_Model',
+    displayName: `${ITEM_PREFIX}Refresh_Model`,
     module: 'core',
     credentials: false,
     parameters: ['WORKSPACE_ID', 'SEMANTIC_MODEL_ID', 'WRITE_MODE', 'CHECK_AUDIT_STATE'],
@@ -257,7 +258,7 @@ export const NOTEBOOKS = [
   {
     key: 'accessScope',
     file: 'AnalyticsHub_Access_Scope.ipynb',
-    displayName: 'AnalyticsHub_Access_Scope',
+    displayName: `${ITEM_PREFIX}Access_Scope`,
     module: 'core',
     credentials: false,
     parameters: ['MODE', 'ROLES_B64', 'ROLES_FILE', 'WORKSPACE_ID'],

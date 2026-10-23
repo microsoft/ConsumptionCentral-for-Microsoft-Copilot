@@ -2,6 +2,7 @@
 /** Microsoft Graph calls for the app registration and the signed-in user's roles. */
 import { GRAPH_APP_ID } from '../catalog.js';
 import { HttpError } from '../http.js';
+import { INSTALLER_TITLE, PRODUCT_ID, PRODUCT_NAME } from '../product.js';
 
 /** Directory roles that can grant admin consent for Microsoft Graph application permissions. */
 export const CONSENT_ROLES = {
@@ -156,7 +157,7 @@ export function graphApi(http) {
       http.post('/applications', {
         displayName,
         signInAudience: 'AzureADMyOrg',
-        notes: 'Created by the Analytics Hub installer. Reads Copilot audit, usage report and directory data for ValueLens.',
+        notes: `Created by the ${INSTALLER_TITLE}. Reads Copilot consumption and directory data for ${PRODUCT_NAME}.`,
         requiredResourceAccess: appRoles.length ? [{ resourceAppId: GRAPH_APP_ID, resourceAccess: appRoles.map((r) => ({ id: r.id, type: 'Role' })) }] : [],
       }),
     /**
@@ -195,7 +196,7 @@ export function graphApi(http) {
      * @param {string} [displayName]
      * @returns {Promise<{ secretText: string, endDateTime: string, keyId: string }>}
      */
-    addPassword: (applicationObjectId, endDateTime, displayName = 'Analytics Hub installer') =>
+    addPassword: (applicationObjectId, endDateTime, displayName = INSTALLER_TITLE) =>
       http.post(`/applications/${applicationObjectId}/addPassword`, {
         passwordCredential: { displayName, endDateTime: endDateTime.toISOString() },
       }, { once: true }),
@@ -229,7 +230,7 @@ export function graphApi(http) {
         displayName: o.displayName,
         description: o.description,
         mailEnabled: false,
-        mailNickname: o.displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'analytics-hub-viewers',
+        mailNickname: o.displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `${PRODUCT_ID}-viewers`,
         securityEnabled: true,
       };
       try {

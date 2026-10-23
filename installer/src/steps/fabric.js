@@ -11,6 +11,7 @@ import { parseResourceId } from '../clients/azure.js';
 import { scheduleBody } from '../clients/fabric.js';
 import { secretMode } from '../config.js';
 import { HttpError } from '../http.js';
+import { INSTALLER_TITLE, ITEM_PREFIX, LAKEHOUSE_NAME, PRODUCT_ID } from '../product.js';
 import { rlsOn } from '../transform/access.js';
 import { INLINE_SECRET_NOTE, MARKER, prepareNotebook, pyString, serialiseNotebook } from '../transform/notebook.js';
 import { buildPipeline, PIPELINE_CHANGE, PIPELINE_VERSION } from '../transform/pipeline.js';
@@ -19,7 +20,7 @@ import { dropAttempt, findAttempts, refused, removeRetired, SECRET_SETTLE_MS, wi
 
 /** @typedef {import('../install.js').Ctx} Ctx */
 
-export const PIPELINE_NAME = 'AnalyticsHub_Pipeline';
+export const PIPELINE_NAME = `${ITEM_PREFIX}Pipeline`;
 
 /** @param {unknown} err */
 const isNotFound = (err) => err instanceof HttpError && (err.status === 404 || err.code === 'ItemNotFound' || err.code === 'WorkspaceNotFound');
@@ -56,7 +57,7 @@ export const displayNames = (items) => items.map((i) => String(i.displayName));
  * @param {string} name
  */
 export function noteRenamed(ctx, wanted, name) {
-  if (name !== wanted) ctx.ui.note(`"${wanted}" is already in the workspace and isn't from this install, so it's left as it is. Analytics Hub's is called "${name}".`);
+  if (name !== wanted) ctx.ui.note(`"${wanted}" is already in the workspace and isn't from this install, so it's left as it is. Consumption Central's is called "${name}".`);
 }
 
 /**
@@ -333,7 +334,7 @@ export async function ensureLakehouse(ctx) {
       delete f.lakehouseId;
     }
   }
-  const wanted = f.lakehouseName ?? 'ValueLens';
+  const wanted = f.lakehouseName ?? LAKEHOUSE_NAME;
   const made = await createItem(ctx, 'Lakehouse', 'Lakehouse', wanted, await api.fabric.listItems(ws, 'Lakehouse'), (name, ref) => api.fabric.createLakehouse(ws, name, ref));
   f.lakehouseId = made.id;
   f.lakehouseName = made.name;
@@ -345,14 +346,14 @@ export const ENDPOINT_POLL_MS = 15_000;
 const ENDPOINT_MAX_POLLS = 80;
 
 /** Fabric allows up to 64 characters. @param {string} vaultName */
-export const endpointName = (vaultName) => `valuelens-${vaultName}`.slice(0, 64);
+export const endpointName = (vaultName) => `${PRODUCT_ID}-${vaultName}`.slice(0, 64);
 
 /**
  * Shown to whoever approves the request on the vault. It carries the workspace ID so
  * the installer can tell its own request from others.
  * @param {string} workspaceId
  */
-export const endpointRequest = (workspaceId) => `Analytics Hub: Fabric workspace ${workspaceId} reads the app secret.`;
+export const endpointRequest = (workspaceId) => `Consumption Central: Fabric workspace ${workspaceId} reads the app secret.`;
 
 /**
  * Whether a private endpoint connection on the vault comes from this workspace. Fabric names
@@ -403,7 +404,7 @@ async function approveOnVault(ctx) {
     const pending = mine.filter((conn) => conn.properties?.privateLinkServiceConnectionState?.status === 'Pending');
     if (pending.length) {
       try {
-        for (const conn of pending) await api.arm.approvePrivateEndpointConnection(conn.id, `Approved by the Analytics Hub installer for Fabric workspace ${ws}.`);
+        for (const conn of pending) await api.arm.approvePrivateEndpointConnection(conn.id, `Approved by the Consumption Central installer for Fabric workspace ${ws}.`);
       } catch (err) {
         if (err instanceof HttpError && err.status === 403) return false;
         throw err;
@@ -868,7 +869,7 @@ async function settleInlineSecret(ctx, fresh, outcome) {
 }
 
 /** What a notebook secret is called on the app, before the ref. */
-const NOTEBOOK_SECRET_LABEL = 'Analytics Hub installer';
+const NOTEBOOK_SECRET_LABEL = INSTALLER_TITLE;
 
 /** The name a notebook secret gets on the app, with the ref of the run that asked for it. @param {string} ref */
 export const secretLabel = (ref) => withSecretRef(NOTEBOOK_SECRET_LABEL, ref);
@@ -954,7 +955,7 @@ export const modelDeployed = (config) => !!(config.semanticModel?.enabled && con
 export const azureAiOn = (config) => !!(config.modules.consumption && config.consumption?.azureSubscriptionId && config.consumption.azureAccess);
 
 /**
- * The consumption model exists and reads the Lakehouse. It is refreshed by the same notebook as the ValueLens model.
+ * The consumption model exists and reads the Lakehouse. It is refreshed by the same notebook as the Consumption Central model.
  * @param {import('../config.js').InstallConfig} config
  */
 export const consumptionModelDeployed = (config) => !!(config.modules.consumption && modelDeployed(config) && config.consumption?.model?.id && config.consumption.model.bound);
