@@ -10,6 +10,7 @@ import { scheduleBody } from '../clients/fabric.js';
 import { secretMode } from '../config.js';
 import { HttpError } from '../http.js';
 import { commandLine } from '../launch.js';
+import { holdsOtherInstall, otherInstallIn, workspaceTaken } from '../other-installs.js';
 import { ENV, INSTALLER_TITLE, ITEM_PREFIX, LAKEHOUSE_NAME, PRODUCT_ID } from '../product.js';
 import { prepareNotebook, serialiseNotebook } from '../transform/notebook.js';
 import { buildPipeline, PIPELINE_CHANGE, PIPELINE_VERSION } from '../transform/pipeline.js';
@@ -298,6 +299,14 @@ export async function ensureWorkspace(ctx) {
       throw new Error(`Workspace ${f.workspaceName ?? f.workspaceId} no longer exists, or you can't see it. Remove "workspaceId" from the install record to create a new one.`);
     }
     f.workspaceName = ws.displayName;
+    // The record has no Lakehouse yet, so this is the first install into the workspace. The plan checks a workspace
+    // when it's chosen; this catches one a record names some other way.
+    if (!f.lakehouseId) {
+      const found = await otherInstallIn(api, ws.id).catch(() => null);
+      if (found && holdsOtherInstall(found)) {
+        throw new Error(workspaceTaken(ws.displayName, found, 'Remove "workspaceId" from the install record, then run the installer again to choose another.'));
+      }
+    }
     if (!ws.capacityId) {
       await api.fabric.assignToCapacity(ws.id, /** @type {string} */ (f.capacityId));
       ui.ok(`Workspace "${ws.displayName}", now on your Fabric capacity`);

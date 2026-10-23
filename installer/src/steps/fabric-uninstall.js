@@ -7,6 +7,7 @@
  */
 import { secretMode } from '../config.js';
 import { HttpError } from '../http.js';
+import { holdsOtherInstall, otherInstallGoesToo, otherInstallIn } from '../other-installs.js';
 import { PRODUCT_NAME } from '../product.js';
 import { listJoin } from '../ui.js';
 import { revokeHint } from './github.js';
@@ -104,11 +105,13 @@ export async function fabricUninstall(ctx) {
   if (!f.workspaceId) throw new Error('Nothing is installed yet.');
   const name = f.workspaceName ?? f.workspaceId;
   ui.heading(`Uninstalling ${PRODUCT_NAME} on Fabric`);
+  const other = await otherInstallIn(api, f.workspaceId).catch(() => null);
+  const alsoGoes = other && holdsOtherInstall(other) ? ` ${otherInstallGoesToo(other)}` : '';
   const sure = await ui.confirm(
-    f.createdWorkspace
+    (f.createdWorkspace
       ? `Delete workspace "${name}" and everything in it, including the Lakehouse data?`
-      : `Delete workspace "${name}" and everything in it, including the Lakehouse data? The record doesn't show the installer created it.`,
-    !!f.createdWorkspace,
+      : `Delete workspace "${name}" and everything in it, including the Lakehouse data? The record doesn't show the installer created it.`) + alsoGoes,
+    !!f.createdWorkspace && !alsoGoes,
   );
   if (!sure) {
     ui.note(`Left workspace "${name}" alone.`);

@@ -10,6 +10,7 @@ import { allowsAction, armLocation, validateVaultName } from '../clients/azure.j
 import { APP_ROLES, CONSENT_ROLES } from '../clients/graph.js';
 import { HttpError } from '../http.js';
 import { inCloudShell } from '../launch.js';
+import { consumptionLoaded, holdsOtherInstall, otherInstallIn, warnConsumptionLoaded, workspaceTaken } from '../other-installs.js';
 import { askPrices, describePrices } from '../prices.js';
 import { APP_REGISTRATION, ENV, KEY_VAULT_PREFIX, LAKEHOUSE_NAME, PRODUCT_NAME, RESOURCE_GROUP, WORKSPACE_NAME } from '../product.js';
 import { loadTemplateModel } from '../transform/model.js';
@@ -391,11 +392,24 @@ export async function plan(ctx, pre, section) {
       ui.ok(`Workspace: ${config.fabric.workspaceName ?? config.fabric.workspaceId}`);
     } else {
       const workspaces = (await api.fabric.listWorkspaces()).filter((w) => w.type === 'Workspace');
-      const choice = await ui.select(
-        'Workspace',
-        [{ name: 'Create a new workspace', value: '' }, ...workspaces.map((w) => ({ name: `Use "${w.displayName}"`, value: w.id }))],
-        '',
-      );
+      const warned = await warnConsumptionLoaded(ctx, workspaces);
+      let choice = '';
+      for (;;) {
+        choice = await ui.select(
+          'Workspace',
+          [{ name: 'Create a new workspace', value: '' }, ...workspaces.map((w) => ({ name: `Use "${w.displayName}"`, value: w.id }))],
+          '',
+        );
+        if (!choice) break;
+        const name = workspaces.find((w) => w.id === choice)?.displayName ?? choice;
+        const found = await otherInstallIn(api, choice).catch(() => null);
+        if (found && holdsOtherInstall(found)) {
+          ui.warn(workspaceTaken(name, found, 'Choose another workspace, or create a new one.'));
+          continue;
+        }
+        if (found?.consumption.length && !warned.has(choice)) ui.warn(consumptionLoaded(name, found.consumption));
+        break;
+      }
       if (choice) {
         config.fabric.workspaceId = choice;
         config.fabric.workspaceName = workspaces.find((w) => w.id === choice)?.displayName;

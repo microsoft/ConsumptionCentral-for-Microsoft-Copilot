@@ -364,7 +364,7 @@ test('install record round-trips, fills defaults and refuses secrets', () => {
   assert.equal(existed, true);
   assert.deepEqual(back, config);
 
-  writeFileSync(file, JSON.stringify({ version: 1, schedule: { time: '05:00' }, dataSources: { github: 'csv' } }));
+  writeFileSync(file, JSON.stringify({ version: 1, product: 'consumption-central', schedule: { time: '05:00' }, dataSources: { github: 'csv' } }));
   const partial = loadConfig(file).config;
   assert.equal(partial.schedule.time, '05:00');
   assert.equal(partial.schedule.frequency, 'daily');
@@ -376,12 +376,12 @@ test('install record round-trips, fills defaults and refuses secrets', () => {
   assert.throws(() => saveConfig(file, leaky), /Refusing to keep a secret/);
   assert.equal(JSON.parse(readFileSync(file, 'utf8')).schedule.time, '05:00', 'the old record is untouched');
 
-  writeFileSync(file, JSON.stringify({ version: 2 }));
+  writeFileSync(file, JSON.stringify({ version: 2, product: 'consumption-central' }));
   assert.throws(() => loadConfig(file), /version 2/);
   writeFileSync(file, '{not json');
   assert.throws(() => loadConfig(file), /not valid JSON/);
 
-  writeFileSync(file, JSON.stringify({ version: 1, dataSources: { azureAi: 'csv' }, uploads: { studioFlow: true } }));
+  writeFileSync(file, JSON.stringify({ version: 1, product: 'consumption-central', dataSources: { azureAi: 'csv' }, uploads: { studioFlow: true } }));
   const older = loadConfig(file).config;
   assert.equal(older.dataSources.azureAi, 'skip', 'a mode the source doesn\'t have falls back to its default');
   assert.equal(older.dataSources.studioCredits, 'api', 'an older record\'s Studio flow is the API mode');

@@ -37,6 +37,8 @@ export const USER_AGENT = `${PRODUCT_TOKEN}Installer`;
 
 // This computer
 export const RECORD_FILE = `${PRODUCT_ID}-setup.json`;
+/** The record's `product` field. A record with another value, or none, isn't one this installer made. */
+export const RECORD_PRODUCT = PRODUCT_ID;
 /** Written next to the record when an admin's step is handed off: what to send them. */
 export const ADMIN_PACK_FILE = `${PRODUCT_ID}-admin-pack.md`;
 /** Documents\Consumption Central, where the exe and install.ps1 start the installer, so the record lands there. */

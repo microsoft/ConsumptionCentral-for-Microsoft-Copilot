@@ -6,8 +6,9 @@
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { foreignRecord } from './other-installs.js';
 import { normaliseDataSources } from './uploads.js';
-import { PRODUCT_NAME, RECORD_FILE, SECRET_NAME } from './product.js';
+import { PRODUCT_NAME, RECORD_FILE, RECORD_PRODUCT, SECRET_NAME } from './product.js';
 
 export const CONFIG_VERSION = 1;
 export const DEFAULT_CONFIG_FILE = RECORD_FILE;
@@ -15,6 +16,7 @@ export const DEFAULT_CONFIG_FILE = RECORD_FILE;
 /**
  * @typedef {object} InstallConfig
  * @property {number} version
+ * @property {string} product  Which installer made the record: always RECORD_PRODUCT.
  * @property {'fabric'} [target]
  * @property {string} [tenantId]
  * @property {import('./uploads.js').DataSourceModes} dataSources  How each source arrives: API, uploaded CSV, or skipped.
@@ -205,6 +207,7 @@ export const REPORT_NAME = PRODUCT_NAME;
 export function emptyConfig() {
   return {
     version: CONFIG_VERSION,
+    product: RECORD_PRODUCT,
     target: 'fabric',
     dataSources: normaliseDataSources(undefined),
     uploads: {},
@@ -249,6 +252,9 @@ export function loadConfig(file) {
  * @returns {InstallConfig}
  */
 function normaliseConfig(raw, file) {
+  if (!isRecord(raw)) throw new Error(`${file} isn't an install record.`);
+  const foreign = foreignRecord(raw, file);
+  if (foreign) throw new Error(foreign);
   if (raw.version !== CONFIG_VERSION) throw new Error(`${file} has version ${raw.version}; this installer reads version ${CONFIG_VERSION}.`);
   if (raw.target !== undefined && raw.target !== 'fabric') throw new Error(`${file} is for the ${raw.target} target; this installer installs only on Fabric.`);
   const base = emptyConfig();
