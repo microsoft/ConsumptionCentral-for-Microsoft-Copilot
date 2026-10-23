@@ -5,7 +5,7 @@
  * page answers it. Answers are checked here, with the step's own validation.
  */
 import { checkStaged } from './staging.js';
-import { DATA_SOURCES, parseModes } from './uploads.js';
+import { checkUploadSet, DATA_SOURCES, parseModes } from './uploads.js';
 import { parseForm } from './ui.js';
 
 /**
@@ -368,12 +368,14 @@ export function createWebUi(opts = {}) {
           files.push(f.file);
         }
         if (o.lockModes && !files.length) return { error: 'Choose at least one export to upload.' };
+        const set = checkUploadSet(files);
+        if (!set.ok) return { error: set.error };
         const changed = DATA_SOURCES.filter((s) => !s.locked && m.modes[s.id] !== current[s.id]).length;
         const display = [
           ...(o.lockModes ? [] : [`${changed ? `${changed} changed` : 'As suggested'}`]),
           ...(files.length ? [`${files.length} file${files.length === 1 ? '' : 's'} to upload`] : []),
         ].join(', ') || 'No uploads';
-        return { value: { modes: m.modes, files }, display };
+        return { value: { modes: m.modes, files: set.files }, display };
       }, {
         // Staged files are uploaded once, so going back keeps the modes but not the files.
         toRaw: (v) => ({ modes: v.modes, uploads: v.files.filter((/** @type {any} */ f) => f.token).map((/** @type {any} */ f) => f.token) }),

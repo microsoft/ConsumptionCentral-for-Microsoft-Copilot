@@ -4,24 +4,27 @@
  * sign-in for the next command, the way one terminal run does for its steps.
  */
 import { existsSync } from 'node:fs';
-import { collectedLabels } from './catalog.js';
 import { archiveConfig, loadConfig, secretMode } from './config.js';
 import { connect as realConnect, createCtx, runCommand, showPrereqs } from './install.js';
 import { bundled, commandLine, installerWindow, launcher, reopenHint, updateHint } from './launch.js';
 import { checkPrereqs } from './prereqs.js';
 import { loadSources } from './sources.js';
-import { coworkDataflowOn, describeSchedule, recordWorkspaceGone, staleRecordMessage } from './steps/fabric.js';
+import { appSecretKept, coworkDataflowOn, describeSchedule, modelDeployed, recordWorkspaceGone, staleRecordMessage } from './steps/fabric.js';
 import { isResumeLater } from './steps/identity.js';
-import { routerWanted } from './uploads.js';
+import { describeSources, routedSources, routerWanted } from './uploads.js';
 import { SETUP_SECTIONS, setupRecovery } from './setup.js';
 
-export const WEB_COMMANDS = ['install', 'update', 'run', 'rerun-failed', 'load-cowork', 'check', 'refresh', 'status', 'rotate-secret', 'access', 'upload', 'uninstall', 'prereqs'];
+export const WEB_COMMANDS = ['install', 'update', 'run', 'rerun-failed', 'load-cowork', 'check', 'refresh', 'status', 'rotate-secret', 'github-token', 'access', 'upload', 'uninstall', 'prereqs'];
 /** Commands that work before anything is installed. */
 const NO_RECORD = ['install', 'prereqs'];
 const METHODS = ['browser', 'device-code', 'azure-cli'];
 
 /** @typedef {'browser' | 'device-code' | 'azure-cli'} Method */
-/** @typedef {{ command: string, method?: Method, tenant?: string, backfillDays?: number, wait?: boolean, section?: string, retry?: boolean }} StartRequest */
+/** @typedef {{ command: string, method?: Method, tenant?: string, wait?: boolean, section?: string, retry?: boolean }} StartRequest */
+
+/** The earliest of these ISO dates, as YYYY-MM-DD. */
+const earliest = (/** @type {(string | undefined)[]} */ ...dates) =>
+  dates.filter((d) => !!d && !Number.isNaN(Date.parse(d))).sort((a, b) => Date.parse(a ?? '') - Date.parse(b ?? ''))[0]?.slice(0, 10);
 
 /**
  * What the home page shows about an install record.
@@ -30,7 +33,11 @@ const METHODS = ['browser', 'device-code', 'azure-cli'];
 export function describeRecord(config) {
   const f = config.fabric;
   const sm = config.semanticModel;
+  const ds = config.dataSources;
+  const gh = config.github;
   const installed = !!(f.workspaceId && f.lakehouseId);
+  const notebookSecrets = secretMode(config) === 'notebook';
+  const githubApi = ds.github === 'api';
   return {
     tenantId: config.tenantId,
     target: config.target,
@@ -39,23 +46,26 @@ export function describeRecord(config) {
     workspaceUrl: f.workspaceId ? `https://app.fabric.microsoft.com/groups/${f.workspaceId}` : undefined,
     lakehouse: f.lakehouseName,
     schedule: f.scheduleId ? describeSchedule(config.schedule) : undefined,
-    data: collectedLabels(config.modules),
+    data: describeSources(ds),
     model: sm.id ? sm.name : undefined,
-    secretExpires: config.app.secretExpires?.slice(0, 10),
+    app: !!config.app.appId,
+    // The app's own secret, or the model connection's: whichever expires first.
+    secretExpires: earliest(appSecretKept(config) ? config.app.secretExpires : undefined, sm.connectionId ? sm.secretExpires : undefined),
+    tokenExpires: githubApi && gh?.tokenSetAt ? gh.tokenExpires?.slice(0, 10) ?? 'Never' : undefined,
     firstRun: config.firstRun?.status,
-    historyDays: config.history?.days,
     viewers: config.access?.groupId ? config.access.groupName : undefined,
     can: {
       update: installed,
       run: installed && !!f.pipelineId,
       'rerun-failed': installed && !!f.pipelineId,
       'load-cowork': installed && !!f.pipelineId && coworkDataflowOn(config),
-      check: installed && !!f.notebooks.dataCheck,
+      check: installed && modelDeployed(config),
       refresh: !!sm.id,
       status: true,
-      'rotate-secret': !!(config.app.appId && (secretMode(config) === 'notebook' ? installed : config.keyVault.uri)),
+      'rotate-secret': !!config.app.appId && ((appSecretKept(config) && (notebookSecrets ? installed : !!config.keyVault.uri)) || !!sm.connectionId),
+      'github-token': installed && githubApi && !!gh?.enterprise && (notebookSecrets ? !!f.notebooks.githubApi : !!config.keyVault.uri),
       access: !!sm.id,
-      upload: installed && !!f.notebooks.uploadRouter && routerWanted(config.dataSources),
+      upload: installed && routedSources(ds).length > 0 && (!routerWanted(ds) || !!f.notebooks.uploadRouter),
       uninstall: !!f.workspaceId,
     },
   };
@@ -207,7 +217,7 @@ export function createSession(o) {
       if (command === 'prereqs') {
         const items = await showPrereqs(ctx);
         prereqs = prereqsSnapshot(signedIn.user.upn, items);
-      } else ok = await runCommand(ctx, command, { wait: req.wait !== false, backfillDays: req.backfillDays });
+      } else ok = await runCommand(ctx, command, { wait: req.wait !== false });
       ui.emit({ type: 'command', command, state: ok ? 'done' : 'failed', ...(ok ? {} : { error: 'It didn\'t finish successfully. The details are above.' }) });
     } catch (err) {
       if (/** @type {any} */ (err)?.name === 'ExitPromptError') ui.emit({ type: 'command', command, state: 'cancelled' });
@@ -273,9 +283,6 @@ export function createSession(o) {
       if (!METHODS.includes(method)) return { ok: false, status: 400, error: 'Unknown sign-in method.' };
       if (req.tenant !== undefined && (typeof req.tenant !== 'string' || !/^[A-Za-z0-9.-]{0,253}$/.test(req.tenant.trim()))) {
         return { ok: false, status: 400, error: 'Enter a tenant ID or domain, such as contoso.onmicrosoft.com.' };
-      }
-      if (req.backfillDays !== undefined && (!Number.isInteger(req.backfillDays) || req.backfillDays < 1 || req.backfillDays > 180)) {
-        return { ok: false, status: 400, error: 'Reload from 1 to 180 days.' };
       }
       running = req.command;
       current = execute(req, /** @type {Method} */ (method));

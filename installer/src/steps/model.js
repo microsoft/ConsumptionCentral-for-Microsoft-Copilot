@@ -4,12 +4,11 @@
  * Lakehouse through a cloud connection that signs in as the app registration, and refreshed.
  */
 import { createHash } from 'node:crypto';
-import { enabledModules, MODEL_MODULES } from '../catalog.js';
 import { servicePrincipalCredentials, semanticModelDefinition, sqlConnectionBody } from '../clients/fabric.js';
 import { HttpError } from '../http.js';
 import { commandLine } from '../launch.js';
+import { priceParameters } from '../prices.js';
 import { PRODUCT_NAME } from '../product.js';
-import { EVERYONE_ROLE, rlsSettings, SCOPED_ROLE } from '../transform/access.js';
 import { buildModel, datasourcePath, loadTemplateModel, PBISM } from '../transform/model.js';
 import { formatDuration } from '../ui.js';
 import { createItem, modelKey } from './fabric.js';
@@ -60,39 +59,11 @@ export async function waitForSqlEndpoint(ctx) {
 }
 
 /**
- * What the model definition is built from.
+ * Where the model reads from. The definition's hash, which covers the prices, joins it in the signature.
  * @param {string} server
  * @param {string} database
- * @param {import('../catalog.js').ModuleChoice} modules
  */
-export const modelSignature = (server, database, modules) =>
-  `${server.toLowerCase()};${database};${enabledModules(modules).filter((m) => /** @type {readonly string[]} */ (MODEL_MODULES).includes(m)).join(',')}`;
-
-/** Roles each model was deployed with in this run, by model ID. */
-const DEPLOYED_ROLES = new WeakMap();
-
-/**
- * The org-scoped access roles (without members) of the models deployed in this run, by model ID.
- * @param {Ctx} ctx
- * @returns {Map<string, any[]>}
- */
-export function deployedRoles(ctx) {
-  let roles = DEPLOYED_ROLES.get(ctx);
-  if (!roles) DEPLOYED_ROLES.set(ctx, (roles = new Map()));
-  return roles;
-}
-
-/**
- * The org-scoped access roles in a semantic model definition; none when access is off.
- * @param {{ parts?: { path: string, payload: string }[] }} definition
- * @returns {any[]}
- */
-export function definitionRoles(definition) {
-  const part = definition?.parts?.find((p) => p.path === 'model.bim');
-  if (!part) return [];
-  const bim = JSON.parse(Buffer.from(part.payload, 'base64').toString('utf8'));
-  return (bim.model?.roles ?? []).filter((/** @type {any} */ r) => r.name === EVERYONE_ROLE || r.name === SCOPED_ROLE);
-}
+export const modelSignature = (server, database) => `${server.toLowerCase()};${database}`;
 
 /** @param {unknown} definition */
 export const definitionHash = (definition) => createHash('sha256').update(JSON.stringify(definition)).digest('hex').slice(0, 16);
@@ -103,15 +74,12 @@ export const MODEL_UPDATE_NOTE = 'Updated in place if this version changed it, k
 /**
  * The installer's models that are owed a reload: their definition was, or may have been, replaced
  * and no refresh has finished since. Kept in the install record, so a later run still reloads them.
- * A Consumption model kept while credit consumption is off waits until it's used again.
  * @param {import('../config.js').InstallConfig} config
  * @returns {import('../config.js').ModelConfig[]}
  */
 export function pendingReloads(config) {
-  return [
-    config.semanticModel,
-    config.modules?.consumption && config.consumption?.model,
-  ].filter((m) => !!m && !!m.id && !!m.reload).map((m) => /** @type {import('../config.js').ModelConfig} */ (m));
+  const m = config.semanticModel;
+  return m.id && m.reload ? [m] : [];
 }
 
 /**
@@ -178,7 +146,7 @@ async function allowDataReset(ctx, name) {
   const { ui } = ctx;
   ui.warn(`Fabric can't apply this version of ${name} and keep its data. To apply it, Fabric clears the data and the installer reloads it ` +
     `from the Lakehouse, which isn't changed. Until that reload finishes, reports on ${name} show no data, ` +
-    'which can take an hour or more with a lot of history.');
+    'which can take an hour or more with a lot of data.');
   if (ctx.allowModelReset) {
     ui.note('Clearing it, as --allow-model-reset allows.');
     return true;
@@ -268,12 +236,6 @@ export async function deployModel(ctx, m, o) {
   } else {
     ui.ok(`Semantic model ${m.name} is in place`);
   }
-  if (deployed) {
-    const rls = ctx.config.access?.rls;
-    if (rls?.applied) rls.applied = rls.applied.filter((id) => id !== m.id);
-  }
-  const roles = definitionRoles(definition);
-  if (roles.length) deployedRoles(ctx).set(/** @type {string} */ (m.id), roles);
   m.signature = signature;
   ctx.save();
 }
@@ -286,16 +248,11 @@ export async function deployModel(ctx, m, o) {
 export async function ensureSemanticModel(ctx, opts = {}) {
   const { config, sources } = ctx;
   const sm = config.semanticModel;
-  if (!sources.modelFile) throw new Error('This checkout has no "ValueLens - Fabric.pbit" to build the semantic model from.');
 
   const { server, database } = await waitForSqlEndpoint(ctx);
   await deployModel(ctx, sm, {
-    signature: modelSignature(server, database, config.modules),
-    definition: () =>
-      semanticModelDefinition(
-        buildModel(loadTemplateModel(/** @type {string} */ (sources.modelFile)), { server, database, modules: config.modules, currency: config.reporting?.currency, access: rlsSettings(config) }),
-        PBISM,
-      ),
+    signature: modelSignature(server, database),
+    definition: () => semanticModelDefinition(buildModel(loadTemplateModel(sources.modelFile), { server, database, prices: priceParameters(config.prices) }), PBISM),
     force: opts.force,
   });
   Object.assign(sm, { server, database });
@@ -453,7 +410,6 @@ export async function ensureModelConnection(ctx) {
       throw new Error(`Fabric couldn't set up the model's connection: ${/** @type {Error} */ (err).message}`);
     }
     Object.assign(sm, { connectionId: conn.id, connectionName: name, secretExpires: secret.expires, bound: false });
-    if (config.consumption?.model) config.consumption.model.bound = false;
     // Saved with the record above; the secrets it replaces are then removed from the app.
     await promoteSecret(ctx, sm, objectId, secret.keyId);
   }
@@ -707,8 +663,8 @@ export async function modelRefreshes(ctx, m = ctx.config.semanticModel) {
   return ctx.api.powerBi.refreshes(/** @type {string} */ (ctx.config.fabric.workspaceId), m.id, 3);
 }
 
-/** The probe's DAX. It errors when the Calendar table was never calculated. */
-export const MODEL_PROBE = 'EVALUATE ROW("CalendarDays", COUNTROWS(\'Calendar\'))';
+/** The probe's DAX. It errors when the Date table was never calculated. */
+export const MODEL_PROBE = 'EVALUATE ROW("CalendarDays", COUNTROWS(\'Date\'))';
 
 /** @param {any} err */
 function queryError(err) {
@@ -746,13 +702,100 @@ export async function verifyModel(ctx) {
   const error = result?.error ? String(result.error.message ?? JSON.stringify(result.error)).slice(0, 600) : undefined;
   const calendarDays = Number(result?.tables?.[0]?.rows?.[0]?.['[CalendarDays]'] ?? 0);
   if (!error && calendarDays > 0) {
-    ui.ok(`${sm.name} answers queries (its Calendar has ${calendarDays.toLocaleString('en-GB')} days)`);
+    ui.ok(`${sm.name} answers queries (its Date table has ${calendarDays.toLocaleString('en-GB')} days)`);
     return { ok: true, calendarDays };
   }
-  ui.fail(`${sm.name} refreshed, but ${error ? 'a test query failed' : 'its Calendar table is empty'}, so report pages will fail`);
+  ui.fail(`${sm.name} refreshed, but ${error ? 'a test query failed' : 'its Date table is empty'}, so report pages will fail`);
   if (error) ui.info(error);
   ui.info(`Run the installer again from the latest release to redeploy and refresh the model, or run "${commandLine('update')}".`);
   return { ok: false, calendarDays, error };
+}
+
+/**
+ * @typedef {object} DataCheck  One source the data check counts.
+ * @property {import('../uploads.js').DataSourceId} source
+ * @property {string} table  The model table it lands in.
+ * @property {string} [date]  The column whose first and last values it shows.
+ * @property {string} [filled]  The column it counts filled-in values of.
+ */
+
+/**
+ * What the data check counts, in the order it reports them. The names are the Fabric template's; a
+ * desk test checks them against it. Commercial terms aren't counted: they set the credit rate.
+ * @type {DataCheck[]}
+ */
+export const DATA_CHECK_TABLES = [
+  { source: 'coworkCredits', table: 'CreditsWeekly', date: 'MetricDate' },
+  { source: 'coworkTasks', table: 'Cowork Tasks', date: 'MetricDate' },
+  { source: 'studioCredits', table: 'Credit Consumption (Tenant)', date: 'Usage_Date' },
+  { source: 'github', table: 'GitHub Usage', date: 'Usage_Date' },
+  { source: 'azureAi', table: 'AzureAiSpend', date: 'UsageDate' },
+  { source: 'orgData', table: 'Org', filled: 'Department' },
+];
+
+/** @param {string} table @param {string} [column] */
+const daxRef = (table, column) => `'${table.replaceAll("'", "''")}'${column ? `[${column.replaceAll(']', ']]')}]` : ''}`;
+
+/**
+ * One DAX query that counts every check's rows: `<source>` rows, `<source>From` and `<source>To` dates,
+ * and `<source>Filled` values.
+ * @param {DataCheck[]} checks
+ */
+export function dataCheckQuery(checks) {
+  const columns = checks.flatMap((c) => [
+    `"${c.source}", COUNTROWS(${daxRef(c.table)})`,
+    ...(c.date ? [`"${c.source}From", MIN(${daxRef(c.table, c.date)})`, `"${c.source}To", MAX(${daxRef(c.table, c.date)})`] : []),
+    ...(c.filled ? [`"${c.source}Filled", COUNTROWS(FILTER(${daxRef(c.table)}, LEN(${daxRef(c.table, c.filled)}) > 0))`] : []),
+  ]);
+  return `EVALUATE ROW(\n  ${columns.join(',\n  ')}\n)`;
+}
+
+/**
+ * @typedef {object} TableCount
+ * @property {string} table
+ * @property {number} rows
+ * @property {string | null} [from]  yyyy-mm-dd, or null when the table is empty.
+ * @property {string | null} [to]
+ * @property {number} [filled]
+ */
+
+/**
+ * Asks the model how many rows each chosen source gave it, and over which dates.
+ * @param {Ctx} ctx
+ * @returns {Promise<{ skipped?: boolean, error?: string, tables?: Record<string, TableCount> }>}
+ *   `skipped` when there is nothing to ask or the model can't be queried, which only warns; `error` when the query failed.
+ */
+export async function countModelRows(ctx) {
+  const { ui, config, api } = ctx;
+  const sm = config.semanticModel;
+  const checks = DATA_CHECK_TABLES.filter((c) => config.dataSources?.[c.source] && config.dataSources[c.source] !== 'skip');
+  if (!sm.enabled || !sm.id || !sm.bound || !checks.length) return { skipped: true };
+  /** @type {any} */
+  let res;
+  try {
+    res = await api.powerBi.executeQueries(/** @type {string} */ (config.fabric.workspaceId), sm.id, dataCheckQuery(checks));
+  } catch (err) {
+    const s = status(err);
+    if (s === 400) return { error: queryError(err) };
+    ui.warn(`Couldn't query ${sm.name} for the data check (${queryError(err)}).`);
+    if (s === 401 || s === 403) ui.note('The tenant setting "Semantic model Execute Queries REST API" may be off. Open a report page to see the data.');
+    return { skipped: true };
+  }
+  const result = res?.results?.[0];
+  if (result?.error) return { error: String(result.error.message ?? JSON.stringify(result.error)).slice(0, 600) };
+  const row = result?.tables?.[0]?.rows?.[0];
+  if (!row) return { error: 'The query returned no rows.' };
+  const day = (/** @type {unknown} */ v) => (v ? String(v).slice(0, 10) : null);
+  /** @type {Record<string, TableCount>} */
+  const tables = {};
+  for (const c of checks) {
+    /** @type {TableCount} */
+    const t = { table: c.table, rows: Number(row[`[${c.source}]`] ?? 0) };
+    if (c.date) Object.assign(t, { from: day(row[`[${c.source}From]`]), to: day(row[`[${c.source}To]`]) });
+    if (c.filled) t.filled = Number(row[`[${c.source}Filled]`] ?? 0);
+    tables[c.source] = t;
+  }
+  return { tables };
 }
 
 /**

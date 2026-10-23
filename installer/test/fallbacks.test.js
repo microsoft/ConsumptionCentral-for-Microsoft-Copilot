@@ -15,7 +15,7 @@ import { secretMode } from '../src/config.js';
 import { HttpError } from '../src/http.js';
 import { rotateSecret } from '../src/install.js';
 import { CREATE_SETTLE_MS, createdId, ensureNotebooks, ensurePipeline, modelKey, SECRET_SETTLE_MS, secretLabel, settleSecretAttempts, stoppedRunItem } from '../src/steps/fabric.js';
-import { flowsSkipped, flowsWanted } from '../src/steps/flows.js';
+import { FLOW_NAMES, flowsSkipped, flowsWanted } from '../src/steps/flows.js';
 import {
   ADMIN_PACK_FILE,
   canWriteSecrets,
@@ -133,6 +133,17 @@ function adminCtx(o = {}) {
   delete made.config.keyVault.uri;
   return made;
 }
+
+/**
+ * Sources that sign in as the app, so the install keeps its client secret. With no Key Vault,
+ * Ingest_Studio and Ingest_Org_Graph hold it.
+ * @template {{ config: import('../src/config.js').InstallConfig }} T
+ * @param {T} t
+ */
+const withAppSources = (t) => {
+  Object.assign(t.config.dataSources, { studioCredits: 'api', orgData: 'api' });
+  return t;
+};
 
 test('secret modes: Key Vault is the default; ResumeLater is told apart from failures', () => {
   const { config } = fakeCtx();
@@ -331,7 +342,7 @@ test('vault admin: ensureSecret and new secrets hand over instead of writing', a
 
 test('vault admin: rotate-secret shows the steps and can stop to resume later', async () => {
   const ui = fakeUi({ answers: [true, '', 'stop'] });
-  const t = adminCtx({ ui: ui.ui });
+  const t = withAppSources(adminCtx({ ui: ui.ui }));
   t.config.keyVault.uri = 'https://kv-test.vault.azure.net/';
   await assert.rejects(rotateSecret(t.ctx), (err) => isResumeLater(err));
   assert.match(ui.asked[0], /Show the steps for a vault admin to replace the secret in kv-test/);
@@ -341,7 +352,7 @@ test('notebook mode: the secret is written into the notebooks and nowhere else',
   const fabric = fakeFabric();
   const graph = fakeGraph();
   const ui = fakeUi();
-  const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: ui.ui });
+  const t = withAppSources(fakeCtx({ fabric: fabric.api, graph: graph.api, ui: ui.ui }));
   t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
 
   await ensureNotebooks(t.ctx);
@@ -376,7 +387,7 @@ test('notebook mode: the secret is written into the notebooks and nowhere else',
 test('notebook mode: each install or repair replaces the secret, then removes the old one', async () => {
   const fabric = fakeFabric();
   const graph = fakeGraph();
-  const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
+  const t = withAppSources(fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui }));
   t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   t.config.app.secretDays = 30;
   await ensureNotebooks(t.ctx, { rotate: true });
@@ -393,12 +404,12 @@ test('notebook mode: each install or repair replaces the secret, then removes th
   assert.doesNotMatch(JSON.stringify(t.config), /secret-\d/);
 
   // Key Vault mode and an app the user brought are left alone.
-  const vaulted = fakeCtx({ fabric: fakeFabric().api, graph: fakeGraph().api, ui: fakeUi().ui });
+  const vaulted = withAppSources(fakeCtx({ fabric: fakeFabric().api, graph: fakeGraph().api, ui: fakeUi().ui }));
   await ensureNotebooks(vaulted.ctx, { rotate: true });
   assert.equal(vaulted.config.app.secretKeyId, undefined);
 
   const brought = fakeGraph();
-  const b = fakeCtx({ fabric: fakeFabric().api, graph: brought.api, ui: fakeUi().ui });
+  const b = withAppSources(fakeCtx({ fabric: fakeFabric().api, graph: brought.api, ui: fakeUi().ui }));
   b.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   b.config.app.existing = true;
   b.ctx.pendingSecret = 'pasted-value';
@@ -412,7 +423,7 @@ test('notebook mode: the secret is never written into a workspace connected to G
   const fabric = fakeFabric();
   fabric.git.gitConnectionState = 'ConnectedAndInitialized';
   const graph = fakeGraph();
-  const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
+  const t = withAppSources(fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui }));
   t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   await assert.rejects(ensureNotebooks(t.ctx), /connected to Git/);
   assert.deepEqual(graph.calls, [], 'no secret is made');
@@ -422,7 +433,7 @@ test('notebook mode: the secret is never written into a workspace connected to G
   const flaky = fakeFabric();
   flaky.failures.getGitConnection = [new Error('Forbidden')];
   const ui = fakeUi();
-  const f = fakeCtx({ fabric: flaky.api, graph: fakeGraph().api, ui: ui.ui });
+  const f = withAppSources(fakeCtx({ fabric: flaky.api, graph: fakeGraph().api, ui: ui.ui }));
   f.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   await ensureNotebooks(f.ctx);
   assert.equal(f.config.app.secretKeyId, 'key-1');
@@ -432,7 +443,7 @@ test('notebook mode: the secret is never written into a workspace connected to G
 test('notebook mode: a rotation that stops part-way removes the old secret on the next run', async () => {
   const fabric = fakeFabric();
   const graph = fakeGraph();
-  const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
+  const t = withAppSources(fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui }));
   t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   await ensureNotebooks(t.ctx);
   assert.equal(t.config.fabric.secretInNotebooks, true);
@@ -461,7 +472,7 @@ test('notebook mode: a rotation that stops part-way removes the old secret on th
 test('a run stopped while Fabric creates a notebook: the next run uses that notebook and removes the secret it made', async () => {
   const fabric = fakeFabric();
   const graph = fakeGraph();
-  const first = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
+  const first = withAppSources(fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui }));
   first.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   // The record on disk is what the last save wrote; a stopped process saves nothing more.
   let saved = structuredClone(first.config);
@@ -555,7 +566,7 @@ test('a run stopped while Fabric creates a model: planning keeps its name and th
   const ui = fakeUi();
   const t = fakeCtx({ fabric: fabric.api, graph: fakeGraph().api, ui: ui.ui });
   t.config.semanticModel.enabled = true;
-  const ours = fabric.add('SemanticModel', 'Consumption Central Model', 'half-made', 'ValueLens. (ref cc33)');
+  const ours = fabric.add('SemanticModel', 'Consumption Central Model', 'half-made', 'Consumption Central. (ref cc33)');
   t.config.fabric.pendingItems = { 'SemanticModel:main': { name: 'Consumption Central Model', ref: 'cc33' } };
 
   await reserveNames(t.ctx);
@@ -580,7 +591,7 @@ test('a run stopped while Fabric creates a model: planning keeps its name and th
   await deployModel(o.ctx, o.config.semanticModel, { signature: 's', definition: () => ({ parts: [] }) });
   assert.deepEqual(other.calls.filter((c) => /SemanticModel /.test(c)), ['createSemanticModel Consumption Central Model 2']);
   assert.equal(theirs.content, 'theirs');
-  assert.equal(modelKey(o.config, o.config.consumption.model), 'consumption');
+  assert.equal(modelKey(o.config, o.config.semanticModel), 'main');
 });
 
 test('a run stopped moments ago: waits for the item Fabric is still creating, rather than making a second', async () => {
@@ -826,14 +837,14 @@ test('an item is found by its ref, not by a name someone else also used', async 
   assert.equal(await createdId(ctx, undefined, 'Notebook', 'X', 'ff66'), ours.id, 'a create that returns no ID');
   assert.equal(await createdId(ctx, undefined, 'Notebook', 'X'), theirs.id, 'no ref: by name, as before');
   await assert.rejects(createdId(ctx, undefined, 'Notebook', 'X', '0000'), /isn't in the workspace/);
-  config.fabric.pendingItems = { 'Notebook:processor': { name: 'x', ref: 'ff66' } };
-  assert.equal(stoppedRunItem(config.fabric, 'Notebook:processor', fabric.items)?.id, ours.id);
+  config.fabric.pendingItems = { 'Notebook:vivaConsumption': { name: 'x', ref: 'ff66' } };
+  assert.equal(stoppedRunItem(config.fabric, 'Notebook:vivaConsumption', fabric.items)?.id, ours.id);
 });
 
 test('notebook mode: a secret Entra made just before the run stopped is found by its ref and removed', async () => {
   const fabric = fakeFabric();
   const graph = fakeGraph();
-  const first = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
+  const first = withAppSources(fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui }));
   first.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   /** @type {any} */
   let saved;
@@ -933,7 +944,7 @@ test('a retired secret Entra errors on removing is cleared only once the app no 
 
 test('notebook mode: a secret Entra turned down leaves nothing to look for', async () => {
   const graph = fakeGraph();
-  const t = fakeCtx({ fabric: fakeFabric().api, graph: graph.api, ui: fakeUi().ui });
+  const t = withAppSources(fakeCtx({ fabric: fakeFabric().api, graph: graph.api, ui: fakeUi().ui }));
   t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   graph.failures.addPassword = [httpError(403, 'Forbidden')];
   await assert.rejects(ensureNotebooks(t.ctx), /Forbidden/);
@@ -946,7 +957,7 @@ test('notebook mode: a secret Entra turned down leaves nothing to look for', asy
 test('notebook mode: old secrets stay in the record until Entra confirms they are removed', async () => {
   const fabric = fakeFabric();
   const graph = fakeGraph();
-  const first = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
+  const first = withAppSources(fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui }));
   first.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   await ensureNotebooks(first.ctx);
   assert.equal(first.config.app.secretKeyId, 'key-1');
@@ -996,7 +1007,7 @@ test('notebook mode: old secrets stay in the record until Entra confirms they ar
 test('notebook mode: an unused secret that can\'t be removed is kept to remove later', async () => {
   const fabric = fakeFabric();
   const graph = fakeGraph();
-  const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
+  const t = withAppSources(fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui }));
   t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   fabric.api.createNotebook = async () => {
     throw new Error('Fabric is busy');
@@ -1013,7 +1024,7 @@ test('notebook mode: an unused secret that can\'t be removed is kept to remove l
 test('notebook mode: moving to Key Vault rewrites the notebooks and removes the secret they held', async () => {
   const fabric = fakeFabric();
   const graph = fakeGraph();
-  const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui });
+  const t = withAppSources(fakeCtx({ fabric: fabric.api, graph: graph.api, ui: fakeUi().ui }));
   t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   await ensureNotebooks(t.ctx);
   const holding = fabric.items.filter((i) => String(i.content).includes('secret-1')).map((i) => i.displayName);
@@ -1040,7 +1051,7 @@ test('notebook mode: an app the user brought gets its pasted secret; no vault ne
   const fabric = fakeFabric();
   const graph = fakeGraph();
   const ui = fakeUi({ answers: ['pasted-value'] });
-  const t = fakeCtx({ fabric: fabric.api, graph: graph.api, ui: ui.ui });
+  const t = withAppSources(fakeCtx({ fabric: fabric.api, graph: graph.api, ui: ui.ui }));
   t.config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
   t.config.app.existing = true;
 
@@ -1057,13 +1068,13 @@ test('notebook mode: an app the user brought gets its pasted secret; no vault ne
 
 test('notebook mode: the flows sign in to OneLake, so only flows that write as the app are left out', () => {
   const { config } = fakeCtx();
-  config.dataSources.productFeedback = 'api';
+  config.dataSources.studioCredits = 'api';
   config.keyVault.mode = 'notebook';
-  assert.deepEqual(flowsWanted(config), ['feedback']);
+  assert.deepEqual(flowsWanted(config), ['studio']);
   assert.deepEqual(flowsSkipped(config), []);
   config.uploads.flowIdentity = 'app';
   assert.deepEqual(flowsWanted(config), []);
-  assert.equal(flowsSkipped(config).length, 1);
+  assert.deepEqual(flowsSkipped(config), [FLOW_NAMES.studio]);
 });
 
 test('--flow-identity: install only, user or app, and app needs the secret in Key Vault', () => {
@@ -1103,7 +1114,7 @@ test('--secret-days: a whole number of days up to 730, for a Fabric install or r
 test('planning: a vault the user can\'t write to recommends no Key Vault, then the vault admin', async () => {
   const arm = vaultArm({ vaults: [vault()], perms: { [VAULT_ID]: READ_ONLY } });
   const ui = fakeUi({ answers: ['sub-1', VAULT_ID, 'keyvault-admin'] });
-  const t = fakeCtx({ arm: arm.api, ui: ui.ui });
+  const t = withAppSources(fakeCtx({ arm: arm.api, ui: ui.ui }));
   await planKeyVault(t.ctx, PRE, 'uksouth');
   assert.equal(t.config.keyVault.mode, 'keyvault-admin');
   assert.equal(t.config.keyVault.existing, true);
@@ -1114,20 +1125,20 @@ test('planning: a vault the user can\'t write to recommends no Key Vault, then t
 
   // The default is no Key Vault, after the warning and a yes.
   const d = fakeUi({ answers: ['sub-1', VAULT_ID] });
-  const n = fakeCtx({ arm: arm.api, ui: d.ui });
+  const n = withAppSources(fakeCtx({ arm: arm.api, ui: d.ui }));
   await planKeyVault(n.ctx, PRE, 'uksouth');
   assert.equal(n.config.keyVault.mode, 'notebook');
   assert.match(d.text(), /Anyone with a role in the workspace/);
 
   // With --yes and no flag, the vault admin.
-  const q = fakeCtx({ arm: arm.api, ui: fakeUi({ yes: true, answers: ['sub-1', VAULT_ID] }).ui });
+  const q = withAppSources(fakeCtx({ arm: arm.api, ui: fakeUi({ yes: true, answers: ['sub-1', VAULT_ID] }).ui }));
   await planKeyVault(q.ctx, PRE, 'uksouth');
   assert.equal(q.config.keyVault.mode, 'keyvault-admin');
 
   // A vault they can write to keeps the usual path.
   const mine = vaultArm({ vaults: [vault(), vault({ id: OTHER_ID, name: 'kv-mine' })], perms: { [OTHER_ID]: SECRETS_OFFICER } });
   const u = fakeUi({ answers: ['sub-1', OTHER_ID] });
-  const m = fakeCtx({ arm: mine.api, ui: u.ui });
+  const m = withAppSources(fakeCtx({ arm: mine.api, ui: u.ui }));
   m.config.keyVault.mode = 'keyvault-admin';
   m.config.keyVault.handoff = { shownAt: 'x' };
   await planKeyVault(m.ctx, PRE, 'uksouth');
@@ -1139,7 +1150,7 @@ test('planning: a vault the user can\'t write to recommends no Key Vault, then t
 test('planning: the no Key Vault option states the trade-off and needs a yes', async () => {
   const arm = vaultArm({ vaults: [vault({ id: OTHER_ID, name: 'kv-mine' })], perms: { [OTHER_ID]: SECRETS_OFFICER } });
   const ui = fakeUi({ answers: ['sub-1', 'notebook', false] });
-  const t = fakeCtx({ arm: arm.api, ui: ui.ui });
+  const t = withAppSources(fakeCtx({ arm: arm.api, ui: ui.ui }));
   Object.assign(t.config.keyVault, { existing: true, id: OTHER_ID });
   await planKeyVault(t.ctx, PRE, 'uksouth');
   assert.equal(secretMode(t.config), 'keyvault', 'declined, then the vault it had');
@@ -1148,12 +1159,12 @@ test('planning: the no Key Vault option states the trade-off and needs a yes', a
   assert.match(text, /written into the notebooks as plain text/);
   assert.match(text, /Anyone with a role in the workspace, Viewer included/);
   assert.match(text, /run snapshots, exports and deployment pipelines/);
-  assert.match(text, /won't write it\s+into a workspace that is connected to Git/);
-  assert.match(text, /It lasts 90 days/);
+  assert.match(text, /won't write them\s+into a workspace that is connected to Git/);
+  assert.match(text, /The client secret lasts 90 days/);
   assert.match(text, /Key Vault avoids this/);
 
   const yes = fakeUi({ answers: ['sub-1', 'notebook'] });
-  const y = fakeCtx({ arm: arm.api, ui: yes.ui });
+  const y = withAppSources(fakeCtx({ arm: arm.api, ui: yes.ui }));
   y.config.keyVault.handoff = { shownAt: 'x' };
   await planKeyVault(y.ctx, PRE, 'uksouth');
   assert.equal(y.config.keyVault.mode, 'notebook', 'yes by default once chosen');
@@ -1164,13 +1175,13 @@ test('planning: the no Key Vault option states the trade-off and needs a yes', a
 test('planning: no rights to create a vault recommends no Key Vault; --yes needs the flag', async () => {
   const arm = vaultArm({ groups: ['rg-consumption-central'], perms: { [SUB]: READ_ONLY } });
   const ui = fakeUi({ answers: ['sub-1', ''] });
-  const t = fakeCtx({ arm: arm.api, ui: ui.ui });
+  const t = withAppSources(fakeCtx({ arm: arm.api, ui: ui.ui }));
   await planKeyVault(t.ctx, PRE, 'uksouth');
   assert.equal(t.config.keyVault.mode, 'notebook');
   assert.match(ui.text(), /You can't create a Key Vault in rg-consumption-central: that needs Contributor there/);
   assert.ok(ui.asked.includes('Where should the client secret go?'));
 
-  const quiet = fakeCtx({ arm: arm.api, ui: fakeUi({ yes: true, answers: ['sub-1', ''] }).ui });
+  const quiet = withAppSources(fakeCtx({ arm: arm.api, ui: fakeUi({ yes: true, answers: ['sub-1', ''] }).ui }));
   await assert.rejects(planKeyVault(quiet.ctx, PRE, 'uksouth'), /Add --no-key-vault/);
 });
 
@@ -1253,20 +1264,21 @@ test('new vault: Contributor on just the resource group creates it there', async
 test('app check: an app the user brought is checked for its service principal, permissions and consent', async () => {
   const missing = appGraph({ application: { ...THEIR_APP, requiredResourceAccess: [{ resourceAppId: GRAPH_APP_ID, resourceAccess: [{ id: 'r-audit', type: 'Role' }] }] } });
   const t = fakeCtx({ graph: missing.api });
+  t.config.dataSources.orgData = 'api';
   const check = await checkExistingApp(t.ctx);
   assert.deepEqual(check, {
     found: true,
     displayName: 'Their app',
     servicePrincipal: false,
-    undeclared: ['Reports.Read.All', 'User.Read.All'],
-    unconsented: ['AuditLogsQuery.Read.All', 'Reports.Read.All', 'User.Read.All'],
+    undeclared: ['User.Read.All'],
+    unconsented: ['User.Read.All'],
   });
   const ui = fakeUi();
   t.ctx.ui = ui.ui;
   assert.equal(reportAppCheck(t.ctx, check), false);
   assert.match(ui.text(), /Its service principal \(enterprise application\)\. If you own the app, choose "Carry on anyway" and the installer creates it\./);
-  assert.match(ui.text(), /These Graph application permissions on its API permissions page: Reports\.Read\.All, User\.Read\.All/);
-  assert.match(ui.text(), /Admin consent for: AuditLogsQuery\.Read\.All/);
+  assert.match(ui.text(), /These Graph application permissions on its API permissions page: User\.Read\.All/);
+  assert.match(ui.text(), /Admin consent for: User\.Read\.All/);
   assert.match(ui.text(), /CallAnAPI\/appId\/app-1/);
 
   const consentOnly = fakeUi();
@@ -1285,6 +1297,7 @@ test('app check: the user can check again once an admin has fixed it, or carry o
   const graph = appGraph({ application: THEIR_APP, sp: { id: 'their-sp' }, assigned: [['r-audit'], ['r-audit', 'r-reports', 'r-users']] });
   const ui = fakeUi({ answers: [APP_GUID, 'again'] });
   const t = fakeCtx({ graph: graph.api, ui: ui.ui });
+  t.config.dataSources.orgData = 'api';
   await askAppId(t.ctx, { canConsent: false });
   assert.equal(t.config.app.appId, APP_GUID);
   assert.equal(t.config.app.displayName, 'Their app');
@@ -1294,11 +1307,13 @@ test('app check: the user can check again once an admin has fixed it, or carry o
   const stuck = appGraph({ application: THEIR_APP, sp: { id: 'their-sp' } });
   const go = fakeUi({ answers: [APP_GUID, 'go'] });
   const g = fakeCtx({ graph: stuck.api, ui: go.ui });
+  g.config.dataSources.orgData = 'api';
   await askAppId(g.ctx, { canConsent: false });
   assert.match(go.text(), /Carrying on with the app as it is/);
 
   const quiet = fakeUi({ yes: true, answers: [APP_GUID] });
   const q = fakeCtx({ graph: stuck.api, ui: quiet.ui });
+  q.config.dataSources.orgData = 'api';
   await askAppId(q.ctx, { canConsent: false });
   assert.match(quiet.text(), /Carrying on\. Data the missing permissions cover/);
 
@@ -1309,15 +1324,16 @@ test('app check: the user can check again once an admin has fixed it, or carry o
 });
 
 test('admin pack: a script and portal steps for every permission, with the secret going where the install keeps it', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'vl-pack-'));
+  const dir = mkdtempSync(join(tmpdir(), 'cc-pack-'));
   try {
     const t = fakeCtx();
+    t.config.dataSources.orgData = 'api';
     t.ctx.configFile = join(dir, 'consumption-central-setup.json');
     const file = writeAdminPack(t.ctx);
     assert.equal(file, join(dir, ADMIN_PACK_FILE));
     const body = readFileSync(file, 'utf8');
     assert.match(body, /az ad app create --display-name "Consumption Central \(Fabric\)"/);
-    assert.match(body, /for P in AuditLogsQuery\.Read\.All Reports\.Read\.All User\.Read\.All; do/);
+    assert.match(body, /for P in User\.Read\.All; do/);
     assert.match(body, /az ad app permission admin-consent --id "\$APP_ID"/);
     assert.match(body, /Grant admin consent/);
     assert.match(body, /az ad app credential reset --id "\$APP_ID"/);
@@ -1335,10 +1351,11 @@ test('admin pack: a script and portal steps for every permission, with the secre
 });
 
 test('admin pack: the install stops until the admin sends the client ID, then checks it', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'vl-pack-'));
+  const dir = mkdtempSync(join(tmpdir(), 'cc-pack-'));
   try {
     const quiet = fakeUi({ yes: true });
     const q = fakeCtx({ ui: quiet.ui });
+    q.config.dataSources.orgData = 'api';
     q.ctx.configFile = join(dir, 'consumption-central-setup.json');
     delete q.config.app.appId;
     await assert.rejects(planAdminPack(q.ctx, { canConsent: false }), (err) => isResumeLater(err));
@@ -1347,11 +1364,13 @@ test('admin pack: the install stops until the admin sends the client ID, then ch
     assert.match(quiet.text(), /An admin needs to register the app/);
 
     const stop = fakeCtx({ ui: fakeUi({ answers: ['stop'] }).ui });
+    stop.config.dataSources.orgData = 'api';
     stop.ctx.configFile = q.ctx.configFile;
     await assert.rejects(planAdminPack(stop.ctx, { canConsent: false }), (err) => isResumeLater(err));
 
     const graph = appGraph({ application: THEIR_APP, sp: { id: 'their-sp' }, assigned: [['r-audit', 'r-reports', 'r-users']] });
     const vaulted = fakeCtx({ graph: graph.api, ui: fakeUi({ answers: ['go', APP_GUID] }).ui });
+    vaulted.config.dataSources.orgData = 'api';
     vaulted.ctx.configFile = q.ctx.configFile;
     Object.assign(vaulted.config.keyVault, { mode: 'keyvault-admin', name: 'kv-test' });
     assert.equal(await planAdminPack(vaulted.ctx, { canConsent: false }), false, 'the admin\'s script put the secret in the vault');
@@ -1359,15 +1378,24 @@ test('admin pack: the install stops until the admin sends the client ID, then ch
     assert.equal(vaulted.config.keyVault.secretSetAt, '2026-06-01T12:00:00.000Z');
 
     const pasted = fakeCtx({ graph: graph.api, ui: fakeUi({ answers: ['go', APP_GUID] }).ui });
+    pasted.config.dataSources.orgData = 'api';
     pasted.ctx.configFile = q.ctx.configFile;
     assert.equal(await planAdminPack(pasted.ctx, { canConsent: false }), true, 'the user pastes the secret');
+
+    // Only the model's connection signs in as the app: it gets a secret of its own later, so nothing is pasted.
+    const modelOnly = fakeCtx({ graph: graph.api, ui: fakeUi({ answers: ['go', APP_GUID] }).ui });
+    modelOnly.config.semanticModel.enabled = true;
+    modelOnly.ctx.configFile = q.ctx.configFile;
+    assert.equal(await planAdminPack(modelOnly.ctx, { canConsent: false }), false);
+    assert.equal(modelOnly.config.app.appId, APP_GUID);
+    assert.equal(modelOnly.config.keyVault.secretSetAt, undefined);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test('review: each secret mode says where the secret is and what the user needs', async () => {
-  const t = fakeCtx();
+  const t = withAppSources(fakeCtx());
   Object.assign(t.config.keyVault, { existing: true, name: 'kv-test' });
   delete t.config.keyVault.uri;
   const usual = planReview(t.ctx);
@@ -1391,5 +1419,5 @@ test('review: each secret mode says where the secret is and what the user needs'
   const ui = fakeUi({ answers: [true] });
   t.ctx.ui = ui.ui;
   await confirmPlan(t.ctx);
-  assert.match(ui.text(), /Secret: {6}in the notebooks \(no Key Vault: anyone with a role in the workspace can read it; lasts 90 days\)/);
+  assert.match(ui.text(), /Secrets: {5}the client secret in the notebooks \(no Key Vault: anyone with a role in the workspace can read it; the client secret lasts 90 days\)/);
 });

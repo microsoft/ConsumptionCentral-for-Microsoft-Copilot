@@ -20,6 +20,8 @@ export const FABRIC_ADMIN_ROLE = 'a9ea8996-122f-4c74-9520-8edcd192826c';
 export const GLOBAL_READER_ROLE = 'f2ef992c-3afb-46b9-b7cf-a126ee74c451';
 export const AI_ADMIN_ROLE = 'd2562ede-74db-457e-a7b6-544e236ebb61';
 export const POWER_PLATFORM_ADMIN_ROLE = '11648597-926c-4cf3-9c36-bcebb0ba8dcc';
+export const BILLING_ADMIN_ROLE = 'b0f54661-2d74-4c50-afa3-1ec803f12efe';
+export const GLOBAL_ADMIN_ROLE = '62e90394-69f5-4237-9190-012177145e10';
 
 /**
  * Maps permission names to Graph app role IDs. A missing required permission is an

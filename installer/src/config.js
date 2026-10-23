@@ -6,8 +6,6 @@
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { normaliseModules } from './catalog.js';
-import { normaliseReporting } from './currency.js';
 import { normaliseDataSources } from './uploads.js';
 import { PRODUCT_NAME, RECORD_FILE, SECRET_NAME } from './product.js';
 
@@ -19,21 +17,39 @@ export const DEFAULT_CONFIG_FILE = RECORD_FILE;
  * @property {number} version
  * @property {'fabric'} [target]
  * @property {string} [tenantId]
- * @property {import('./catalog.js').ModuleChoice} modules  Follows `dataSources`.
  * @property {import('./uploads.js').DataSourceModes} dataSources  How each source arrives: API, uploaded CSV, or skipped.
  * @property {UploadsConfig} uploads
- * @property {{ days: number }} history
- * @property {import('./transform/pipeline.js').TenantScale} [scale]  How the loads are sized. Standard when absent.
- * @property {import('./currency.js').ReportingConfig} [reporting]  The currency the Value page reports in. Asked for when absent.
+ * @property {import('./prices.js').Prices} [prices]  The commercial terms the model prices usage with. Each one absent keeps the template's default.
+ * @property {GithubConfig} [github]  Reading GitHub Copilot billing from the API. Absent until it's asked for.
+ * @property {CommercialTermsConfig} [commercialTerms]  The billing scope Ingest_CommercialTerms reads the credit rate from.
  * @property {{ frequency: 'daily' | 'weekly', time: string, weekday: string, timeZone: string }} schedule
  * @property {{ appId?: string, objectId?: string, servicePrincipalId?: string, displayName?: string, secretExpires?: string, secretKeyId?: string, retiredSecretKeyIds?: string[], pendingSecretKeyIds?: string[], secretAttempts?: { ref: string, at: string }[], existing?: boolean, adminPack?: string, secretDays?: number }} app  pendingSecretKeyIds: notebook secrets created by a run that hadn't finished writing them. secretAttempts: notebook secrets asked of Entra whose key ID isn't saved yet; the ref is in the secret's name. secretDays: how long a secret kept in the notebooks lasts (--secret-days). 90 when absent.
  * @property {{ subscriptionId?: string, resourceGroup?: string, name?: string, id?: string, uri?: string, location?: string, secretName: string, existing?: boolean, rbac?: boolean, private?: boolean, secretSetAt?: string, mode?: SecretMode, handoff?: SecretHandoff } & import('./steps/secrets.js').SecretSlot} keyVault  The secret* fields track the app secrets made for the vault (see steps/secrets.js); previousSecretKeyIds are replaced ones left on the app until they expire.
- * @property {{ capacityId?: string, workspaceId?: string, workspaceName?: string, lakehouseId?: string, lakehouseName?: string, notebooks: Partial<Record<import('./catalog.js').NotebookKey, string>>, notebookNames?: Partial<Record<import('./catalog.js').NotebookKey, string>>, notebookHashes?: Partial<Record<import('./catalog.js').NotebookKey, string>>, pipelineId?: string, pipelineName?: string, pipelineModules?: string, pipelineVersion?: number, scheduleId?: string, vaultEndpointId?: string, deployedRouter?: string, secretInNotebooks?: boolean, createdWorkspace?: boolean, pendingItems?: Record<string, { name: string, ref: string, at?: string, operation?: string }> }} fabric  pendingItems: the name and description ref of each item being created, and when, so a run stopped mid-create finds that item again and nothing else. operation: Fabric's URL for the create once it accepted it, to ask how it went.
+ * @property {{ capacityId?: string, workspaceId?: string, workspaceName?: string, lakehouseId?: string, lakehouseName?: string, notebooks: Partial<Record<import('./catalog.js').NotebookKey, string>>, notebookNames?: Partial<Record<import('./catalog.js').NotebookKey, string>>, notebookHashes?: Partial<Record<import('./catalog.js').NotebookKey, string>>, pipelineId?: string, pipelineName?: string, pipelineModules?: string, pipelineVersion?: number, scheduleId?: string, vaultEndpointId?: string, deployedRouter?: string, secretInNotebooks?: boolean, createdWorkspace?: boolean, pendingItems?: Record<string, { name: string, ref: string, at?: string, operation?: string }> }} fabric  pendingItems: the name and description ref of each item being created, and when, so a run stopped mid-create finds that item again and nothing else. operation: Fabric's URL for the create once it accepted it, to ask how it went. pipelineModules: what the deployed pipeline was built for (fabric.js pipelineSignature).
  * @property {{ jobId?: string, status?: string, startedAt?: string, finishedAt?: string, coworkSkipped?: boolean }} [firstRun]  coworkSkipped: the first load left out the Cowork Dataflow, which wasn't signed in yet.
  * @property {SemanticModelConfig} semanticModel
  * @property {AccessConfig} [access]  Who can view Consumption Central. Absent until the installer has set it up.
  * @property {ConsumptionConfig} consumption
- * @property {{ completed: string[], runFirstLoad?: boolean, reloadHistoryDays?: number, baseRevision?: string, approved?: boolean, uploads?: { token?: string, name: string }[] }} [setup] Browser setup draft progress; never contains secrets. runFirstLoad and reloadHistoryDays are kept only in the draft, never in the install record.
+ * @property {{ completed: string[], runFirstLoad?: boolean, baseRevision?: string, approved?: boolean, uploads?: { token?: string, name: string }[] }} [setup] Browser setup draft progress; never contains secrets. runFirstLoad is kept only in the draft, never in the install record.
+ */
+
+/**
+ * Ingest_GitHub_API's settings. The token itself is never saved: it's in Key Vault, or in the notebook.
+ * @typedef {object} GithubConfig
+ * @property {string} [enterprise]  The enterprise slug, as in github.com/enterprises/<slug>.
+ * @property {string} [secretName]  The Key Vault secret the token is in, when it isn't GITHUB_PAT_SECRET.
+ * @property {string} [tokenSetAt]  When a token was last written to Key Vault or the notebook.
+ * @property {string} [tokenExpires]  When that token expires, as GitHub reported it. Absent for one that doesn't.
+ * @property {boolean} [tokenInNotebook]  The deployed notebook holds the token as plain text.
+ */
+
+/**
+ * Ingest_CommercialTerms reads the effective Copilot credit rate from Cost Management, once.
+ * @typedef {object} CommercialTermsConfig
+ * @property {string} [scope]  The billing account, billing profile or subscription it reads.
+ * @property {string} [scopeName]
+ * @property {string} [ranAt]  When it last finished.
+ * @property {string} [status]  How that run ended.
  */
 
 /**
@@ -45,15 +61,7 @@ export const DEFAULT_CONFIG_FILE = RECORD_FILE;
  * @property {string} [contact]  Who people ask for access. Defaults to the installer.
  * @property {string} [requestUrl]  Optional link for access requests, e.g. a My Access package or a form.
  * @property {string[]} [grantedModels]  Semantic model IDs the group has Build (ReadExplore) on.
- * @property {RlsConfig} [rls]  Org-scoped access (row-level security). Off when absent.
- */
-
-/**
- * Org-scoped access. Opt-in: with it off the models have no roles, as before.
- * @typedef {object} RlsConfig
- * @property {boolean} enabled
- * @property {'department' | 'country'} [orgAttribute]  What an org scope matches. Defaults to department.
- * @property {string[]} [applied]  Models whose role members were applied since they were last deployed. A deploy drops members.
+ * @property {string} [reportShared]  The report ID the user said they shared with the group. The API can't, so they do it by hand; until then the Done page reminds them and Repair asks again.
  */
 
 /**
@@ -97,11 +105,11 @@ export const flowIdentity = (config) => (config.uploads?.flowIdentity === 'app' 
  * @property {boolean} [folders]  The drop folder and the folders the loads read exist in the Lakehouse.
  * @property {FlowIdentity} [flowIdentity]  Who the flows write to OneLake as. Default user.
  * @property {FlowEnvironment} [flowEnvironment]  The Power Platform environment the flows are created in.
- * @property {Partial<Record<'feedback' | 'studio', string>>} [flowIds]  The flows, once created.
- * @property {Partial<Record<'feedback' | 'studio', string>>} [flowSignatures]  What each created flow was built from.
- * @property {Partial<Record<'feedback' | 'studio', string>>} [flowFiles]  Where a flow was written when it couldn't be created.
+ * @property {Partial<Record<'studio', string>>} [flowIds]  The flows, once created.
+ * @property {Partial<Record<'studio', string>>} [flowSignatures]  What each created flow was built from.
+ * @property {Partial<Record<'studio', string>>} [flowFiles]  Where a flow was written when it couldn't be created.
  * @property {Record<string, string>} [flowConnections]  The connections the installer made for the flows, by connection reference.
- * @property {Partial<Record<'feedback' | 'studio', string>>} [flowsConnected]  The flow IDs the installer signed in and turned on.
+ * @property {Partial<Record<'studio', string>>} [flowsConnected]  The flow IDs the installer signed in and turned on.
  */
 
 /**
@@ -143,7 +151,7 @@ export const flowIdentity = (config) => (config.uploads?.flowIdentity === 'app' 
  */
 
 /**
- * The credit consumption module: Azure AI access, landing folders and the Consumption model.
+ * Azure AI and pay-as-you-go access, the landing folders and the Cowork credits Dataflow.
  * @typedef {object} ConsumptionConfig
  * @property {string} [azureSubscriptionId]  Where the Azure AI resources are. Empty when Azure AI was left out.
  * @property {string} [azureSubscriptionName]
@@ -156,7 +164,6 @@ export const flowIdentity = (config) => (config.uploads?.flowIdentity === 'app' 
  * @property {string} [dataflowId]  The Cowork credits Dataflow.
  * @property {string} [dataflowName]
  * @property {string} [dataflowSignature]  What the deployed Dataflow definition was built from.
- * @property {ModelConfig} model
  */
 
 /**
@@ -169,7 +176,7 @@ export const flowIdentity = (config) => (config.uploads?.flowIdentity === 'app' 
  */
 
 /**
- * The semantic model built from `ValueLens - Fabric.pbit`, and the connection it reads the Lakehouse through.
+ * The semantic model built from `2. Fabric/Consumption Central - Fabric.pbit`, and the connection it reads the Lakehouse through.
  * @typedef {object} SemanticModelConfig
  * @property {boolean} [enabled]
  * @property {string} [id]
@@ -186,31 +193,27 @@ export const flowIdentity = (config) => (config.uploads?.flowIdentity === 'app' 
  * @property {string[]} [retiredSecretKeyIds]  Replaced connection secrets still to remove from the app.
  * @property {boolean} [bound]
  * @property {ModelReload} [reload]  Owed a reload: its definition was, or may have been, replaced and no refresh has finished since.
- * @property {boolean} [reports]  Publish the Power BI reports on the models. Records from before the choice was offered leave it unset, meaning no.
+ * @property {boolean} [reports]  Publish the Power BI report on the model.
  * @property {ReportConfig} [report]  The Consumption Central report.
  */
 
 // Names for items a new install creates. An existing install keeps the names saved in its record.
 export const MODEL_NAME = `${PRODUCT_NAME} Model`;
-export const CONSUMPTION_MODEL_NAME = `${PRODUCT_NAME} Consumption Model`;
 export const REPORT_NAME = PRODUCT_NAME;
-export const CONSUMPTION_REPORT_NAME = `${PRODUCT_NAME} Consumption`;
 
 /** @returns {InstallConfig} */
 export function emptyConfig() {
   return {
     version: CONFIG_VERSION,
     target: 'fabric',
-    modules: normaliseModules(undefined),
-    dataSources: normaliseDataSources(undefined, normaliseModules(undefined)),
+    dataSources: normaliseDataSources(undefined),
     uploads: {},
-    history: { days: 30 },
     schedule: { frequency: 'daily', time: '02:00', weekday: 'Sunday', timeZone: 'UTC' },
     app: {},
     keyVault: { secretName: SECRET_NAME },
     fabric: { notebooks: {} },
     semanticModel: { name: MODEL_NAME },
-    consumption: { model: { name: CONSUMPTION_MODEL_NAME } },
+    consumption: {},
   };
 }
 
@@ -254,12 +257,9 @@ function normaliseConfig(raw, file) {
     ...base,
     ...raw,
     target: raw.target ?? 'fabric',
-    modules: normaliseModules(raw.modules),
-    dataSources: normaliseDataSources(raw.dataSources, normaliseModules(raw.modules), raw.consumption, raw.uploads),
+    dataSources: normaliseDataSources(raw.dataSources, raw.uploads),
     // studioFlow and feedbackFlow are read once, above: each flow is now its source's api mode.
     uploads: Object.fromEntries(Object.entries(raw.uploads ?? {}).filter(([k]) => k !== 'studioFlow' && k !== 'feedbackFlow')),
-    history: { ...base.history, ...(raw.history ?? {}) },
-    reporting: normaliseReporting(raw.reporting),
     schedule: { ...base.schedule, ...(raw.schedule ?? {}) },
     app: { ...(raw.app ?? {}) },
     keyVault: { ...base.keyVault, ...(raw.keyVault ?? {}) },
@@ -267,16 +267,14 @@ function normaliseConfig(raw, file) {
     semanticModel: { ...base.semanticModel, ...(raw.semanticModel ?? {}) },
     ...(raw.access
       ? {
-          access: {
-            ...raw.access,
-            grantedModels: [...(raw.access.grantedModels ?? [])],
-            ...(raw.access.rls ? { rls: { ...raw.access.rls, applied: Array.isArray(raw.access.rls.applied) ? [...raw.access.rls.applied] : [] } } : {}),
-          },
+          access: { ...raw.access, grantedModels: [...(raw.access.grantedModels ?? [])] },
         }
       : {}),
-    consumption: { ...(raw.consumption ?? {}), model: { ...base.consumption.model, ...(raw.consumption?.model ?? {}) } },
+    consumption: { ...(raw.consumption ?? {}) },
+    ...(raw.prices ? { prices: { ...raw.prices } } : {}),
+    ...(raw.github ? { github: { ...raw.github } } : {}),
+    ...(raw.commercialTerms ? { commercialTerms: { ...raw.commercialTerms } } : {}),
   };
-  if (!config.reporting) delete config.reporting;
   assertNoSecrets(config);
   return config;
 }

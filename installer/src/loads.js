@@ -5,42 +5,19 @@
  * (`statusConfigJson`), so dbo.load_log and the installer say the same thing.
  */
 import {
-  ACCESS_ACTIVITY,
-  AGENT365_FALLBACK,
-  AGENT365_LANDER,
-  AGENT365_REGISTRY,
-  CONSUMPTION_REFRESH_ACTIVITY,
+  ACTIVITY_LABELS,
   COWORK_DATAFLOW_ACTIVITY,
   COWORK_WRAPPER_ACTIVITY,
-  REFRESH_ACTIVITY,
   STATUS_ACTIVITY,
-  UPLOAD_ROUTER_ACTIVITY,
-  WORKDAY_ACTIVITY,
+  VIVA_ACTIVITY,
 } from './transform/pipeline.js';
 
-/** Plain names for the pipeline's loads. */
-export const LOAD_LABELS = /** @type {Record<string, string>} */ ({
-  Run_Audit_Log_Ingester: 'Copilot audit log',
-  Run_Audit_Log_Processor: 'Copilot usage (audit log processing)',
-  [REFRESH_ACTIVITY]: 'Consumption Central model refresh',
-  Run_Licensed_Users_Ingester: 'Licensed users',
-  [UPLOAD_ROUTER_ACTIVITY]: 'Uploaded CSV exports',
-  [AGENT365_REGISTRY]: 'Agent 365 (API)',
-  [AGENT365_FALLBACK]: 'Agent 365 (export)',
-  [AGENT365_LANDER]: 'Agent 365 (export)',
-  Run_Org_Data_Ingester: 'Org data (Entra ID)',
-  [WORKDAY_ACTIVITY]: 'Org data (Workday export)',
-  [ACCESS_ACTIVITY]: 'Who sees which orgs (org-scoped access)',
-  Run_ProductFeedback_Ingester: 'Product feedback',
-  Run_Consumption_Azure_AI: 'Azure AI spend',
-  Run_Consumption_Studio: 'Copilot Studio credits',
-  [COWORK_DATAFLOW_ACTIVITY]: 'Cowork credits (Viva Insights)',
-  Run_Consumption_Viva: 'Cowork credits (load)',
-  [CONSUMPTION_REFRESH_ACTIVITY]: 'Consumption model refresh',
-  [STATUS_ACTIVITY]: 'Load status record',
-});
+export { VIVA_ACTIVITY };
 
-/** "Run_Org_Data_Ingester" reads "Org Data Ingester". @param {string} name */
+/** Plain names for the pipeline's loads. */
+export const LOAD_LABELS = ACTIVITY_LABELS;
+
+/** "Run_Org_Data" reads "Org Data". @param {string} name */
 export const loadLabel = (name) => LOAD_LABELS[name] ?? name.replace(/^Run_/, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
 
 /** Stands for the rerun command in fix texts; the terminal, web page and notebook each fill it in. */
@@ -108,7 +85,7 @@ export const WARNINGS = [
     kind: 'forbidden',
     statuses: ['forbidden'],
     text: 'It ran, but wasn\'t allowed to read {items}.',
-    fix: `Give the app that runs the load the role this source needs (docs/PERMISSIONS.md lists them), then ${RERUN}.`,
+    fix: `Give the app that runs the load the role this source needs (the installer README lists them under "Data sources and exports"), then ${RERUN}.`,
   },
   {
     kind: 'unlicensed',
@@ -195,8 +172,6 @@ export function loadWarnings(statusRun) {
  *   while signing it in is still to do isn't: that's a next step.
  */
 
-/** The Viva load, which reads what the Cowork Dataflow wrote. */
-export const VIVA_ACTIVITY = 'Run_Consumption_Viva';
 const COWORK_TODO_FIX = 'Sign in to the Cowork Dataflow, then choose Load Cowork now.';
 
 const RUN_STATES = /** @type {Record<string, LoadCard['state']>} */ ({
@@ -224,7 +199,7 @@ export function conditionMet(status, conditions) {
 
 /**
  * One card per source in a run. A source switched off (its IfCondition chose the empty branch) gets
- * no card. When the Agent 365 export covered a failed API load, only the export's card shows.
+ * no card.
  * @param {Map<string, any> | null} runs  The last attempt of each activity, by name.
  * @param {any[]} [activities]  Top-level activities of the pipeline definition, so loads that never
  *   started show as skipped with the steps they were waiting for. Without it, only the runs show.
@@ -234,8 +209,6 @@ export function loadCards(runs, activities) {
   if (!runs) return [];
   /** @param {string} name */
   const statusOf = (name) => runs.get(name)?.status ?? 'Skipped';
-  const fallbackWorked = statusOf(AGENT365_FALLBACK) === 'Succeeded';
-  const registryWorked = statusOf(AGENT365_REGISTRY) === 'Succeeded';
   const warnings = loadWarnings(runs.get(STATUS_ACTIVITY));
 
   /** @type {{ load: any, parent?: any }[]} */
@@ -261,8 +234,6 @@ export function loadCards(runs, activities) {
       continue;
     }
     if (!run && parent && runs.get(parent.name)?.status === 'Succeeded') continue;
-    if (name === AGENT365_REGISTRY && fallbackWorked) continue;
-    if (name === AGENT365_FALLBACK && registryWorked) continue;
     const state = RUN_STATES[run?.status ?? 'Skipped'] ?? 'running';
     /** @type {LoadCard} */
     const card = { activity: name, name: loadLabel(name), state, fix: [] };

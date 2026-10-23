@@ -6,12 +6,12 @@ import { request } from 'node:http';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { emptyConfig } from '../src/config.js';
+import { runInNewContext } from 'node:vm';
 import { memoApi, rewindable } from '../src/install.js';
+import { PRODUCT_NAME } from '../src/product.js';
 import { mirror, reopenOnEnter, startServer } from '../src/server.js';
-import { collectChoices } from '../src/steps/plan.js';
 import { createWebUi, plainText, SECRET_MASK, toSegments } from '../src/web-ui.js';
-import { describeRecord, prereqsSnapshot, WEB_COMMANDS } from '../src/web-session.js';
+import { prereqsSnapshot, WEB_COMMANDS } from '../src/web-session.js';
 import { fakeCtx } from './fakes.js';
 
 const SRC = new URL('../src/', import.meta.url);
@@ -141,29 +141,30 @@ test('web ui: input defaults and validates; checkbox refuses disabled options', 
   assert.equal(ui.history().at(-1)?.display, 'Credit, M365');
 });
 
-test('what to collect: the essentials are ticked and locked, every extra has a description, and only extras can be unticked', async () => {
-  const config = emptyConfig();
-  const choices = collectChoices(config.modules);
-  assert.deepEqual(choices.map((ch) => [ch.value, ch.checked, 'disabled' in ch ? ch.disabled : false]), [
-    ['core', true, 'Always collected'],
-    ['orgData', true, 'Always collected'],
-    ['agent365', false, false],
-    ['productFeedback', false, false],
-    ['consumption', false, false],
-  ]);
-  for (const ch of choices) assert.match(ch.description, /^From .+\. (Shows|Adds|Lists) /, ch.value);
-
+test('web ui: a box that is ticked and locked is always in the answer, only the others can be unticked, and sending it back is harmless', async () => {
+  const choices = [
+    { name: 'Copilot Cowork and Work IQ credits', value: 'coworkCredits', checked: true, disabled: 'Always collected' },
+    { name: 'Copilot Studio credits', value: 'studioCredits', checked: true },
+    { name: 'GitHub Copilot', value: 'github' },
+    { name: 'Azure AI Foundry and Azure OpenAI', value: 'azureAi', disabled: 'Needs an Azure subscription' },
+  ];
   const ui = createWebUi();
   const asked = ui.checkbox('Tick the data you want.', choices);
   const id = ui.history().at(-1)?.id;
-  assert.deepEqual(ui.history().at(-1)?.choices?.slice(0, 2).map((/** @type {any} */ ch) => [ch.checked, ch.disabled]), [[true, 'Always collected'], [true, 'Always collected']]);
-  ui.answer(id, [4]);
-  assert.deepEqual(await asked, ['core', 'orgData', 'consumption']);
-  assert.equal(ui.history().at(-1)?.display, 'Copilot usage and licences, Org data, Credit consumption');
+  assert.deepEqual(ui.history().at(-1)?.choices?.map((/** @type {any} */ ch) => [ch.checked, ch.disabled]), [
+    [true, 'Always collected'],
+    [true, undefined],
+    [undefined, undefined],
+    [undefined, 'Needs an Azure subscription'],
+  ]);
+  assert.equal(ui.answer(id, [3]).ok, false, 'a locked box that is not ticked stays unticked');
+  ui.answer(id, [2]);
+  assert.deepEqual(await asked, ['coworkCredits', 'github']);
+  assert.equal(ui.history().at(-1)?.display, 'Copilot Cowork and Work IQ credits, GitHub Copilot');
 
   const again = ui.checkbox('Tick the data you want.', choices);
   ui.answer(ui.history().at(-1)?.id, [0, 1]);
-  assert.deepEqual(await again, ['core', 'orgData'], 'sending a locked box back is harmless');
+  assert.deepEqual(await again, ['coworkCredits', 'studioCredits'], 'sending a locked box back is harmless');
 });
 
 test('web ui: a secret never reaches the history or the page', async () => {
@@ -691,9 +692,24 @@ test('page: the stages and the finish it waits for are headings the installer pr
     assert.ok(m, `${name} is in app.js`);
     return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
   };
+  const source = /^const stageTitle = (.+);$/m.exec(app);
+  assert.ok(source, 'stageTitle is in app.js');
+  const stageTitle = /** @type {(title: string) => string} */ (runInNewContext(source[1]));
+  assert.equal(stageTitle('Key Vault for the client secret and the GitHub token'), 'Key Vault');
+  assert.equal(stageTitle('Key Vault for the GitHub token'), 'Key Vault');
+  assert.equal(stageTitle('Key Vault'), 'Key Vault');
+  assert.equal(stageTitle('Fabric'), 'Fabric', 'any other heading is its own stage');
+  assert.equal(stageTitle('Advanced settings'), 'Advanced settings');
+
   const files = (await readdir(SRC, { recursive: true })).filter((f) => f.endsWith('.js') && !/^web[\\/]/.test(f));
   const printed = new Set();
-  for (const f of files) for (const m of (await readFile(new URL(f.replaceAll('\\', '/'), SRC), 'utf8')).matchAll(/\bheading\('([^']+)'\)/g)) printed.add(m[1]);
+  for (const f of files) {
+    const text = await readFile(new URL(f.replaceAll('\\', '/'), SRC), 'utf8');
+    for (const m of text.matchAll(/\bheading\('([^']+)'\)/g)) printed.add(stageTitle(m[1]));
+    // `${PRODUCT_NAME} is set up`, and `Key Vault for ${what}` up to what it names.
+    for (const m of text.matchAll(/\bheading\(`([^`]+)`\)/g)) printed.add(stageTitle(m[1].replaceAll('${PRODUCT_NAME}', PRODUCT_NAME).split('${')[0]));
+  }
+  assert.ok(printed.has('Key Vault'), 'the Key Vault heading names the secrets, and is still the Key Vault stage');
 
   // Sign in comes from the sign-in event, Setting up from the numbered steps, and Done from the finish.
   const fromHeadings = list('INSTALL_STAGES').filter((s) => !['Sign in', 'Setting up', 'Done'].includes(s));
@@ -702,6 +718,8 @@ test('page: the stages and the finish it waits for are headings the installer pr
   const done = list('DONE_HEADINGS');
   assert.ok(done.length >= 2);
   assert.deepEqual(done.filter((s) => !printed.has(s)), []);
+  // And the other way: each way the summary says how it went opens the Done page.
+  assert.deepEqual([...printed].filter((s) => s.startsWith(`${PRODUCT_NAME} is `) && !done.includes(s)), []);
 
   // Done is last, so nothing ahead of it is skipped; each target-only stage is one of the stages.
   const stages = list('INSTALL_STAGES');
@@ -712,22 +730,25 @@ test('page: the stages and the finish it waits for are headings the installer pr
   assert.deepEqual(tagged.filter((s) => !stages.includes(s)), []);
 });
 
-test('page: every command has a row, or for prerequisites its own panel; Check the data needs the data check notebook', async () => {
+test('page: every command has a row, or for prerequisites its own panel; New GitHub token sits beside New secrets', async () => {
   const app = await readFile(new URL('web/app.js', SRC), 'utf8');
   const rows = /const ROW_ORDER = \[([^\]]*)\]/.exec(app)?.[1] ?? '';
   assert.deepEqual(WEB_COMMANDS.filter((c) => c !== 'prereqs' && !rows.includes(`'${c}'`)), []);
+  assert.match(rows, /'rotate-secret', 'github-token'/);
   assert.match(app, /start\('prereqs'\)/, 'the Prerequisites panel starts the check');
 
-  const config = emptyConfig();
-  config.fabric.workspaceId = 'ws-1';
-  config.fabric.lakehouseId = 'lh-1';
-  assert.equal(describeRecord(config).can.check, false);
-  config.fabric.notebooks.dataCheck = 'nb-check';
-  assert.equal(describeRecord(config).can.check, true);
-  config.history.days = 90;
-  assert.equal(describeRecord(config).historyDays, 90, 'the installed view shows how much audit history is loaded');
-  assert.equal(describeRecord(config).target, 'fabric', 'the home page is told the record\'s target');
-  assert.match(app, /backfillDays/, 'the Run row can load more history');
+  const literal = /^const COMMANDS = (\{[\s\S]*?\n\});$/m.exec(app);
+  assert.ok(literal, 'COMMANDS is in app.js');
+  const commands = runInNewContext(`(${literal[1]})`);
+  assert.deepEqual(Object.keys(commands).sort(), [...WEB_COMMANDS].sort(), 'each command the session runs, and no other');
+  const { desc, off, ...entry } = commands['github-token'];
+  assert.deepEqual(entry, {
+    title: 'New GitHub token', short: 'GitHub token', icon: 'key', section: 'New GitHub token', adopt: true,
+    row: 'Replace the GitHub token', button: 'New token',
+  });
+  assert.match(desc, /Key Vault .*or in Ingest_GitHub_API, before the old one expires/);
+  assert.match(off, /GitHub isn't read from the API, or nothing is installed yet/);
+  assert.doesNotMatch(app, /backfillDays|historyDays/, 'no history to load: Run only runs');
 });
 
 test('prereqsSnapshot: says whether the signer can assign directory roles, from an active Global or Privileged Role Administrator', () => {

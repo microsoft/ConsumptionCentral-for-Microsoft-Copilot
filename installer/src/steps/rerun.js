@@ -7,17 +7,7 @@
  */
 import { commandLine } from '../launch.js';
 import { conditionMet, failedCards, loadLabel, VIVA_ACTIVITY } from '../loads.js';
-import {
-  AGENT365_FALLBACK,
-  AGENT365_REGISTRY,
-  CONSUMPTION_REFRESH_ACTIVITY,
-  COWORK_DATAFLOW_ACTIVITY,
-  firstRunParameters,
-  REFRESH_ACTIVITY,
-  SKIP_COWORK_PARAMETER,
-  STATUS_ACTIVITY,
-  buildPipeline,
-} from '../transform/pipeline.js';
+import { COWORK_DATAFLOW_ACTIVITY, REFRESH_ACTIVITY, SKIP_COWORK_PARAMETER, STATUS_ACTIVITY, buildPipeline } from '../transform/pipeline.js';
 import { coworkConnections, coworkSignInSteps, VIVA_LOAD_FILE } from './consumption.js';
 import { coworkDataflowOn, pipelineSettings } from './fabric.js';
 import { activityRuns, BUSY_RETRIES, BUSY_WAIT_MS, capacityBusy, jobIdFrom, loadedBy, reportLoads, TERMINAL, utc, waitForJob } from './run.js';
@@ -25,11 +15,11 @@ import { activityRuns, BUSY_RETRIES, BUSY_WAIT_MS, capacityBusy, jobIdFrom, load
 /** @typedef {import('../install.js').Ctx} Ctx */
 
 /** Steps that only reread what others loaded, so they run again when one of those reruns. */
-const REFRESHES = new Set([REFRESH_ACTIVITY, CONSUMPTION_REFRESH_ACTIVITY]);
+const REFRESHES = new Set([REFRESH_ACTIVITY]);
 /**
- * Loads that read what another step wrote, where the pipeline only orders them (lane 2 waits on
- * Completed, so ordering alone says nothing about input). Each reruns, even after succeeding, when a
- * step it reads freshly reran: the Viva load reads the table the Cowork Dataflow refreshes.
+ * Loads that read what another step wrote, where the pipeline only orders them (each step waits on
+ * the one before with Completed, so ordering alone says nothing about input). Each reruns, even after
+ * succeeding, when a step it reads freshly reran: the Viva load reads the table the Cowork Dataflow refreshes.
  * @type {Record<string, string[]>}
  */
 export const DOWNSTREAM_READERS = { [VIVA_ACTIVITY]: [COWORK_DATAFLOW_ACTIVITY] };
@@ -178,8 +168,8 @@ const branch = (a, /** @type {boolean} */ which) => (which ? a.typeProperties?.i
  * Works out what to run again and runs it, step by step. A step reruns when it didn't succeed and
  * what it waits for now holds. A step that succeeded reruns when something it reads freshly reran:
  * a model refresh reads every step it waits for, and the loads in {@link DOWNSTREAM_READERS} read
- * the steps listed there. So a rerun Dataflow reruns the Viva load, and that the consumption model
- * refresh. A step whose dependencies still fail is marked skipped.
+ * the steps listed there. So a rerun Dataflow reruns the Viva load, and that the model refresh.
+ * A step whose dependencies still fail is marked skipped.
  * @param {any[]} activities  Top-level activities of the pipeline.
  * @param {Map<string, any>} runs  The last attempt of each activity in the run being repaired.
  * @param {Record<string, any>} params  The run's pipeline parameters.
@@ -192,12 +182,11 @@ export async function rerunSteps(activities, runs, params, execute, onStart = ()
   /** @type {string[]} */
   const reran = [];
   const statusOf = (/** @type {string} */ name) => merged.get(name)?.status ?? 'Skipped';
-  const fallbackWorked = () => statusOf(AGENT365_FALLBACK) === 'Succeeded';
   const set = (/** @type {any} */ a, /** @type {StepResult | { status: 'Skipped' }} */ r) =>
     merged.set(a.name, { activityName: a.name, activityType: a.type, status: r.status, error: 'error' in r ? r.error : undefined, attempts: 1 });
 
   /** @param {any} a */
-  const ok = (a) => statusOf(a.name) === 'Succeeded' || (a.type === 'IfCondition' && branch(a, true).some((x) => x.name === AGENT365_REGISTRY) && fallbackWorked());
+  const ok = (a) => statusOf(a.name) === 'Succeeded';
 
   /** @param {any} a @returns {Promise<StepResult>} */
   const runOne = async (a) => {
@@ -239,16 +228,15 @@ export async function rerunSteps(activities, runs, params, execute, onStart = ()
 }
 
 /**
- * The pipeline parameters the run had: the definition's defaults, with the first load's history.
+ * The pipeline parameters a run had: the definition's defaults. Only the first load can change one
+ * (SkipCowork), and a rerun runs Cowork again whatever it was.
  * @param {any} definition
- * @param {import('../config.js').InstallConfig} config
- * @param {string} jobId
  */
-export function runParameters(definition, config, jobId) {
+export function runParameters(definition) {
   /** @type {Record<string, any>} */
   const out = {};
   for (const [k, p] of Object.entries(definition?.properties?.parameters ?? {})) out[k] = /** @type {any} */ (p)?.defaultValue;
-  return config.firstRun?.jobId === jobId ? { ...out, ...firstRunParameters(config.history.days) } : out;
+  return out;
 }
 
 /**
@@ -281,9 +269,9 @@ export async function rerunFailed(ctx) {
 
   /** @type {any} */
   let definition = await api.fabric.getPipelineDefinition(ws, f.pipelineId).catch(() => null);
-  if (!Array.isArray(definition?.properties?.activities)) definition = buildPipeline(ctx.sources.pipeline, pipelineSettings(config));
+  if (!Array.isArray(definition?.properties?.activities)) definition = buildPipeline(ctx.sources.catalog, pipelineSettings(config));
   const activities = definition.properties.activities;
-  const params = runParameters(definition, config, latest.id);
+  const params = runParameters(definition);
 
   const when = utc(latest.startTimeUtc)?.toISOString().replace('T', ' ').slice(0, 16);
   ui.heading(`Rerunning what didn't load in the run${when ? ` from ${when} UTC` : ''}`);
@@ -365,7 +353,7 @@ export const PUBLISH_RETRY_MS = 60_000;
 /**
  * The `load-cowork` command, and the web page's Load Cowork now: once someone has signed in to the
  * Cowork Dataflow, it waits until the Dataflow has published, refreshes it, then runs the Viva load
- * and the consumption model refresh, as the pipeline would. It uses the rerun's machinery, starting
+ * and the model refresh, as the pipeline would. It uses the rerun's machinery, starting
  * from a run where only the Dataflow failed, so the Viva load and the refresh rerun because they read it.
  * @param {Ctx} ctx
  * @returns {Promise<{ reran: string[], failed: string[] }>}
@@ -384,7 +372,7 @@ export async function loadCoworkNow(ctx) {
   }
   /** @type {any} */
   let definition = await api.fabric.getPipelineDefinition(f.workspaceId, f.pipelineId).catch(() => null);
-  if (!Array.isArray(definition?.properties?.activities)) definition = buildPipeline(ctx.sources.pipeline, pipelineSettings(config));
+  if (!Array.isArray(definition?.properties?.activities)) definition = buildPipeline(ctx.sources.catalog, pipelineSettings(config));
   const activities = definition.properties.activities;
   const holds = (/** @type {any} */ a) => a.name === COWORK_DATAFLOW_ACTIVITY || [...branch(a, true), ...branch(a, false)].some((x) => x.name === COWORK_DATAFLOW_ACTIVITY);
   if (!activities.some(holds)) {
@@ -399,7 +387,7 @@ export async function loadCoworkNow(ctx) {
     mark(a, holds(a) ? 'Failed' : 'Succeeded');
     for (const inner of [...branch(a, true), ...branch(a, false)]) mark(inner, inner.name === COWORK_DATAFLOW_ACTIVITY ? 'Failed' : 'Succeeded');
   }
-  const params = { ...runParameters(definition, config, ''), [SKIP_COWORK_PARAMETER]: false };
+  const params = { ...runParameters(definition), [SKIP_COWORK_PARAMETER]: false };
 
   ui.heading('Loading Cowork credits now');
   /** @param {string} label @returns {Promise<StepResult | undefined>} */

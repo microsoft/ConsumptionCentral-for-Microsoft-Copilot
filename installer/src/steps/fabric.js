@@ -4,21 +4,22 @@
  * install record points at; `update` pushes fresh notebook and pipeline content.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { enabledModules, notebooksFor } from '../catalog.js';
-import { routedSources, routerSignaturesJson, routerWanted } from '../uploads.js';
-import { statusConfigJson } from '../loads.js';
+import { appWanted, notebooksFor, pipelineNotebooks } from '../catalog.js';
 import { parseResourceId } from '../clients/azure.js';
 import { scheduleBody } from '../clients/fabric.js';
 import { secretMode } from '../config.js';
 import { HttpError } from '../http.js';
-import { INSTALLER_TITLE, ITEM_PREFIX, LAKEHOUSE_NAME, PRODUCT_ID } from '../product.js';
-import { rlsOn } from '../transform/access.js';
-import { INLINE_SECRET_NOTE, MARKER, prepareNotebook, pyString, serialiseNotebook } from '../transform/notebook.js';
+import { commandLine } from '../launch.js';
+import { ENV, INSTALLER_TITLE, ITEM_PREFIX, LAKEHOUSE_NAME, PRODUCT_ID } from '../product.js';
+import { prepareNotebook, serialiseNotebook } from '../transform/notebook.js';
 import { buildPipeline, PIPELINE_CHANGE, PIPELINE_VERSION } from '../transform/pipeline.js';
+import { askGithubToken, revokeHint } from './github.js';
 import { addDays, notebookSecretDays } from './identity.js';
+import { notebookSettings, paygIds, routerSignature, usesGithubToken, usesSecret } from './notebook-settings.js';
 import { dropAttempt, findAttempts, refused, removeRetired, SECRET_SETTLE_MS, withSecretRef } from './secrets.js';
 
 /** @typedef {import('../install.js').Ctx} Ctx */
+/** @typedef {import('../catalog.js').NotebookInfo} NotebookInfo */
 
 export const PIPELINE_NAME = `${ITEM_PREFIX}Pipeline`;
 
@@ -183,10 +184,11 @@ export const itemRef = (ref) => `(ref ${ref})`;
 
 /**
  * Which of the install's models `m` is, for keys that stay the same when the model's name changes.
- * @param {import('../config.js').InstallConfig} config
- * @param {import('../config.js').ModelConfig} m
+ * Consumption Central has one model, so it is always `main`, the key AH gives its first model.
+ * @param {import('../config.js').InstallConfig} _config
+ * @param {import('../config.js').ModelConfig} _m
  */
-export const modelKey = (config, m) => (m === config.consumption?.model ? 'consumption' : 'main');
+export const modelKey = (_config, _m) => 'main';
 
 /**
  * Creates a workspace item so that a run stopped part-way through doesn't leave a stray copy. The
@@ -196,7 +198,7 @@ export const modelKey = (config, m) => (m === config.consumption?.model ? 'consu
  * installer never takes over an item it didn't create.
  * The caller saves the record with the ID it gets back, which also clears the pending entry.
  * @param {Ctx} ctx
- * @param {string} key  Unique per item in the install and stable between runs, e.g. `Notebook:auditIngester`.
+ * @param {string} key  Unique per item in the install and stable between runs, e.g. `Notebook:vivaConsumption`.
  * @param {string} type  The Fabric item type, for looking the item up by name.
  * @param {string} wanted
  * @param {any[]} items  The workspace's items of this type.
@@ -491,127 +493,14 @@ export async function ensureVaultEndpoint(ctx) {
   }
 }
 
-/** Stands in for the client secret when there is no value to write, e.g. in a preview. */
-export const SECRET_PLACEHOLDER = '<client secret>';
-
-/** The Azure AI notebook's Key Vault read, as it ships. */
-export const AZURE_AI_SECRET_FIND = 'secret = notebookutils.credentials.getSecret(KEY_VAULT_URL, CLIENT_SECRET_NAME)';
-
-/**
- * Notebooks that hold or read the app's client secret.
- * @param {import('../catalog.js').NotebookInfo} nb
- */
-export const usesSecret = (nb) => nb.credentials || nb.key === 'azureAi';
-
-/**
- * What the installer changes in one notebook.
- * @param {Ctx} ctx
- * @param {import('../catalog.js').NotebookInfo} nb
- * @returns {import('../transform/notebook.js').NotebookSettings}
- */
-export function notebookSettings(ctx, nb) {
-  const { config, user } = ctx;
-  const f = config.fabric;
-  const inline = secretMode(config) === 'notebook';
-  const value = ctx.pendingSecret ?? SECRET_PLACEHOLDER;
-  /** @type {Record<string, string> | undefined} */
-  let values = nb.values;
-  if (nb.key === 'refreshModel') values = { WORKSPACE_ID: /** @type {string} */ (f.workspaceId), SEMANTIC_MODEL_ID: /** @type {string} */ (config.semanticModel.id) };
-  if (nb.key === 'azureAi') {
-    values = {
-      SUBSCRIPTION_ID: /** @type {string} */ (config.consumption.azureSubscriptionId),
-      TENANT_ID: user.tenantId,
-      CLIENT_ID: /** @type {string} */ (config.app.appId),
-      KEY_VAULT_URL: inline ? '' : /** @type {string} */ (config.keyVault.uri),
-      CLIENT_SECRET_NAME: inline ? '' : config.keyVault.secretName,
-    };
-  }
-  if (nb.key === 'uploadRouter') values = routerValues(config);
-  if (nb.key === 'loadStatus') values = { STATUS_JSON: statusConfigJson() };
-  // The pipeline loads the tables only; the installer passes roles when it applies membership.
-  if (nb.key === 'accessScope') values = { WORKSPACE_ID: /** @type {string} */ (f.workspaceId), MODE: 'all', ROLES_B64: '', ROLES_FILE: '' };
-  /** @type {Record<string, string> | undefined} */
-  const expressions = nb.expressions;
-  /** @type {import('../catalog.js').NotebookPatch[]} */
-  const extra = [
-    ...(nb.key === 'azureAi' && paygReadable(config).length ? [paygPatch(paygReadable(config))] : []),
-    ...(nb.key === 'azureAi' && inline ? [{ find: AZURE_AI_SECRET_FIND, replace: `secret = ${pyString(value)}  # ${INLINE_SECRET_NOTE}` }] : []),
-  ];
-  return {
-    ...(nb.credentials
-      ? {
-          tenantId: user.tenantId,
-          clientId: config.app.appId,
-          secret: inline ? { value } : { vaultUri: /** @type {string} */ (config.keyVault.uri), secretName: config.keyVault.secretName },
-        }
-      : {}),
-    parameters: nb.parameters,
-    ...(values ? { values } : {}),
-    ...(expressions ? { expressions } : {}),
-    patches: extra.length ? [...(nb.patches ?? []), ...extra] : nb.patches,
-    lakehouse: {
-      id: /** @type {string} */ (f.lakehouseId),
-      name: /** @type {string} */ (f.lakehouseName),
-      workspaceId: /** @type {string} */ (f.workspaceId),
-    },
-    dataCheckSummary: nb.key === 'dataCheck',
-  };
-}
-
-/**
- * What the upload router accepts: the sources that aren't skipped, and their header signatures.
- * @param {import('../config.js').InstallConfig} config
- */
-export const routerValues = (config) => ({
-  ENABLED_SOURCES: routedSources(config.dataSources).join(','),
-  SIGNATURES_JSON: routerSignaturesJson(config.dataSources),
-});
-
-/**
- * What the deployed router was built from. A change means it has to be updated.
- * @param {import('../config.js').InstallConfig} config
- */
-export const routerSignature = (config) => createHash('sha256').update(routerSignaturesJson(config.dataSources)).digest('hex').slice(0, 16);
-
-/**
- * Notebook options that follow the chosen sources.
- * @param {import('../config.js').InstallConfig} config
- */
-export const notebookOptions = (config) => ({
-  semanticModel: modelDeployed(config),
-  azureAi: azureAiOn(config),
-  access: rlsOn(config),
-  dataSources: config.dataSources,
-});
-
-/** The Azure AI notebook's extra pay-as-you-go subscriptions, as it ships. */
-export const PAYG_FIND = 'PAYG_SUBSCRIPTION_IDS = []';
-
-/**
- * The other subscriptions whose Copilot pay-as-you-go the app can read.
- * @param {import('../config.js').InstallConfig} config
- */
-export const paygReadable = (config) => (config.consumption?.paygSubscriptions ?? []).filter((p) => p.access);
-
-/**
- * The pay-as-you-go subscriptions in the Azure AI notebook, as stored with the deployed notebook.
- * @param {import('../config.js').InstallConfig} config
- */
-export const paygIds = (config) => paygReadable(config).map((p) => p.subscriptionId).join(',');
-
-/**
- * @param {import('../config.js').PaygSubscription[]} subs
- * @returns {import('../catalog.js').NotebookPatch}
- */
-export function paygPatch(subs) {
-  const lines = subs.map((s) => `    ${pyString(s.subscriptionId)},${s.name ? `  # ${s.name.replace(/[\r\n]+/g, ' ')}` : ''}`);
-  return { find: PAYG_FIND, replace: ['PAYG_SUBSCRIPTION_IDS = [  # ' + MARKER, ...lines, ']'].join('\n') };
-}
+/** @param {string} content */
+const hashOf = (content) => createHash('sha256').update(content).digest('hex').slice(0, 16);
 
 /**
  * @param {Ctx} ctx
- * @param {{ force?: boolean, rotate?: boolean }} [opts]  `force` pushes fresh content to notebooks that already exist.
+ * @param {{ force?: boolean, rotate?: boolean, only?: string[] }} [opts]  `force` pushes fresh content to notebooks that already exist.
  *   `rotate`: with no Key Vault, give the notebooks a new client secret and remove the old one, so each install or repair replaces it.
+ *   `only`: just these notebook keys, e.g. github-token writing Ingest_GitHub_API with a new token.
  */
 export async function ensureNotebooks(ctx, opts = {}) {
   const { ui, config, api, sources } = ctx;
@@ -619,54 +508,103 @@ export async function ensureNotebooks(ctx, opts = {}) {
   const ws = /** @type {string} */ (f.workspaceId);
   const items = await api.fabric.listItems(ws, 'Notebook');
   const ids = new Set(items.map((i) => i.id));
-  const wanted = notebooksFor(config.modules, notebookOptions(config));
-  // The notebooks that read the secret are rewritten when it moves into or out of them.
+  const wanted = notebooksFor(sources.catalog, deployedSources(config), notebookOptions(config)).filter((nb) => !opts.only || opts.only.includes(nb.key));
+  // The notebooks that read a secret are rewritten when it moves into or out of them.
   const inNotebooks = secretMode(config) === 'notebook';
   const switched = !!f.secretInNotebooks !== inNotebooks;
   // An app the user brought has a secret they paste, so the installer can't replace it.
   const rotate = !!opts.rotate && inNotebooks && !config.app.existing;
+  const tokenWasInNotebook = !!config.github?.tokenInNotebook;
+  f.notebookHashes ??= {};
+  f.notebookNames ??= {};
 
-  /** @param {import('../catalog.js').NotebookInfo} nb */
-  const stale = (nb) => {
-    const id = f.notebooks[nb.key];
-    return (
-      !id ||
-      !ids.has(id) ||
-      !!opts.force ||
-      (switched && usesSecret(nb)) ||
-      (rotate && usesSecret(nb)) ||
-      (nb.key === 'azureAi' && paygIds(config) !== (config.consumption.deployedPayg ?? '')) ||
-      (nb.key === 'uploadRouter' && routerSignature(config) !== f.deployedRouter)
-    );
-  };
-  // With the secret in the notebooks, writing one means a fresh secret, so all of them get it.
-  const inline = inNotebooks && wanted.some((nb) => usesSecret(nb) && stale(nb));
-  if (inline) await refuseGitSync(ctx);
+  /** @param {NotebookInfo} nb */
+  const secretNb = (nb) => usesSecret(config, nb);
+  /** With no Key Vault, the GitHub token itself is in this notebook. @param {NotebookInfo} nb */
+  const tokenNb = (nb) => inNotebooks && usesGithubToken(nb);
+  /** @param {NotebookInfo} nb @param {{ placeholder?: boolean }} [o] */
+  const contentOf = (nb, o) => serialiseNotebook(prepareNotebook(sources.notebooks[nb.key], notebookSettings(ctx, nb, o)));
+  /** @param {NotebookInfo} nb */
+  const exists = (nb) => !!f.notebooks[nb.key] && ids.has(/** @type {string} */ (f.notebooks[nb.key]));
+  /** @param {NotebookInfo} nb */
+  const labelOf = (nb) => f.notebookNames?.[nb.key] ?? nb.displayName;
+
+  /** @param {NotebookInfo} nb */
+  const stale = (nb) =>
+    !exists(nb) ||
+    !!opts.force ||
+    (switched && secretNb(nb)) ||
+    (rotate && secretNb(nb)) ||
+    (nb.key === 'azureAi' && paygIds(config) !== (config.consumption.deployedPayg ?? '')) ||
+    (nb.key === 'uploadRouter' && routerSignature(config) !== f.deployedRouter);
+  /** @param {NotebookInfo} nb */
+  const tokenStale = (nb) =>
+    !exists(nb) ||
+    switched ||
+    !!ctx.pendingGithubToken ||
+    !config.github?.tokenSetAt ||
+    hashOf(contentOf(nb, { placeholder: true })) !== f.notebookHashes?.[nb.key];
+
+  // The token notebook first, so a run that can't write it stops before anything changes.
+  const tokenDue = wanted.filter((nb) => tokenNb(nb) && tokenStale(nb));
+  if (tokenDue.length && !ctx.pendingGithubToken) {
+    // Usually a newer release changed the notebook: the plan takes the token whenever none is set.
+    const why = `The GitHub token is written into ${tokenDue.map(labelOf).join(', ')}, and this run updates it.`;
+    const token = await askGithubToken(ctx, { why });
+    if (token) ctx.pendingGithubToken = token;
+  }
+  if (!ctx.pendingGithubToken) {
+    const missing = tokenDue.filter((nb) => !exists(nb));
+    if (missing.length) {
+      throw new Error(`${missing.map(labelOf).join(', ')} needs the GitHub token. Run the installer again without --yes, or set ${ENV.GITHUB_TOKEN}.`);
+    }
+  }
+  const writesToken = tokenDue.length > 0 && !!ctx.pendingGithubToken;
+
+  // With the client secret in the notebooks, writing one means a fresh secret, so all of them get it.
+  const inline = inNotebooks && wanted.some((nb) => secretNb(nb) && stale(nb));
+  const exposed = [...(inline ? ['the client secret'] : []), ...(writesToken ? ['the GitHub token'] : [])];
+  if (exposed.length) await refuseGitSync(ctx, exposed);
   const fresh = inline ? await inlineSecret(ctx) : undefined;
   let written = 0;
+  let tokenWritten = false;
 
   try {
     for (const nb of wanted) {
-      const content = serialiseNotebook(prepareNotebook(sources.notebooks[nb.key], notebookSettings(ctx, nb)));
+      const token = tokenNb(nb);
+      const label = labelOf(nb);
+      if (token && tokenDue.includes(nb) && !writesToken) {
+        // Only one that exists gets here: a new one stopped the run above.
+        ui.warn(`${label} wasn't updated: it holds the GitHub token, and there's none to write. Run the installer again without --yes, or set ${ENV.GITHUB_TOKEN}.`);
+        continue;
+      }
+      const content = contentOf(nb);
       const payg = nb.key === 'azureAi' ? paygIds(config) : undefined;
       const routed = nb.key === 'uploadRouter' ? routerSignature(config) : undefined;
       // Notebooks are updated when this checkout's version differs, so running the installer again
-      // from a newer release pushes their fixes. Not those holding an inline secret: their content
-      // changes with each secret, and writing them needs a fresh one.
-      const hash = inNotebooks && usesSecret(nb) ? undefined : createHash('sha256').update(content).digest('hex').slice(0, 16);
-      f.notebookHashes ??= {};
-      f.notebookNames ??= {};
+      // from a newer release pushes their fixes. Not those holding the client secret inline: their
+      // content changes with each secret, and writing them needs a fresh one. The one holding the
+      // token is hashed with a placeholder for it.
+      const hash = token ? hashOf(contentOf(nb, { placeholder: true })) : inNotebooks && secretNb(nb) ? undefined : hashOf(content);
       let id = f.notebooks[nb.key];
       // Older records saved only the ID: keep the name the notebook already has.
       const current = id ? items.find((i) => i.id === id)?.displayName : undefined;
       if (current && !f.notebookNames[nb.key]) f.notebookNames[nb.key] = current;
-      const label = f.notebookNames[nb.key] ?? nb.displayName;
       if (id && !ids.has(id)) {
         ui.warn(`${label} was deleted. Deploying it again.`);
         id = undefined;
         // The pipeline calls notebooks by ID, so it has to be rewritten for the new one.
         delete f.pipelineModules;
       }
+      const due = token
+        ? tokenDue.includes(nb)
+        : !!opts.force ||
+          (inline && secretNb(nb)) ||
+          (switched && (secretNb(nb) || usesGithubToken(nb))) ||
+          (payg !== undefined && payg !== (config.consumption.deployedPayg ?? '')) ||
+          (routed !== undefined && routed !== f.deployedRouter) ||
+          (hash !== undefined && hash !== f.notebookHashes[nb.key]);
+      let wrote = false;
       if (!id) {
         const made = await createItem(ctx, `Notebook:${nb.key}`, 'Notebook', label, items, (name, ref) => api.fabric.createNotebook(ws, name, content, ref));
         id = made.id;
@@ -674,22 +612,19 @@ export async function ensureNotebooks(ctx, opts = {}) {
         // A notebook the stopped run created may hold its secret or older settings.
         if (made.resumed) await api.fabric.updateNotebook(ws, id, content);
         else items.push({ id, displayName: made.name });
-        if (usesSecret(nb)) written++;
+        wrote = true;
         ui.ok(`${made.resumed ? 'Updated' : 'Created'} ${made.name}`);
-      } else if (
-        opts.force ||
-        (inline && usesSecret(nb)) ||
-        (switched && usesSecret(nb)) ||
-        (payg !== undefined && payg !== (config.consumption.deployedPayg ?? '')) ||
-        (routed !== undefined && routed !== f.deployedRouter) ||
-        (hash !== undefined && hash !== f.notebookHashes[nb.key])
-      ) {
+      } else if (due) {
         await api.fabric.updateNotebook(ws, id, content);
-        if (usesSecret(nb)) written++;
+        wrote = true;
         ui.ok(`Updated ${label}`);
       } else {
         ui.ok(`${label} is in place`);
       }
+      if (wrote && secretNb(nb)) written++;
+      if (wrote && token) tokenWritten = true;
+      // Written with Key Vault: the notebook reads the token, and no longer holds one.
+      if (wrote && !token && usesGithubToken(nb) && config.github) delete config.github.tokenInNotebook;
       f.notebooks[nb.key] = id;
       if (payg !== undefined) config.consumption.deployedPayg = payg;
       if (routed !== undefined) f.deployedRouter = routed;
@@ -698,17 +633,74 @@ export async function ensureNotebooks(ctx, opts = {}) {
     }
   } catch (err) {
     if (fresh) await settleInlineSecret(ctx, fresh, written > 0 ? 'partial' : 'unused');
+    if (tokenWritten) settleToken(ctx);
     throw err;
   }
   if (fresh) await settleInlineSecret(ctx, fresh, 'written');
+  if (tokenWritten) settleToken(ctx);
+  if (opts.only) return;
+  await scrubGithubToken(ctx, wanted, ids);
   if (switched) {
+    // Moved to Key Vault: the notebook no longer holds it, but anyone who read it before may have it.
+    const hadToken = !inNotebooks && tokenWasInNotebook && wanted.some(usesGithubToken);
     if (inNotebooks) f.secretInNotebooks = true;
     else {
       delete f.secretInNotebooks;
       await retireInlineSecrets(ctx);
     }
     ctx.save();
+    if (hadToken) {
+      ui.warn(
+        'The GitHub token was in Ingest_GitHub_API, where anyone with a role in the workspace could read it. ' +
+          `If Key Vault now has that same token, make a new one, put it in place with "${commandLine('github-token')}", then ${revokeHint()}`,
+      );
+    }
   }
+}
+
+/**
+ * The token is in a notebook now: recorded as set, with its expiry, and dropped from memory.
+ * @param {Ctx} ctx
+ */
+function settleToken(ctx) {
+  const { config } = ctx;
+  const pending = ctx.pendingGithubToken;
+  const gh = /** @type {NonNullable<typeof config.github>} */ (config.github);
+  gh.tokenSetAt = ctx.now().toISOString();
+  gh.tokenInNotebook = true;
+  if (pending?.expires) gh.tokenExpires = pending.expires;
+  else delete gh.tokenExpires;
+  delete ctx.pendingGithubToken;
+  ctx.save();
+}
+
+/**
+ * Ingest_GitHub_API held the GitHub token and isn't deployed any more (GitHub switched away from
+ * the API): it gets the placeholder back, so the token isn't left where workspace roles can read
+ * it. The notebook stays, unused, as AH leaves notebooks it no longer runs.
+ * @param {Ctx} ctx
+ * @param {NotebookInfo[]} wanted
+ * @param {Set<string>} ids
+ */
+async function scrubGithubToken(ctx, wanted, ids) {
+  const { ui, config, api, sources } = ctx;
+  const gh = config.github;
+  if (!gh?.tokenInNotebook || wanted.some(usesGithubToken)) return;
+  const f = config.fabric;
+  const nb = sources.catalog.find(usesGithubToken);
+  const id = nb ? f.notebooks[nb.key] : undefined;
+  if (nb && id && ids.has(id)) {
+    const content = serialiseNotebook(prepareNotebook(sources.notebooks[nb.key], notebookSettings(ctx, nb, { placeholder: true })));
+    await api.fabric.updateNotebook(/** @type {string} */ (f.workspaceId), id, content);
+    delete f.notebookHashes?.[nb.key];
+    ui.ok(`Removed the GitHub token from ${f.notebookNames?.[nb.key] ?? nb.displayName}, which no longer runs`);
+  }
+  delete gh.tokenInNotebook;
+  // Switching back to the API asks for a token again.
+  delete gh.tokenSetAt;
+  delete gh.tokenExpires;
+  ctx.save();
+  ui.warn(`Anyone who could read that notebook may have seen the token. If nothing else uses it, ${revokeHint()}`);
 }
 
 /**
@@ -749,23 +741,26 @@ async function removeKeys(ctx, keyIds) {
 }
 
 /**
- * Stops before a client secret is written into notebooks that Git integration would commit to a
+ * Stops before a secret is written into notebooks that Git integration would commit to a
  * repository. When the workspace's Git connection can't be read, it warns and carries on.
  * @param {Ctx} ctx
+ * @param {string[]} what  e.g. ['the client secret', 'the GitHub token'].
  */
-async function refuseGitSync(ctx) {
+async function refuseGitSync(ctx, what) {
   const { ui, config, api } = ctx;
   const ws = /** @type {string} */ (config.fabric.workspaceId);
+  const named = what.join(' and ');
+  const are = what.length > 1 ? 'are' : 'is';
   const git = await Promise.resolve()
     .then(() => api.fabric.getGitConnection(ws))
     .catch(() => undefined);
   if (!git) {
-    ui.warn('Couldn\'t check whether the workspace is connected to Git. If it is, don\'t commit the notebooks: the client secret is in them.');
+    ui.warn(`Couldn't check whether the workspace is connected to Git. If it is, don't commit the notebooks: ${named} ${are} in them.`);
     return;
   }
   if (git.gitConnectionState && git.gitConnectionState !== 'NotConnected') {
     throw new Error(
-      'This workspace is connected to Git, so the client secret in the notebooks would be committed to the repository. ' +
+      `This workspace is connected to Git, so ${named} in the notebooks would be committed to the repository. ` +
         'Disconnect it under Workspace settings > Git integration, or run the installer again and choose Key Vault.',
     );
   }
@@ -907,40 +902,47 @@ function dropPending(app, keyIds) {
 }
 
 /**
- * What the pipeline definition is built from. A change means the deployed pipeline is out of date.
+ * The sources as deployed. Azure AI waits until the app can read its subscription: until then its
+ * notebook isn't deployed or run, as AH leaves it out.
+ * @param {import('../config.js').InstallConfig} config
+ * @returns {import('../uploads.js').DataSourceModes}
+ */
+export const deployedSources = (config) =>
+  config.dataSources.azureAi !== 'api' || azureAiOn(config) ? config.dataSources : { ...config.dataSources, azureAi: 'skip' };
+
+/**
+ * Whether the app keeps a client secret of its own, apart from the model connection's. Key Vault holds
+ * one whenever the sources sign in as the app. With no Key Vault it is only in the deployed notebooks
+ * that read it, so Azure AI chosen without a subscription the app can read leaves none.
  * @param {import('../config.js').InstallConfig} config
  */
-export function pipelineSignature(config) {
-  const parts = [enabledModules(config.modules).join(',')];
+export const appSecretKept = (config) => appWanted(secretMode(config) === 'notebook' ? deployedSources(config) : config.dataSources);
+
+/**
+ * What the pipeline definition is built from. A change means the deployed pipeline is out of date.
+ * @param {import('../config.js').InstallConfig} config
+ * @param {NotebookInfo[]} catalog  `ctx.sources.catalog`
+ */
+export function pipelineSignature(config, catalog) {
+  const parts = [pipelineNotebooks(catalog, deployedSources(config), notebookOptions(config)).map((nb) => nb.key).join(',')];
   if (modelDeployed(config)) parts.push(`model=${config.semanticModel.id}`);
-  if (azureAiOn(config)) parts.push('azureAi');
-  if (consumptionModelDeployed(config)) parts.push(`consumption=${config.consumption.model.id}`);
-  if (routerWanted(config.dataSources)) parts.push('router');
-  if (workdayOn(config)) parts.push('workday');
-  if (agent365Csv(config)) parts.push('agent365=csv');
   if (coworkDataflowOn(config)) parts.push(`cowork=${config.consumption.dataflowId}`);
-  if (rlsOn(config)) parts.push('access');
-  if (config.scale) parts.push(`scale=${config.scale}`);
   return parts.join(';');
 }
+
+/**
+ * Notebook options that follow the install: the refresh notebook goes with a deployed model only, so
+ * the pipeline never refreshes a model that isn't there.
+ * @param {import('../config.js').InstallConfig} config
+ * @returns {import('../catalog.js').NotebookOptions}
+ */
+export const notebookOptions = (config) => ({ semanticModel: modelDeployed(config) });
 
 /**
  * Cowork credits come from the Viva Insights Dataflow, so the pipeline refreshes it before the Viva load.
  * @param {import('../config.js').InstallConfig} config
  */
-export const coworkDataflowOn = (config) => !!(config.modules.consumption && config.dataSources?.coworkCredits === 'api' && config.consumption?.dataflowId);
-
-/**
- * Workday org data is uploaded, so its lander runs after the Entra ID load.
- * @param {import('../config.js').InstallConfig} config
- */
-export const workdayOn = (config) => config.dataSources?.workday === 'csv';
-
-/**
- * Agent 365 comes from its admin center export rather than the registry API.
- * @param {import('../config.js').InstallConfig} config
- */
-export const agent365Csv = (config) => !!(config.modules.agent365 && config.dataSources?.agent365 === 'csv');
+export const coworkDataflowOn = (config) => !!(config.dataSources?.coworkCredits === 'api' && config.consumption?.dataflowId);
 
 /**
  * The semantic model is switched on, exists and reads the Lakehouse, so the pipeline can refresh it.
@@ -949,16 +951,10 @@ export const agent365Csv = (config) => !!(config.modules.agent365 && config.data
 export const modelDeployed = (config) => !!(config.semanticModel?.enabled && config.semanticModel.id && config.semanticModel.bound);
 
 /**
- * Credit consumption is on, and the app can read Azure AI costs in the chosen subscription.
+ * Azure AI is chosen, and the app can read Azure AI costs in the chosen subscription.
  * @param {import('../config.js').InstallConfig} config
  */
-export const azureAiOn = (config) => !!(config.modules.consumption && config.consumption?.azureSubscriptionId && config.consumption.azureAccess);
-
-/**
- * The consumption model exists and reads the Lakehouse. It is refreshed by the same notebook as the Consumption Central model.
- * @param {import('../config.js').InstallConfig} config
- */
-export const consumptionModelDeployed = (config) => !!(config.modules.consumption && modelDeployed(config) && config.consumption?.model?.id && config.consumption.model.bound);
+export const azureAiOn = (config) => !!(config.dataSources?.azureAi === 'api' && config.consumption?.azureSubscriptionId && config.consumption.azureAccess);
 
 /**
  * What the pipeline is built from, for this install.
@@ -969,18 +965,10 @@ export function pipelineSettings(config) {
   const f = config.fabric;
   return {
     workspaceId: /** @type {string} */ (f.workspaceId),
-    scale: config.scale,
     notebookIds: f.notebooks,
-    modules: config.modules,
-    backfillDays: config.history.days,
-    semanticModelId: modelDeployed(config) ? config.semanticModel.id : undefined,
-    azureAi: azureAiOn(config),
-    consumptionModelId: consumptionModelDeployed(config) ? config.consumption.model.id : undefined,
-    uploadRouter: routerWanted(config.dataSources),
-    workday: workdayOn(config),
-    agent365Csv: agent365Csv(config),
+    dataSources: deployedSources(config),
+    modelId: modelDeployed(config) ? config.semanticModel.id : undefined,
     coworkDataflowId: coworkDataflowOn(config) ? config.consumption.dataflowId : undefined,
-    access: rlsOn(config),
   };
 }
 
@@ -1023,8 +1011,8 @@ export async function ensurePipeline(ctx, opts = {}) {
   const { ui, config, api, sources } = ctx;
   const f = config.fabric;
   const ws = /** @type {string} */ (f.workspaceId);
-  const definition = buildPipeline(sources.pipeline, pipelineSettings(config));
-  const signature = pipelineSignature(config);
+  const definition = buildPipeline(sources.catalog, pipelineSettings(config));
+  const signature = pipelineSignature(config, sources.catalog);
   const items = await api.fabric.listItems(ws, 'DataPipeline');
 
   const current = f.pipelineId ? items.find((i) => i.id === f.pipelineId) : undefined;
@@ -1050,7 +1038,7 @@ export async function ensurePipeline(ctx, opts = {}) {
       await api.fabric.updatePipeline(ws, f.pipelineId, definition);
       ui.ok(`Updated pipeline ${f.pipelineName ?? PIPELINE_NAME}`);
     } else {
-      ui.warn('Left the pipeline as it was. New or removed modules won\'t run until it is updated.');
+      ui.warn('Left the pipeline as it was. New or removed sources won\'t load until it is updated.');
       return;
     }
   } else {

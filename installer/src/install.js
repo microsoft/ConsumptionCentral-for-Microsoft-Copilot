@@ -3,27 +3,30 @@
  * Wires the clients together and runs each command.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { checkTokens, createCredential, createTokenProvider, decodeJwt } from './auth.js';
-import { notebooksFor, permissionsFor } from './catalog.js';
+import { notebooksFor, onceNotebooks, permissionsFor, secretWanted } from './catalog.js';
 import { armApi, keyVaultApi } from './clients/azure.js';
 import { connectionsApi, POWERAPPS_URL } from './clients/connections.js';
 import { dataverseApi, dataverseScope, DISCOVERY_URL, discoveryApi, orgUrl } from './clients/dataverse.js';
 import { FLOW_URL, flowApi } from './clients/flow.js';
 import { fabricApi, scheduleBody } from './clients/fabric.js';
+import { githubApi } from './clients/github.js';
 import { CONSENT_ROLES, graphApi } from './clients/graph.js';
-import { dataLakeApi, dataLakeUrl, ONELAKE_URL, oneLakeApi } from './clients/onelake.js';
+import { ONELAKE_URL, oneLakeApi } from './clients/onelake.js';
 import { powerBiApi } from './clients/powerbi.js';
 import { POWER_PLATFORM_URL, powerPlatformApi } from './clients/powerplatform.js';
 import { saveConfig, secretMode } from './config.js';
 import { createClient, defaultSleep } from './http.js';
 import { commandLine } from './launch.js';
-import { LAKEHOUSE_NAME, RECORD_FILE } from './product.js';
-import { ensureConsent, ensureApp, ensureKeyVault, newSecret, notebookSecretDays } from './steps/identity.js';
-import { COWORK_DATAFLOW_NAME, consumptionModelWanted, consumptionSummary, ensureAzureAiAccess, ensureConsumptionModel, ensureCoworkDataflow, ensureLandingFolders } from './steps/consumption.js';
+import { priceParameters } from './prices.js';
+import { ENV, LAKEHOUSE_NAME, PRODUCT_NAME, RECORD_FILE } from './product.js';
+import { ensureGithubToken, ensureIdentity, newSecret, notebookSecretDays } from './steps/identity.js';
+import { COWORK_DATAFLOW_NAME, consumptionSummary, ensureAzureAiAccess, ensureCoworkDataflow, ensureLandingFolders } from './steps/consumption.js';
 import { coworkDataflowDefinition, isVivaId } from './transform/dataflow.js';
 import {
-  consumptionModelDeployed,
+  appSecretKept,
+  deployedSources,
   describeSchedule,
   ensureLakehouse,
   ensureNotebooks,
@@ -33,9 +36,11 @@ import {
   ensureVaultEndpoint,
   ensureWorkspace,
   modelDeployed,
-  notebookSettings,
+  notebookOptions,
+  pipelineSettings,
   PIPELINE_NAME,
 } from './steps/fabric.js';
+import { notebookSettings } from './steps/notebook-settings.js';
 import { ensureModelConnection, ensureSemanticModel, modelUrl, pendingReloads, refreshModel, rotateModelSecret, settleReloads, verifyModel } from './steps/model.js';
 import { confirmPlan, plan, preflight } from './steps/plan.js';
 import { checkPrereqs } from './prereqs.js';
@@ -43,15 +48,15 @@ import { ensureReports, reportsOn, reportsSummary } from './steps/report.js';
 import { dataSourcesSummary, ensureUploads, uploadCommand } from './steps/data-sources.js';
 import { ensureFlows, FLOW_FILES, flowDefinitions, flowsSummary, flowsWanted, offerStudioRun } from './steps/flows.js';
 import { routerWanted } from './uploads.js';
-import { checkData, chooseLoad, coworkSkipForFirstLoad, runDataCheck, runPipeline, status, TERMINAL } from './steps/run.js';
+import { checkData, chooseLoad, coworkSkipForFirstLoad, runDataCheck, runOnceNotebooks, runPipeline, status, TERMINAL } from './steps/run.js';
 import { loadCoworkNow, rerunFailed } from './steps/rerun.js';
 import { prepareNotebook, serialiseNotebook } from './transform/notebook.js';
-import { rlsOn, rlsSettings } from './transform/access.js';
-import { buildConsumptionModel, buildModel, loadTemplateModel } from './transform/model.js';
+import { buildModel, loadTemplateModel } from './transform/model.js';
 import { buildPipeline } from './transform/pipeline.js';
 import { c } from './ui.js';
 import { fabricUninstall } from './steps/fabric-uninstall.js';
-import { accessCommand, ensureViewerGroup, grantModelAccess, myGroupsUrl } from './steps/access.js';
+import { accessCommand, ensureViewerGroup, grantModelAccess, myGroupsUrl, shareReport, shareReportPending } from './steps/access.js';
+import { askGithubToken, githubSecretName, tokenLine, TOKENS_URL } from './steps/github.js';
 import { nextSteps, stepsLeftTitle } from './steps/next-steps.js';
 import { reviewSetup } from './setup.js';
 
@@ -59,7 +64,6 @@ import { reviewSetup } from './setup.js';
  * @typedef {object} Apis
  * @property {import('./clients/fabric.js').FabricApi} fabric
  * @property {import('./clients/graph.js').GraphApi} graph
- * @property {import('./clients/graph.js').GraphApi} [graphRoles]  Graph with the role management scope, asked for only when it's used.
  * @property {import('./clients/azure.js').ArmApi} arm
  * @property {import('./clients/azure.js').KeyVaultApi} keyVault
  * @property {import('./clients/onelake.js').OneLakeApi} oneLake
@@ -69,7 +73,7 @@ import { reviewSetup } from './setup.js';
  * @property {import('./clients/flow.js').FlowApi} flow
  * @property {import('./clients/connections.js').ConnectionsApi} [connections]  Power Platform connections, for signing the flows in.
  * @property {(url: string) => import('./clients/dataverse.js').DataverseApi} dataverse  A Dataverse environment, by org URL.
- * @property {(account: string) => import('./clients/onelake.js').DataLakeApi} dataLake  An Azure storage account's files, by account name.
+ * @property {(token: string) => import('./clients/github.js').GithubApi} github  GitHub, with a token the user gave. A factory, so memoApi leaves it alone and each check is live.
  *
  * @typedef {{ id: string, upn: string, tenantId: string, displayName?: string }} User
  *
@@ -84,14 +88,15 @@ import { reviewSetup } from './setup.js';
  * @property {(ms: number) => Promise<void>} sleep
  * @property {() => Date} now
  * @property {string} [pendingSecret]  A secret the user pasted, held in memory until it is in Key Vault or the notebooks.
+ * @property {import('./steps/github.js').PendingToken} [pendingGithubToken]  A GitHub token the user gave, held in memory until it's in Key Vault or Ingest_GitHub_API.
  * @property {boolean} [secretInNotebook]  --no-key-vault (or --secret-in-notebook): keep the secret in the notebooks instead of Key Vault.
  * @property {boolean} [useKeyVault]  --key-vault: keep the secret in Key Vault, not the notebooks (the default for a new Fabric install).
  * @property {boolean} [allowModelReset]  --allow-model-reset: when Fabric can't update a model and keep its data, clear it and reload it without asking. --yes alone never does.
  * @property {Apis} [liveApi]  While the plan's answers can be rewound, the clients without the cache, for checks the user repeats.
  * @property {boolean} [runFirstLoad]
  * @property {boolean} [advanced]  The plan's "Change the advanced settings?" answer. With false, those settings keep their saved value or default.
- * @property {number} [reloadHistoryDays]  Repair or change: reload this many days of audit history after setup.
  * @property {{ sp: any, roles: { id: string, value: string }[] }} [graphRoles]
+ * @property {Set<string>} [handoffShown]  The vault admin hand-offs already shown this run: 'secret', 'githubToken'.
  * @property {import('./staging.js').PendingUpload[]} [pendingUploads]  Exports to upload to the drop folder during the install.
  * @property {string[]} [csvFiles]  Exports named with --csv.
  * @property {string} [configFile]  The install record's path.
@@ -118,8 +123,6 @@ export async function connect(opts) {
   const api = {
     fabric: fabricApi(client('https://api.fabric.microsoft.com/v1', 'fabric')),
     graph: graphApi(client('https://graph.microsoft.com/v1.0', 'graph')),
-    // The Azure CLI sign-in only hands out .default tokens, so it can't ask for this scope.
-    ...(opts.method === 'azure-cli' ? {} : { graphRoles: graphApi(client('https://graph.microsoft.com/v1.0', 'graphRoles')) }),
     arm: armApi(client('https://management.azure.com', 'arm')),
     keyVault: keyVaultApi(client('https://vault.azure.net', 'keyVault')),
     oneLake: oneLakeApi(client(ONELAKE_URL, 'storage')),
@@ -129,7 +132,7 @@ export async function connect(opts) {
     flow: flowApi(client(FLOW_URL, 'flow')),
     connections: connectionsApi(client(POWERAPPS_URL, 'powerApps')),
     dataverse: (url) => dataverseApi(client(`${orgUrl(url)}/api/data/v9.2`, dataverseScope(url)), url),
-    dataLake: (account) => dataLakeApi(client(dataLakeUrl(account), 'storage')),
+    github: (token) => githubApi(token, { debug: opts.debug }),
   };
   if (opts.checkTokens) await checkTokens(getToken);
   const claims = decodeJwt(await getToken('graph'));
@@ -236,7 +239,7 @@ export async function rewindable(ctx, fn) {
   // save() writes this object, so it's put back in place rather than replaced.
   const config = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (ctx.config));
   const snapshot = structuredClone(config);
-  const { pendingSecret, runFirstLoad, reloadHistoryDays, pendingUploads } = ctx;
+  const { pendingSecret, pendingGithubToken, runFirstLoad, pendingUploads } = ctx;
   const real = ctx.api;
   ctx.api = memoApi(real);
   ctx.liveApi = real;
@@ -250,8 +253,8 @@ export async function rewindable(ctx, fn) {
         for (const key of Object.keys(config)) delete config[key];
         Object.assign(config, structuredClone(snapshot));
         ctx.pendingSecret = pendingSecret;
+        ctx.pendingGithubToken = pendingGithubToken;
         ctx.runFirstLoad = runFirstLoad;
-        ctx.reloadHistoryDays = reloadHistoryDays;
         ctx.pendingUploads = pendingUploads;
       }
     }
@@ -294,32 +297,28 @@ export async function install(ctx, opts) {
 
   const sm = config.semanticModel;
   const withModel = !!sm.enabled;
-  const withConsumption = !!config.modules.consumption;
   const withUploads = routerWanted(config.dataSources) || !!ctx.pendingUploads?.length || flowsWanted(config).length > 0;
   const withReports = reportsOn(config);
   const withAccess = withModel && !!config.access;
+  const withTerms = onceNotebooks(ctx.sources.catalog, deployedSources(config)).length > 0;
   const titles = [
-    'Key Vault',
-    'App registration',
-    'Microsoft Graph permissions',
+    'App registration and secrets',
     'Workspace and Lakehouse',
     ...(withModel ? ['Semantic model'] : []),
-    ...(withConsumption ? ['Credit consumption'] : []),
-    ...(withReports ? ['Power BI reports'] : []),
+    'Consumption sources',
+    ...(withReports ? ['Power BI report'] : []),
     ...(withUploads ? ['Data uploads'] : []),
     'Notebooks, pipeline and schedule',
     ...(withAccess ? ['Viewer access'] : []),
-    ...(ctx.runFirstLoad ? ['First load'] : ctx.reloadHistoryDays ? ['Reload audit history'] : withModel ? ['Model refresh'] : []),
+    ...(withTerms ? ['Commercial terms'] : []),
+    ...(ctx.runFirstLoad ? ['First load'] : withModel ? ['Model refresh'] : []),
   ];
   let n = 0;
   const step = (/** @type {string} */ title) => ui.step(++n, titles.length, title);
 
-  step('Key Vault');
-  await ensureKeyVault(ctx);
-  step('App registration');
-  await ensureApp(ctx);
-  step('Microsoft Graph permissions');
-  const consented = await ensureConsent(ctx, /** @type {import('./steps/plan.js').Preflight} */ (pre));
+  step('App registration and secrets');
+  // What the first load has to wait for: admin consent, the GitHub token, or a vault admin.
+  const waitFor = await ensureIdentity(ctx, { canConsent: !!pre?.canConsent });
   step('Workspace and Lakehouse');
   await ensureWorkspace(ctx);
   await ensureLakehouse(ctx);
@@ -329,14 +328,12 @@ export async function install(ctx, opts) {
     await ensureSemanticModel(ctx);
     await ensureModelConnection(ctx);
   }
-  if (withConsumption) {
-    step('Credit consumption');
-    await consumptionSteps(ctx);
-  }
+  step('Consumption sources');
+  await consumptionSteps(ctx);
   // A step that fails and lets the install carry on leaves it partly set up. One that only warns doesn't.
   let stepsOk = true;
   if (withReports) {
-    step('Power BI reports');
+    step('Power BI report');
     stepsOk = (await ensureReports(ctx)) && stepsOk;
   }
   if (withUploads) {
@@ -353,25 +350,34 @@ export async function install(ctx, opts) {
   if (withAccess) {
     step('Viewer access');
     if (await ensureViewerGroup(ctx)) await grantModelAccess(ctx, fabricViewerModels(config));
+    // Before the first load, which can take hours, so viewers can open the report while it runs.
+    if (shareReportPending(config)) await shareReport(ctx);
   }
 
   // A Studio flow that's on but hasn't loaded its six months yet: run it now, before the pipeline.
-  if (withUploads) await offerStudioRun(ctx, { pipelineNext: !!(ctx.runFirstLoad || ctx.reloadHistoryDays) && consented && vaultReachable, quietWhenOff: true });
+  if (withUploads) await offerStudioRun(ctx, { pipelineNext: !!ctx.runFirstLoad && !waitFor && vaultReachable, quietWhenOff: true });
+
+  if (withTerms) {
+    step('Commercial terms');
+    // It runs as you and needs no app secret, so it doesn't wait for consent or a token. Until it
+    // completes, the model prices credits at the rates set in the installer: it only warns.
+    await runOnceNotebooks(ctx);
+  }
 
   let ok = true;
-  // The pipeline refreshes the models as its last step. When it can't, a model owed a reload is refreshed on its own.
+  // The pipeline refreshes the model as its last step. When it can't, a model owed a reload is refreshed on its own.
   /** @type {import('./steps/model.js').LoadState} */
   let load = 'none';
   if (ctx.runFirstLoad) {
     step('First load');
-    if (!consented) {
-      ui.warn(`Skipped until admin consent is granted. Then run: ${commandLine(`run --backfill-days ${config.history.days}`)}`);
+    if (waitFor) {
+      ui.warn(`Skipped until ${waitFor}. Then run: ${commandLine('run')}`);
     } else if (!vaultReachable) {
-      ui.warn(`Skipped until the private endpoint to ${config.keyVault.name} is approved. Then run: ${commandLine(`run --backfill-days ${config.history.days}`)}`);
+      ui.warn(`Skipped until the private endpoint to ${config.keyVault.name} is approved. Then run: ${commandLine('run')}`);
     } else {
-      if (modelDeployed(config)) ui.note(`The pipeline refreshes ${joinNames(deployedModels(config).map((m) => m.name))} as its last step.`);
+      if (modelDeployed(config)) ui.note(`The pipeline refreshes ${sm.name} as its last step.`);
       const skipCowork = await coworkSkipForFirstLoad(ctx);
-      const result = await runPipeline(ctx, { backfillDays: config.history.days, wait: opts.wait, first: true, skipCowork });
+      const result = await runPipeline(ctx, { wait: opts.wait, first: true, skipCowork });
       load = loadState(result);
       if (result.status === 'Completed') {
         // A run completes even when a load in it failed.
@@ -380,28 +386,6 @@ export async function install(ctx, opts) {
         if (modelDeployed(config)) ok = (await verifyModel(ctx)).ok;
       }
       if (opts.wait && config.firstRun?.status !== 'Completed') ok = false;
-    }
-  } else if (ctx.reloadHistoryDays) {
-    step('Reload audit history');
-    const days = ctx.reloadHistoryDays;
-    const later = commandLine(`run --backfill-days ${days}`);
-    if (!consented) {
-      ui.warn(`Skipped until admin consent is granted. Then run: ${later}`);
-    } else if (!vaultReachable) {
-      ui.warn(`Skipped until the private endpoint to ${config.keyVault.name} is approved. Then run: ${later}`);
-    } else {
-      if (modelDeployed(config)) ui.note(`The pipeline refreshes ${joinNames(deployedModels(config).map((m) => m.name))} as its last step.`);
-      const result = await runPipeline(ctx, { backfillDays: days, wait: opts.wait });
-      load = loadState(result);
-      if (result.started) {
-        config.history.days = days;
-        ctx.save();
-      }
-      if (result.status === 'Completed') {
-        if (result.counted?.length) stepsOk = false;
-        if ((await runDataCheck(ctx)) === false) stepsOk = false;
-        if (modelDeployed(config)) ok = (await verifyModel(ctx)).ok;
-      } else if (opts.wait) ok = false;
     }
   } else if (withModel) {
     step('Model refresh');
@@ -416,80 +400,68 @@ export async function install(ctx, opts) {
 }
 
 /**
- * How far a pipeline run got with reloading the models it refreshes as its last step.
+ * How far a pipeline run got with reloading the model it refreshes as its last step.
  * @param {import('./steps/run.js').RunResult} result
  * @returns {import('./steps/model.js').LoadState}
  */
 export function loadState(result) {
   if (result.status === 'Completed') return 'done';
-  // Failed, cancelled and the like: it won't refresh them.
+  // Failed, cancelled and the like: it won't refresh it.
   if (TERMINAL.has(/** @type {string} */ (result.status))) return 'none';
-  // Started and not waited for, or another run is going: either refreshes them when it finishes.
+  // Started and not waited for, or another run is going: either refreshes it when it finishes.
   return 'running';
 }
 
 /**
- * Azure AI access, the upload folders and the Consumption model.
+ * Azure AI access, the landing folders and the Cowork credits Dataflow.
  * @param {Ctx} ctx
- * @param {{ force?: boolean }} [opts]
  */
-async function consumptionSteps(ctx, opts = {}) {
-  await ensureAzureAiAccess(ctx);
+async function consumptionSteps(ctx) {
+  if (ctx.config.dataSources.azureAi === 'api') await ensureAzureAiAccess(ctx);
+  else ctx.ui.note('Azure AI is left out.');
   await ensureLandingFolders(ctx);
   await ensureCoworkDataflow(ctx);
-  if (consumptionModelWanted(ctx)) await ensureConsumptionModel(ctx, opts);
 }
 
 /**
- * The deployed models that read the Lakehouse, Consumption Central's first.
+ * The deployed model that reads the Lakehouse, if there is one.
  * @param {import('./config.js').InstallConfig} config
- * @returns {{ name: string, id?: string }[]}
+ * @returns {import('./config.js').ModelConfig[]}
  */
 function deployedModels(config) {
-  if (!modelDeployed(config)) return [];
-  return [
-    config.semanticModel,
-    ...(consumptionModelDeployed(config) ? [config.consumption.model] : []),
-  ];
+  return modelDeployed(config) ? [config.semanticModel] : [];
 }
 
 /** @param {string[]} names */
 const joinNames = (names) => (names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
 
 /**
- * The models the viewer group needs Build on: each one deployed, bound to its connection or not yet.
+ * The model the viewer group needs Build on, once it exists, bound to its connection or not yet.
  * @param {import('./config.js').InstallConfig} config
  * @returns {import('./steps/access.js').ModelRef[]}
  */
 export function fabricViewerModels(config) {
   const ws = config.fabric.workspaceId;
-  if (!ws || !config.semanticModel.enabled) return [];
-  return [config.semanticModel, config.modules.consumption && config.consumption.model]
-    .filter((m) => m && m.id)
-    .map((m) => ({ workspaceId: ws, datasetId: /** @type {string} */ (/** @type {any} */ (m).id), name: /** @type {any} */ (m).name }));
+  const sm = config.semanticModel;
+  if (!ws || !sm.enabled || !sm.id) return [];
+  return [{ workspaceId: ws, datasetId: sm.id, name: sm.name }];
 }
 
 /**
- * Refreshes the Consumption Central model and the other deployed models that share its connection.
+ * Refreshes the model, when it reads the Lakehouse.
  * @param {Ctx} ctx
  * @param {{ wait?: boolean }} opts
+ * @returns {Promise<{ ok: boolean, status?: string }>}
  */
 async function refreshModels(ctx, opts) {
-  const { ui, config } = ctx;
-  /** @type {{ ok: boolean, status?: string }} */
-  let result = { ok: false };
-  if (modelDeployed(config)) result = await refreshModel(ctx, opts);
-  else ui.warn(`Skipped: ${config.semanticModel.name} isn't connected to the Lakehouse yet.`);
-  for (const model of deployedModels(config).slice(1)) {
-    const other = await refreshModel(ctx, { ...opts, model: /** @type {import('./config.js').ModelConfig} */ (model) });
-    result = { ...result, ok: result.ok && other.ok };
-  }
-  return result;
+  if (modelDeployed(ctx.config)) return refreshModel(ctx, opts);
+  ctx.ui.warn(`Skipped: ${ctx.config.semanticModel.name} isn't connected to the Lakehouse yet.`);
+  return { ok: false };
 }
 
 /**
- * Refreshes the models and, when it waits, checks the model answers queries. Not waiting, it's
- * enough that the refreshes started; a model owed a reload is settled after (see settleReloads).
+ * Refreshes the model and, when it waits, checks the model answers queries. Not waiting, it's
+ * enough that the refresh started; a model owed a reload is settled after (see settleReloads).
  * @param {Ctx} ctx
  * @param {{ wait: boolean }} opts
  * @returns {Promise<boolean>}
@@ -510,7 +482,7 @@ function fabricReachable(config) {
 }
 
 /**
- * Pushes the notebooks and pipeline from this checkout over the deployed ones.
+ * Pushes the notebooks, pipeline and model from this checkout over the deployed ones.
  * @param {Ctx} ctx
  * @param {{ wait?: boolean }} [opts]
  */
@@ -518,11 +490,9 @@ export async function update(ctx, opts = {}) {
   const { ui, config } = ctx;
   if (!config.fabric.workspaceId || !config.fabric.lakehouseId) throw new Error('Nothing is installed yet. Run the installer first.');
   const sm = config.semanticModel;
-  ui.heading('Updating Consumption Central');
+  ui.heading(`Updating ${PRODUCT_NAME}`);
   ui.note(`From ${ctx.sources.dir}`);
-  await ensureKeyVault(ctx);
-  await ensureApp(ctx);
-  await ensureConsent(ctx, { canConsent: await canConsent(ctx) });
+  await ensureIdentity(ctx, { canConsent: await canConsent(ctx) });
   await ensureWorkspace(ctx);
   await ensureLakehouse(ctx);
   await ensureVaultEndpoint(ctx);
@@ -530,7 +500,7 @@ export async function update(ctx, opts = {}) {
     await ensureSemanticModel(ctx, { force: true });
     await ensureModelConnection(ctx);
   }
-  if (config.modules.consumption) await consumptionSteps(ctx, { force: true });
+  await consumptionSteps(ctx);
   // As in install: a step that fails and lets the update carry on leaves it unfinished.
   let stepsOk = true;
   if (reportsOn(config)) stepsOk = (await ensureReports(ctx)) && stepsOk;
@@ -540,13 +510,15 @@ export async function update(ctx, opts = {}) {
   await ensureSparkSettings(ctx);
   await ensurePipeline(ctx, { force: true });
   await ensureSchedule(ctx);
+  // The credit rate is read again for the last full month. Only warns, as in install.
+  await runOnceNotebooks(ctx, { force: true, again: 'update' });
   return finishUpdate(ctx, { ...opts, failed: !stepsOk });
 }
 
 /**
- * The end of a Fabric update: refreshes the models so they load their data with the new
- * definitions. "Up to date" only once every model owed a reload has finished reloading and no step
- * failed; not waiting, the refreshes started is success, but said as such.
+ * The end of an update: refreshes the model so it loads its data with the new definition. "Up to
+ * date" only once a model owed a reload has finished reloading and no step failed; not waiting, the
+ * refresh started is success, but said as such.
  * @param {Ctx} ctx
  * @param {{ wait?: boolean, failed?: boolean }} [opts]  failed: a step before this failed, and the update carried on.
  * @returns {Promise<boolean>}
@@ -556,7 +528,7 @@ export async function finishUpdate(ctx, opts = {}) {
   const wait = opts.wait ?? true;
   let ok = true;
   if (modelDeployed(config)) {
-    ui.note('The models refresh now, to load their data with the new definitions.');
+    ui.note('The model refreshes now, to load its data with the new definition.');
     const refreshed = await refreshModels(ctx, { wait });
     if (!refreshed.ok) ok = false;
     else if (wait && !(await verifyModel(ctx)).ok) return false;
@@ -588,23 +560,18 @@ function reloadingNote(names) {
 function notFinished(ctx, what) {
   const cleared = pendingReloads(ctx.config).filter((m) => m.reload?.cleared).map((m) => m.name);
   if (cleared.length) ctx.ui.warn(`${joinNames(cleared)} ${cleared.length === 1 ? 'has' : 'have'} no data until a refresh finishes.`);
-  ctx.ui.fail(`The ${what} isn't finished: the models weren't reloaded. Fix the problem above, then run "${commandLine('refresh')}", or "${commandLine(what)}" again.`);
+  ctx.ui.fail(`The ${what} isn't finished: the model wasn't reloaded. Fix the problem above, then run "${commandLine('refresh')}", or "${commandLine(what)}" again.`);
 }
 
 /**
- * Starts the pipeline: the first load until one has loaded the history, then the usual run.
+ * Starts the pipeline: the first load until one has loaded the data, then the usual run.
  * @param {Ctx} ctx
- * @param {{ backfillDays?: number, wait: boolean }} opts
+ * @param {{ wait: boolean }} opts
  */
 export async function run(ctx, opts) {
   await offerStudioRun(ctx, { pipelineNext: true });
   const load = await chooseLoad(ctx, opts);
   const result = await runPipeline(ctx, { ...load, skipCowork: !!load.first && (await coworkSkipForFirstLoad(ctx)) });
-  // Asking for more history than the record has: later repairs offer more than this.
-  if (result.started && opts.backfillDays && (load.first || opts.backfillDays > ctx.config.history.days)) {
-    ctx.config.history.days = opts.backfillDays;
-    ctx.save();
-  }
   if (result.status === 'Completed') await runDataCheck(ctx);
   return result;
 }
@@ -612,14 +579,13 @@ export async function run(ctx, opts) {
 export { status };
 
 /**
- * Refreshes the semantic models now.
+ * Refreshes the semantic model now.
  * @param {Ctx} ctx
  * @param {{ wait: boolean }} opts
  */
 export async function refresh(ctx, opts) {
   if (!ctx.config.semanticModel.id) throw new Error('There is no semantic model yet. Run the installer and choose to deploy it.');
-  if (deployedModels(ctx.config).length < 2) return refreshModel(ctx, opts);
-  return refreshModels(ctx, opts);
+  return refreshModel(ctx, opts);
 }
 
 /**
@@ -638,7 +604,7 @@ export async function showPrereqs(ctx) {
  * Runs one command against a signed-in context.
  * @param {Ctx} ctx
  * @param {string} command
- * @param {{ wait: boolean, backfillDays?: number, files?: string[], run?: boolean }} opts
+ * @param {{ wait: boolean, files?: string[], run?: boolean }} opts
  * @returns {Promise<boolean>} false when a run or refresh it waited for didn't succeed.
  */
 export async function runCommand(ctx, command, opts) {
@@ -655,11 +621,8 @@ export async function runCommand(ctx, command, opts) {
       return !(await rerunFailed(ctx)).failed.length;
     case 'load-cowork':
       return !(await loadCoworkNow(ctx)).failed.length;
-    case 'check': {
-      const checked = !!(await checkData(ctx));
-      if (!modelDeployed(ctx.config)) return checked;
-      return (await verifyModel(ctx)).ok && checked;
-    }
+    case 'check':
+      return checkData(ctx);
     case 'refresh': {
       const result = await refresh(ctx, opts);
       return !opts.wait || result.ok;
@@ -669,6 +632,9 @@ export async function runCommand(ctx, command, opts) {
       return true;
     case 'rotate-secret':
       await rotateSecret(ctx);
+      return true;
+    case 'github-token':
+      await githubToken(ctx);
       return true;
     case 'uninstall':
       await fabricUninstall(ctx);
@@ -686,14 +652,27 @@ export async function runCommand(ctx, command, opts) {
   }
 }
 
-/** @param {Ctx} ctx */
+/**
+ * Gives the app, and the model's connection, new client secrets. An install that keeps no secret
+ * of the app's own (appSecretKept) has one only in the connection, so then only that one is replaced.
+ * @param {Ctx} ctx
+ */
 export async function rotateSecret(ctx) {
   const { ui, config } = ctx;
   const mode = secretMode(config);
-  if (!config.app.appId || (mode === 'notebook' ? !config.fabric.workspaceId : !config.keyVault.uri)) throw new Error('Nothing is installed yet. Run the installer first.');
   const sm = config.semanticModel;
+  const withApp = appSecretKept(config);
+  const appSecret = withApp && (mode === 'notebook' ? !!config.fabric.workspaceId : !!config.keyVault.uri);
+  if (!config.app.appId || !(appSecret || sm.connectionId)) throw new Error('Nothing is installed yet. Run the installer first.');
   ui.heading('New client secret');
   ui.info(`App: ${config.app.displayName ?? config.app.appId}`);
+  if (!appSecret) {
+    ui.info(`Connection: ${sm.connectionName}, used by ${sm.name}`);
+    ui.note('No notebook reads the app\'s secret, so only the connection\'s is replaced. The old one is removed from the app.');
+    if (!(await ui.confirm('Create a new secret and replace the connection\'s?', true))) return;
+    await rotateModelSecret(ctx);
+    return;
+  }
   if (mode === 'notebook') ui.info('Secret: in the notebooks (no Key Vault)');
   else ui.info(`Key Vault: ${config.keyVault.name}, secret ${config.keyVault.secretName}`);
   if (sm.connectionId) ui.info(`Connection: ${sm.connectionName}, used by ${sm.name}`);
@@ -720,6 +699,70 @@ export async function rotateSecret(ctx) {
 }
 
 /**
+ * github-token: puts a new GitHub token in place, e.g. before the old one expires. In Key Vault the
+ * secret gets a new version; with no Key Vault, Ingest_GitHub_API is written again with it.
+ * @param {Ctx} ctx
+ */
+export async function githubToken(ctx) {
+  const { ui, config } = ctx;
+  const gh = config.github;
+  if (config.dataSources.github !== 'api' || !gh?.enterprise) {
+    throw new Error('This install doesn\'t read GitHub from the API, so it has no GitHub token. Choose "From the API" for GitHub in the setup first.');
+  }
+  const mode = secretMode(config);
+  if (mode === 'notebook' ? !config.fabric.notebooks.githubApi : !config.keyVault.uri) throw new Error('Nothing is installed yet. Run the installer first.');
+  ui.heading('New GitHub token');
+  ui.info(`Enterprise: ${gh.enterprise}`);
+  ui.info(mode === 'notebook' ? 'Token: in Ingest_GitHub_API (no Key Vault)' : `Key Vault: ${config.keyVault.name}, secret ${githubSecretName(config)}`);
+  if (gh.tokenExpires) ui.info(`The current one expires ${gh.tokenExpires.slice(0, 10)}.`);
+  // Whether there's an old token to revoke afterwards: a first one may never have been set.
+  const had = !!gh.tokenSetAt;
+  if (mode === 'keyvault-admin') {
+    // A vault admin sets it: the hand-off shows them how.
+    await ensureGithubToken(ctx, { replace: true });
+    return;
+  }
+  const token = await askGithubToken(ctx);
+  if (!token) throw new Error(`The new GitHub token is needed. Run without --yes, or set ${ENV.GITHUB_TOKEN}.`);
+  ctx.pendingGithubToken = token;
+  if (mode === 'notebook') await ensureNotebooks(ctx, { only: ['githubApi'] });
+  else await ensureGithubToken(ctx, { replace: true });
+  if (had) ui.note(`Revoke the old token at ${TOKENS_URL} once GitHub data has loaded with the new one.`);
+}
+
+/**
+ * Who can read the secrets the scheduled runs use, and what to do before they expire.
+ * @param {import('./config.js').InstallConfig} config
+ * @returns {string[]}  The lines of one next step; empty when the install keeps no secret.
+ */
+function secretNote(config) {
+  const ds = config.dataSources;
+  const sm = config.semanticModel;
+  const withApp = appSecretKept(config);
+  const withToken = ds.github === 'api';
+  const inNotebooks = secretMode(config) === 'notebook';
+  if (inNotebooks && (withApp || withToken)) {
+    const what = joinNames([...(withApp ? ['client secret'] : []), ...(withToken ? ['GitHub token'] : [])]);
+    const expiresOn = config.app.secretExpires ? ` on ${config.app.secretExpires.slice(0, 10)}` : '';
+    return [
+      `Anyone with a role in the workspace can read the ${what} in the notebooks.`,
+      ...(withApp ? [`Repair or run "${commandLine('rotate-secret')}" before the secret expires${expiresOn}.`] : []),
+    ];
+  }
+  if (!inNotebooks && secretWanted(ds)) {
+    return [
+      'Scheduled runs read Key Vault as you, the schedule\'s owner. Anyone who takes over the pipeline',
+      'needs "get" on its secrets and Contributor on the workspace.',
+    ];
+  }
+  if (sm.enabled && sm.connectionId) {
+    const expiresOn = sm.secretExpires ? ` on ${sm.secretExpires.slice(0, 10)}` : '';
+    return [`The model reads the Lakehouse with its connection's secret. Run "${commandLine('rotate-secret')}" before it expires${expiresOn}.`];
+  }
+  return [];
+}
+
+/**
  * Prints where everything is and what to do next.
  * @param {Ctx} ctx
  * @param {{ ok?: boolean, pending?: string[] }} [opts]  ok false when a step above failed, so the heading doesn't say it is all set up;
@@ -734,28 +777,32 @@ export async function summary(ctx, opts = {}) {
   const sql = lakehouse?.properties?.sqlEndpointProperties;
 
   if (opts.ok === false) {
-    ui.heading('Consumption Central is partly set up');
+    ui.heading(`${PRODUCT_NAME} is partly set up`);
     ui.warn('A step above didn\'t finish. Fix what it says, then run the installer again: it picks up where it stopped.');
     if (opts.pending?.length) ui.warn(reloadingNote(opts.pending));
   } else if (opts.pending?.length) {
-    ui.heading('Consumption Central is set up, still reloading');
+    ui.heading(`${PRODUCT_NAME} is set up, still reloading`);
     ui.warn(reloadingNote(opts.pending));
   } else {
-    ui.heading('Consumption Central is set up');
+    ui.heading(`${PRODUCT_NAME} is set up`);
   }
-  const left = nextSteps(config, ctx.user);
+  const left = nextSteps(config, ctx.user, { now: ctx.now() });
   if (left.length) ui.nextSteps(stepsLeftTitle(left), left);
   ui.info(`Workspace:  ${f.workspaceName}  ${c.dim(`https://app.fabric.microsoft.com/groups/${ws}`)}`);
   ui.info(`Lakehouse:  ${f.lakehouseName}`);
   ui.info(`Pipeline:   ${f.pipelineName ?? PIPELINE_NAME}, ${describeSchedule(config.schedule)}`);
   const mode = secretMode(config);
-  const expires = config.app.secretExpires ? `, expires ${config.app.secretExpires.slice(0, 10)}` : '';
-  const expiresOn = config.app.secretExpires ? ` on ${config.app.secretExpires.slice(0, 10)}` : '';
-  if (mode === 'notebook') ui.info(`Secret:     in the notebooks${expires}  ${c.dim('No Key Vault: anyone with a role in the workspace can read it. Each install, repair or update replaces it.')}`);
-  else ui.info(`Secret:     ${config.keyVault.name} / ${config.keyVault.secretName}${expires}${mode === 'keyvault-admin' ? c.dim('  Added by a vault admin.') : ''}`);
+  if (appSecretKept(config)) {
+    const expires = config.app.secretExpires ? `, expires ${config.app.secretExpires.slice(0, 10)}` : '';
+    if (mode === 'notebook') ui.info(`Secret:     in the notebooks${expires}  ${c.dim('No Key Vault: anyone with a role in the workspace can read it. Each install, repair or update replaces it.')}`);
+    else ui.info(`Secret:     ${config.keyVault.name} / ${config.keyVault.secretName}${expires}${mode === 'keyvault-admin' ? c.dim('  Added by a vault admin.') : ''}`);
+  }
+  const token = tokenLine(config);
+  if (token) ui.info(token);
   if (config.keyVault.private) ui.info(`            ${c.dim('Private vault, reached through a managed private endpoint. Spark sessions take a few minutes longer to start.')}`);
 
   const sm = config.semanticModel;
+  const secrets = secretNote(config);
   if (sm.enabled && sm.id) {
     ui.info(`Model:      ${sm.name}  ${c.dim(modelUrl(ws, sm.id))}`);
     if (sm.connectionName) ui.info(`            ${c.dim(`Reads the Lakehouse through "${sm.connectionName}"${sm.secretExpires ? `, whose secret expires ${sm.secretExpires.slice(0, 10)}` : ''}.`)}`);
@@ -763,51 +810,51 @@ export async function summary(ctx, opts = {}) {
 
     const group = config.access?.groupId ? config.access : undefined;
     ui.heading('Next steps');
+    let n = 1;
     if (group) {
       ui.info(`1. Give people access by adding them to "${group.groupName}": run "${commandLine('access')}",`);
-      ui.info(`   or open ${myGroupsUrl(/** @type {string} */ (group.groupId))}. The group already has Build on the models. Keep viewers off workspace roles.`);
-      if (reportsOn(config)) ui.info(`   Share the reports with "${group.groupName}" once: open them in the workspace, choose Share, and add the group.`);
+      ui.info(`   or open ${myGroupsUrl(/** @type {string} */ (group.groupId))}. The group already has Build on the model. Keep viewers off workspace roles.`);
+      if (shareReportPending(config)) ui.info(`   Until the report is shared with the group (the step above), its members get "no access" on it.`);
+      else if (!reportsOn(config)) ui.info(`   Share the reports you publish with "${group.groupName}" too.`);
     } else {
-      const shared = reportsOn(config) ? 'reports' : 'reports you publish';
-      ui.info(`1. Share the ${shared}: open them in the workspace, choose Share, and add people or a group.`);
-      ui.info(`   They also need Build on ${sm.name} (its Manage permissions page), or Viewer on the workspace.`);
+      const shared = reportsOn(config) ? 'report' : 'reports you publish';
+      ui.info(`1. Share the ${shared}: in the workspace, choose … (More options) > Manage permissions > Add user, and add people or a group.`);
+      ui.info(`   They also need Build on ${sm.name} (its Manage permissions page). Keep viewers off workspace roles.`);
     }
-    if (secretMode(config) === 'notebook') {
-      ui.info('2. Scheduled runs refresh the model as you, the schedule\'s owner. Anyone with a role in the workspace can');
-      ui.info(`   read the client secret in the notebooks. Repair or run "${commandLine('rotate-secret')}" before it expires${expiresOn}.`);
-    } else {
-      ui.info('2. Scheduled runs read the Key Vault secret as you, the schedule\'s owner, and refresh the model');
-      ui.info('   as you. Anyone who takes over the pipeline needs "get" on the secret and Contributor on the workspace.');
+    if (secrets.length) {
+      ui.info(`${++n}. ${secrets[0]}`);
+      for (const line of secrets.slice(1)) ui.info(`   ${line}`);
     }
-    ui.info(`3. Keep ${c.bold(RECORD_FILE)}. It holds no secrets; re-run the installer with it to change or repair the set-up.`);
-    if (config.modules.consumption) consumptionSummary(ctx);
+    ui.info(`${++n}. Keep ${c.bold(RECORD_FILE)}. It holds no secrets; re-run the installer with it to change or repair the set-up.`);
+    consumptionSummary(ctx);
     dataSourcesSummary(ctx);
     flowsSummary(ctx);
     return;
   }
 
   ui.heading('Connect Power BI');
-  ui.info(c.bold('ValueLens - Fabric.pbit'));
-  ui.info(`  Fabric SQL Endpoint:  ${sql?.connectionString ?? c.dim('still provisioning; copy it from the Lakehouse\'s SQL analytics endpoint settings')}`);
-  ui.info(`  Lakehouse Name:       ${f.lakehouseName}`);
-  ui.info(c.bold('ValueLens - Fabric OneLake.pbit'));
-  ui.info(`  Fabric Workspace ID:  ${ws.toLowerCase()}`);
-  ui.info(`  Lakehouse ID:         ${lhId.toLowerCase()}`);
+  ui.info(`${c.bold(basename(ctx.sources.modelFile))}, with these parameters (the rest keep their defaults):`);
+  /** @type {Record<string, string>} */
+  const params = {
+    FabricSQLEndpoint: sql?.connectionString ?? c.dim('still provisioning; copy it from the Lakehouse\'s SQL analytics endpoint settings'),
+    LakehouseName: /** @type {string} */ (f.lakehouseName),
+    ...Object.fromEntries(Object.entries(priceParameters(config.prices)).map(([k, v]) => [k, String(v)])),
+  };
+  const width = Math.max(...Object.keys(params).map((k) => k.length)) + 3;
+  for (const [k, v] of Object.entries(params)) ui.info(`  ${`${k}:`.padEnd(width)}${v}`);
 
   ui.heading('Next steps');
-  ui.info('1. Open a template in Power BI Desktop with the values above, then publish it to this workspace.');
+  ui.info('1. Open the template in Power BI Desktop with the values above, then publish it to this workspace.');
   ui.info('2. Add a semantic model refresh to the end of the pipeline so the report updates after each load,');
   ui.info('   or re-run the installer and let it deploy the semantic model, which adds one for you.');
-  ui.note('   See "Refresh Power BI from the pipeline" in fabric/pipelines/README.md.');
-  if (secretMode(config) === 'notebook') {
-    ui.info('3. Anyone with a role in the workspace can read the client secret in the notebooks. Repair or run');
-    ui.info(`   "${commandLine('rotate-secret')}" before it expires${expiresOn}.`);
-  } else {
-    ui.info('3. Scheduled runs read the Key Vault secret as you, the schedule\'s owner. Anyone who edits the');
-    ui.info('   pipeline or takes over the schedule needs "get" on the secret first.');
+  ui.note('   See step 5, "Publish and schedule", in 2. Fabric/README.md.');
+  let n = 2;
+  if (secrets.length) {
+    ui.info(`${++n}. ${secrets[0]}`);
+    for (const line of secrets.slice(1)) ui.info(`   ${line}`);
   }
-  ui.info(`4. Keep ${c.bold(RECORD_FILE)}. It holds no secrets; re-run the installer with it to change or repair the set-up.`);
-  if (config.modules.consumption) consumptionSummary(ctx);
+  ui.info(`${++n}. Keep ${c.bold(RECORD_FILE)}. It holds no secrets; re-run the installer with it to change or repair the set-up.`);
+  consumptionSummary(ctx);
   dataSourcesSummary(ctx);
   flowsSummary(ctx);
 }
@@ -820,15 +867,17 @@ export function preview(o) {
   const { ui, config, sources } = o;
   const out = resolve(o.outDir);
   const fake = (/** @type {number} */ n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
+  const ds = config.dataSources;
   const f = config.fabric;
   const sm = config.semanticModel;
-  const withModel = sm.enabled !== false && !!sources.modelFile;
   const cc = config.consumption;
-  const withConsumptionModel = withModel && !!config.modules.consumption && !!sources.consumptionModelFile;
-  const withAzureAi = !!config.modules.consumption && !!cc.azureSubscriptionId;
-  const withDataflow = !!config.modules.consumption && config.dataSources.coworkCredits === 'api' && isVivaId(cc.vivaPartition) && isVivaId(cc.vivaQuery);
+  const withModel = sm.enabled !== false && !!sources.modelFile;
+  const withDataflow = ds.coworkCredits === 'api' && isVivaId(cc.vivaPartition) && isVivaId(cc.vivaQuery);
   /** @type {Ctx} */
   const ctx = /** @type {any} */ ({
+    now: () => o.now ?? new Date(),
+    user: { tenantId: config.tenantId ?? fake(0) },
+    sources,
     config: {
       ...config,
       app: { ...config.app, appId: config.app.appId ?? fake(1) },
@@ -840,37 +889,28 @@ export function preview(o) {
         lakehouseName: f.lakehouseName ?? LAKEHOUSE_NAME,
         notebooks: { ...f.notebooks },
       },
-      semanticModel: withModel ? { ...sm, id: sm.id ?? fake(4), bound: true } : { ...sm, enabled: false },
-      consumption: { ...cc, model: { ...cc.model, id: cc.model.id ?? fake(5), bound: true } },
+      semanticModel: withModel ? { ...sm, enabled: true, id: sm.id ?? fake(4), bound: true } : { ...sm, enabled: false },
+      consumption: { ...cc, azureAccess: !!cc.azureSubscriptionId, ...(withDataflow ? { dataflowId: cc.dataflowId ?? fake(7) } : {}) },
+      ...(ds.github === 'api' ? { github: { ...config.github, enterprise: config.github?.enterprise ?? 'your-enterprise' } } : {}),
+      ...(ds.commercialTerms === 'api' ? { commercialTerms: { ...config.commercialTerms, scope: config.commercialTerms?.scope ?? `/subscriptions/${fake(6)}` } } : {}),
     },
-    user: { tenantId: config.tenantId ?? fake(0) },
   });
 
   mkdirSync(join(out, 'notebooks'), { recursive: true });
   let n = 10;
-  for (const nb of notebooksFor(config.modules, { semanticModel: withModel, azureAi: withAzureAi, access: rlsOn(ctx.config), dataSources: config.dataSources })) {
-    const prepared = prepareNotebook(sources.notebooks[nb.key], notebookSettings(ctx, nb));
+  for (const nb of notebooksFor(sources.catalog, deployedSources(ctx.config), notebookOptions(ctx.config))) {
+    const prepared = prepareNotebook(sources.notebooks[nb.key], notebookSettings(ctx, nb, { placeholder: true }));
     writeFileSync(join(out, 'notebooks', `${nb.displayName}.ipynb`), serialiseNotebook(prepared), 'utf8');
     ctx.config.fabric.notebooks[nb.key] = ctx.config.fabric.notebooks[nb.key] ?? fake(n++);
   }
-  const pipeline = buildPipeline(sources.pipeline, {
-    workspaceId: /** @type {string} */ (ctx.config.fabric.workspaceId),
-    notebookIds: ctx.config.fabric.notebooks,
-    modules: config.modules,
-    backfillDays: config.history.days,
-    semanticModelId: withModel ? ctx.config.semanticModel.id : undefined,
-    azureAi: withAzureAi,
-    consumptionModelId: withConsumptionModel ? ctx.config.consumption.model.id : undefined,
-    coworkDataflowId: withDataflow ? cc.dataflowId ?? fake(7) : undefined,
-    access: rlsOn(ctx.config),
-  });
+  const pipeline = buildPipeline(sources.catalog, pipelineSettings(ctx.config));
   writeFileSync(join(out, 'pipeline-content.json'), `${JSON.stringify(pipeline, null, 2)}\n`, 'utf8');
   if (withDataflow) {
     const df = coworkDataflowDefinition(cc.dataflowName ?? COWORK_DATAFLOW_NAME, {
       partitionId: /** @type {string} */ (cc.vivaPartition),
       queryId: /** @type {string} */ (cc.vivaQuery),
       workspaceId: /** @type {string} */ (ctx.config.fabric.workspaceId),
-      lakehouseId: /** @type {string} */ (ctx.config.fabric.lakehouseId ?? fake(3)),
+      lakehouseId: /** @type {string} */ (ctx.config.fabric.lakehouseId),
     });
     mkdirSync(join(out, 'dataflow'), { recursive: true });
     for (const p of df.parts) writeFileSync(join(out, 'dataflow', p.path), Buffer.from(p.payload, 'base64'));
@@ -882,31 +922,22 @@ export function preview(o) {
     for (const kind of flows) writeFileSync(join(out, 'flows', FLOW_FILES[kind]), `${JSON.stringify(defs[kind].definition, null, 2)}\n`, 'utf8');
   }
   writeFileSync(join(out, 'schedule.json'), `${JSON.stringify(scheduleBody(config.schedule, o.now), null, 2)}\n`, 'utf8');
+  const permissions = permissionsFor(ds);
   writeFileSync(
     join(out, 'graph-permissions.txt'),
-    `Microsoft Graph application permissions for the app registration:\n${permissionsFor(config.modules, config.dataSources).map((p) => `  ${p}\n`).join('')}`,
+    `Microsoft Graph application permissions for the app registration:\n${permissions.length ? permissions.map((p) => `  ${p}\n`).join('') : '  none\n'}`,
     'utf8',
   );
   if (withModel) {
-    const bim = buildModel(loadTemplateModel(/** @type {string} */ (sources.modelFile)), {
+    const bim = buildModel(loadTemplateModel(sources.modelFile), {
       server: sm.server ?? 'your-endpoint.datawarehouse.fabric.microsoft.com',
       database: /** @type {string} */ (ctx.config.fabric.lakehouseName),
-      modules: config.modules,
-      access: rlsSettings(ctx.config),
+      prices: priceParameters(config.prices),
     });
     writeFileSync(join(out, 'model.bim'), `${JSON.stringify(bim, null, 2)}\n`, 'utf8');
   }
-  if (withConsumptionModel) {
-    const bim = buildConsumptionModel(loadTemplateModel(/** @type {string} */ (sources.consumptionModelFile)), {
-      server: sm.server ?? 'your-endpoint.datawarehouse.fabric.microsoft.com',
-      database: /** @type {string} */ (ctx.config.fabric.lakehouseName),
-      access: rlsSettings(ctx.config),
-    });
-    writeFileSync(join(out, 'consumption-model.bim'), `${JSON.stringify(bim, null, 2)}\n`, 'utf8');
-  }
 
-  const models = [withModel ? 'model.bim' : '', withConsumptionModel ? 'consumption-model.bim' : ''].filter(Boolean);
   ui.heading('Preview written');
   ui.info(out);
-  ui.note(`Notebooks, pipeline-content.json, schedule.json${models.map((m) => `, ${m}`).join('')} and graph-permissions.txt, with placeholder IDs where none are known yet.`);
+  ui.note(`Notebooks, pipeline-content.json, schedule.json${withModel ? ', model.bim' : ''} and graph-permissions.txt, with placeholder IDs where none are known yet.`);
 }

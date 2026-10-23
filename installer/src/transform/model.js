@@ -1,23 +1,11 @@
 // @ts-check
 /**
- * Turns the ValueLens Power BI template (.pbit) into a semantic model definition for
- * Fabric: the template's own model, with its source parameters filled in.
+ * Turns the Consumption Central Fabric template (.pbit) into a semantic model definition for
+ * Fabric: the template's own model, with its parameters filled in.
  */
 import { readFileSync } from 'node:fs';
-import { SETUP_DIR } from '../catalog.js';
-import { currencySymbol } from '../currency.js';
-import { addAccessScope } from './access.js';
-import { addLoadLog } from './load-log.js';
 import { addCopilotPaygSpend } from './payg.js';
 import { readZipEntry } from './zip.js';
-
-/** The Consumption Central report, relative to the source folder. */
-export const MODEL_TEMPLATE = `${SETUP_DIR}/ValueLens - Fabric.pbit`;
-/** The credit consumption report from Consumption Central, relative to the source folder. */
-export const CONSUMPTION_TEMPLATE = `${SETUP_DIR}/Add Credit Consumption/Consumption Central - Fabric.pbit`;
-
-/** The table that has an incremental refresh policy. */
-export const AUDIT_TABLE = 'Chat + Agent Interactions (Audit Logs)';
 
 /**
  * `definition.pbism` for a model defined by model.bim.
@@ -80,6 +68,44 @@ export function setMParameter(model, name, value) {
 }
 
 /**
+ * A Power Query number literal.
+ * @param {number} value
+ */
+export function mNumber(value) {
+  if (!Number.isFinite(value)) throw new Error(`${value} is not a number Power Query can read.`);
+  return String(value);
+}
+
+/**
+ * Sets a Number parameter's value and keeps its `meta [...]` record.
+ * @param {ModelBim['model']} model
+ * @param {string} name
+ * @param {number} value
+ */
+export function setMNumberParameter(model, name, value) {
+  const expr = model.expressions?.find((e) => e.name === name);
+  if (!expr) throw new Error(`The model has no "${name}" parameter.`);
+  const text = Array.isArray(expr.expression) ? expr.expression.join('\n') : String(expr.expression);
+  const at = text.indexOf(' meta [');
+  if (at < 0) throw new Error(`"${name}" is not a parameter.`);
+  if (!/Type="Number"/.test(text.slice(at))) throw new Error(`"${name}" is not a Number parameter.`);
+  expr.expression = `${mNumber(value)}${text.slice(at)}`;
+}
+
+/**
+ * A Number parameter's value, or undefined when there's no such parameter.
+ * @param {ModelBim['model']} model
+ * @param {string} name
+ */
+export function mNumberParameter(model, name) {
+  const expr = model.expressions?.find((e) => e.name === name);
+  if (!expr) return undefined;
+  const text = Array.isArray(expr.expression) ? expr.expression.join('\n') : String(expr.expression);
+  const m = /^(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?) meta \[[^\]]*Type="Number"/.exec(text);
+  return m ? Number(m[1]) : undefined;
+}
+
+/**
  * @param {ModelBim['model']} model
  * @param {string} name
  */
@@ -95,66 +121,22 @@ export function mParameter(model, name) {
  * @typedef {object} ModelSettings
  * @property {string} server  The Lakehouse's SQL analytics endpoint.
  * @property {string} database  The Lakehouse name.
- * @property {import('../catalog.js').ModuleChoice} modules
- * @property {string} [currency]  The reporting currency's ISO code. The template's symbol stays when absent.
- * @property {AccessSettings} [access]  Org-scoped access. The model has no roles when absent.
+ * @property {Record<string, number>} [prices]  Number parameters to set, by name (see prices.js). The rest keep the template's values.
  */
 
-/** @typedef {{ orgAttribute?: string }} AccessSettings */
-
-/** The measure the report and the app read the reporting currency's symbol from. */
-export const CURRENCY_SYMBOL_MEASURE = 'Currency Symbol Value';
-
 /**
- * Points the currency symbol measure at the reporting currency.
- * @param {ModelBim['model']} model
- * @param {string} code
- */
-export function setCurrencySymbol(model, code) {
-  for (const table of model.tables ?? []) {
-    const measure = table.measures?.find((m) => m.name === CURRENCY_SYMBOL_MEASURE);
-    if (measure) measure.expression = `"${currencySymbol(code).replace(/"/g, '""')}"`;
-  }
-}
-
-/** Optional pages, switched by a model parameter. */
-const SWITCHES = /** @type {const} */ ([
-  ['Enable_ProductFeedback', 'productFeedback'],
-  ['Enable_Agent365', 'agent365'],
-]);
-
-/**
- * The model to deploy. The template is never modified.
+ * The model to deploy. The template reads every table through GetTable, which gives null for one
+ * that hasn't landed, so it deploys and refreshes before any data has. The template isn't modified.
  * @param {ModelBim} template
  * @param {ModelSettings} settings
  * @returns {ModelBim}
  */
 export function buildModel(template, settings) {
   const model = structuredClone(template.model);
-  setMParameter(model, 'Fabric SQL Endpoint', settings.server);
-  setMParameter(model, 'Lakehouse Name', settings.database);
-  for (const [parameter, module] of SWITCHES) {
-    if (model.expressions?.some((e) => e.name === parameter)) setMParameter(model, parameter, settings.modules[module] ? 'Include' : 'Exclude');
-  }
-  addLoadLog(model);
-  if (settings.currency) setCurrencySymbol(model, settings.currency);
-  if (settings.access) addAccessScope(model, 'valuelens', settings.access);
-  return { compatibilityLevel: template.compatibilityLevel, model };
-}
-
-/**
- * The credit consumption model. Every table in it is optional, so it deploys and
- * refreshes before any consumption data has landed.
- * @param {ModelBim} template
- * @param {{ server: string, database: string, access?: AccessSettings }} settings
- * @returns {ModelBim}
- */
-export function buildConsumptionModel(template, settings) {
-  const model = structuredClone(template.model);
   setMParameter(model, 'FabricSQLEndpoint', settings.server);
   setMParameter(model, 'LakehouseName', settings.database);
+  for (const [name, value] of Object.entries(settings.prices ?? {})) setMNumberParameter(model, name, value);
   addCopilotPaygSpend(model);
-  if (settings.access) addAccessScope(model, 'consumption', settings.access);
   return { compatibilityLevel: template.compatibilityLevel, model };
 }
 

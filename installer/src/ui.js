@@ -4,8 +4,8 @@
  * so a saved install record can be replayed without a person at the keyboard.
  */
 import { checkbox, confirm, input, password, select } from '@inquirer/prompts';
-import { inspectFile } from './staging.js';
-import { dataSource, MODE_LABELS, routedSources } from './uploads.js';
+import { inspectPath } from './staging.js';
+import { checkUploadSet, dataSource, MODE_LABELS, routedSources } from './uploads.js';
 
 const useColour = process.stdout.isTTY && !process.env.NO_COLOR;
 /** @param {string} code */
@@ -268,23 +268,35 @@ export function createUi(opts = {}) {
         if ((card.exportModes ?? ['csv']).includes(modes[card.id]) && card.export && !o.lockModes) line(`    ${c.dim(`Export: ${card.export.where} ${card.export.url}`)}`);
       }
       /** @type {import('./staging.js').PendingUpload[]} */
-      const files = [];
+      let files = [];
       if (yes || !routedSources(modes).length) return { modes, files };
       for (;;) {
         const path = await input({
-          message: files.length ? 'Another export to upload now (leave blank when done)' : 'Path to an export to upload now (leave blank to add them later)',
+          message: files.length
+            ? 'Another export, or a folder of them, to upload now (leave blank when done)'
+            : 'Path to an export, or a folder of them, to upload now (leave blank to add them later)',
           validate: (v) => {
             if (!v.trim()) return true;
-            const r = inspectFile(v, modes);
-            return r.ok ? true : r.error;
+            const r = inspectPath(v, modes);
+            if (!r.ok) return r.error;
+            const set = checkUploadSet([...files, ...r.files], { partial: true });
+            return set.ok ? true : set.error;
           },
         });
         if (!path.trim()) break;
-        const r = inspectFile(path, modes);
+        const r = inspectPath(path, modes);
         if (r.ok) {
-          files.push(r.file);
-          line(`    ${c.dim(`${r.file.name}: ${dataSource(r.file.source).label}`)}`);
+          files.push(...r.files);
+          for (const f of r.files) line(`    ${c.dim(`${f.name}: ${dataSource(f.source).label}`)}`);
+          for (const s of r.skipped) line(`    ${c.dim(`Skipped ${s}`)}`);
         }
+      }
+      const set = checkUploadSet(files);
+      if (set.ok) files = set.files;
+      else {
+        // Only a PeopleMetaData.csv without its export gets here: the rest are refused as they're added.
+        line(`  ${c.yellow('!')} ${set.error} It won't be uploaded.`);
+        files = files.filter((f) => f.kind !== 'coworkPeople');
       }
       return { modes, files };
     },
@@ -343,4 +355,13 @@ export function formatDuration(ms) {
   if (h) return `${h}h ${String(m).padStart(2, '0')}m`;
   if (m) return `${m}m ${String(r).padStart(2, '0')}s`;
   return `${r}s`;
+}
+
+/**
+ * Joins a short list the way the messages read: "a", "a and b", "a, b and c".
+ * @param {string[]} items
+ */
+export function listJoin(items) {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }

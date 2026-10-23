@@ -20,7 +20,6 @@ function setup(o = {}) {
   const fabric = fakeFabric();
   const ui = fakeUi({ answers: o.answers });
   const config = emptyConfig();
-  config.modules.consumption = true;
   config.dataSources.coworkCredits = 'api';
   const made = fakeCtx({ ui: ui.ui, fabric: fabric.api, config });
   return { ...made, fabric, ui };
@@ -171,9 +170,14 @@ test('ensureCoworkDataflow: without IDs, or when it cannot be made, Cowork credi
 });
 
 test('pipeline: the Dataflow is refreshed between the Studio and Viva loads, only when there is one', () => {
-  const ids = { auditIngester: 'a', licensedUsers: 'b', processor: 'c', orgData: 'd', refreshModel: 'e', studioConsumption: 'f', vivaConsumption: 'g' };
-  const modules = { orgData: true, agent365: false, productFeedback: false, consumption: true };
-  const doc = buildPipeline(realSources().pipeline, { workspaceId: 'ws-1', notebookIds: ids, modules, coworkDataflowId: 'df-1' });
+  const ids = { uploadRouter: 'r', studioConsumption: 'f', vivaConsumption: 'g', org: 'd', refreshModel: 'e', loadStatus: 'h' };
+  const dataSources = { ...emptyConfig().dataSources, coworkCredits: /** @type {const} */ ('api'), orgData: /** @type {const} */ ('csv') };
+  const catalog = realSources().catalog;
+  const doc = buildPipeline(catalog, { workspaceId: 'ws-1', notebookIds: ids, dataSources, modelId: 'model-1', coworkDataflowId: 'df-1' });
+  assert.deepEqual(
+    doc.properties.activities.map((/** @type {any} */ a) => a.name),
+    ['Run_Upload_Router', 'Run_Consumption_Studio', COWORK_WRAPPER_ACTIVITY, 'Run_Consumption_Viva', 'Run_Org_Data', 'Refresh_Consumption_Model', 'Record_Load_Status'],
+  );
   const step = findActivity(doc.properties.activities, COWORK_DATAFLOW_ACTIVITY);
   assert.equal(step.type, 'RefreshDataflow');
   assert.deepEqual(step.typeProperties, { workspaceId: 'ws-1', dataflowId: 'df-1', notifyOption: 'NoNotification', dataflowType: 'DataflowFabric' });
@@ -185,8 +189,10 @@ test('pipeline: the Dataflow is refreshed between the Studio and Viva loads, onl
   assert.deepEqual(wrapper.dependsOn, [{ activity: 'Run_Consumption_Studio', dependencyConditions: ['Completed'] }]);
   assert.deepEqual(findActivity(doc.properties.activities, 'Run_Consumption_Viva').dependsOn, [{ activity: COWORK_WRAPPER_ACTIVITY, dependencyConditions: ['Completed'] }]);
 
-  const without = buildPipeline(realSources().pipeline, { workspaceId: 'ws-1', notebookIds: ids, modules });
-  assert.ok(!without.properties.activities.some((/** @type {any} */ a) => a.name === COWORK_DATAFLOW_ACTIVITY));
+  const without = buildPipeline(catalog, { workspaceId: 'ws-1', notebookIds: ids, dataSources });
+  assert.ok(!findActivity(without.properties.activities, COWORK_DATAFLOW_ACTIVITY));
+  assert.ok(!without.properties.activities.some((/** @type {any} */ a) => a.name === COWORK_WRAPPER_ACTIVITY));
+  assert.deepEqual(findActivity(without.properties.activities, 'Run_Consumption_Viva').dependsOn, [{ activity: 'Run_Consumption_Studio', dependencyConditions: ['Completed'] }]);
 });
 
 test('flags: --studio-flow, --flow-environment and the Viva IDs go with install and fill the record', () => {

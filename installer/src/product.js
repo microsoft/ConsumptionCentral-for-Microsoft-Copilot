@@ -37,6 +37,8 @@ export const USER_AGENT = `${PRODUCT_TOKEN}Installer`;
 
 // This computer
 export const RECORD_FILE = `${PRODUCT_ID}-setup.json`;
+/** Written next to the record when an admin's step is handed off: what to send them. */
+export const ADMIN_PACK_FILE = `${PRODUCT_ID}-admin-pack.md`;
 /** Documents\Consumption Central, where the exe and install.ps1 start the installer, so the record lands there. */
 export const DOCUMENTS_FOLDER = PRODUCT_NAME;
 /** %LOCALAPPDATA%\ConsumptionCentral: the unpacked installer and the command install.ps1 leaves behind. */
@@ -53,6 +55,8 @@ export const ENV = Object.freeze({
   ZIP: `${ENV_PREFIX}_ZIP`,
   PROXY: `${ENV_PREFIX}_PROXY`,
   NO_UPDATE_CHECK: `${ENV_PREFIX}_NO_UPDATE_CHECK`,
+  /** The GitHub token, used instead of asking for it (with --yes, the only way to give one). It goes where tokenWhere says: Key Vault, or Ingest_GitHub_API. Never written to the install record. */
+  GITHUB_TOKEN: `${ENV_PREFIX}_GITHUB_TOKEN`,
 });
 /** The web app's light or dark choice, in the browser's local storage. */
 export const THEME_KEY = `${PRODUCT_ID}-theme`;
@@ -70,8 +74,12 @@ export const ITEM_PREFIX = `${PRODUCT_TOKEN}_`;
 export const APP_REGISTRATION = `${PRODUCT_NAME} (Fabric)`;
 export const VIEWER_GROUP = `${PRODUCT_NAME} Viewers`;
 export const SECRET_NAME = `${PRODUCT_ID}-client-secret`;
+/** The GitHub token's Key Vault secret, read by Ingest_GitHub_API at run time. */
+export const GITHUB_PAT_SECRET = `${PRODUCT_ID}-github-pat`;
 /** Lakehouse folders and the table the installer keeps its own state in. */
 export const INSTALLER_DIR = `Files/${PRODUCT_SNAKE}_installer`;
 export const UPLOAD_DIR = `Files/${PRODUCT_SNAKE}_uploads`;
 export const FLOWS_DIR = `Files/${PRODUCT_SNAKE}_flows`;
 export const UPLOAD_LOG_TABLE = `dbo.${PRODUCT_SNAKE}_upload_log`;
+/** On every notebook the pipeline runs, so they share Spark sessions. */
+export const SESSION_TAG = PRODUCT_SNAKE;

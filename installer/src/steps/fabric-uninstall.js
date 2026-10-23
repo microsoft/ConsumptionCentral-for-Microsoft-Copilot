@@ -2,9 +2,15 @@
 /**
  * Uninstall on Fabric: the workspace, after its managed private endpoints, which Fabric won't
  * delete a workspace without, then the model's SQL connection, which lives outside the workspace.
+ * The app registration, Key Vault and GitHub token can serve more than this install, so they stay,
+ * and the closing note says what to remove.
  */
 import { secretMode } from '../config.js';
 import { HttpError } from '../http.js';
+import { PRODUCT_NAME } from '../product.js';
+import { listJoin } from '../ui.js';
+import { revokeHint } from './github.js';
+import { keptSecrets } from './identity.js';
 
 /** @typedef {import('../install.js').Ctx} Ctx */
 
@@ -70,6 +76,23 @@ async function deleteModelConnection(ctx) {
 }
 
 /**
+ * What the uninstall leaves, for its closing note: the things that can serve more than this install.
+ * @param {import('../config.js').InstallConfig} config
+ * @returns {string[]}
+ */
+export function leftAlone(config) {
+  const left = [];
+  if (config.app.appId) left.push(`the app registration ${config.app.displayName ?? config.app.appId} with its permissions and roles`);
+  if (secretMode(config) !== 'notebook' && (config.keyVault.id || config.keyVault.uri)) {
+    const vault = `the Key Vault${config.keyVault.name ? ` ${config.keyVault.name}` : ''}`;
+    const kept = keptSecrets(config);
+    left.push(kept.length ? `${vault} (${listJoin(kept)})` : vault);
+  }
+  left.push('any Power Automate flows that land exports in its Lakehouse');
+  return left;
+}
+
+/**
  * Deletes the Fabric workspace and everything in it, managed private endpoints first. Asks first,
  * and by default leaves a workspace the installer didn't create.
  * @param {Ctx} ctx
@@ -80,7 +103,7 @@ export async function fabricUninstall(ctx) {
   const f = config.fabric;
   if (!f.workspaceId) throw new Error('Nothing is installed yet.');
   const name = f.workspaceName ?? f.workspaceId;
-  ui.heading('Uninstalling Consumption Central on Fabric');
+  ui.heading(`Uninstalling ${PRODUCT_NAME} on Fabric`);
   const sure = await ui.confirm(
     f.createdWorkspace
       ? `Delete workspace "${name}" and everything in it, including the Lakehouse data?`
@@ -100,10 +123,11 @@ export async function fabricUninstall(ctx) {
     ui.ok(`Workspace "${name}" was already gone`);
   }
   await deleteModelConnection(ctx);
-  ui.note(
-    `Left alone: the app registration ${config.app.displayName ?? config.app.appId ?? ''}, ${secretMode(config) === 'notebook' ? '' : 'the Key Vault and its secret, '}any Power Automate flows, ` +
-      'and the other roles it was given. Remove them yourself if nothing else uses them.',
-  );
+  ui.note(`Left alone: ${listJoin(leftAlone(config))}. Remove them yourself if nothing else uses them.`);
+  const gh = config.github;
+  if (config.dataSources.github === 'api' && gh?.tokenSetAt) {
+    ui.note(`The GitHub token still works${gh.tokenExpires ? ` until ${gh.tokenExpires.slice(0, 10)}` : ''}. Once nothing else uses it, ${revokeHint()}`);
+  }
   ui.note('The install record still names the deleted workspace. Move it aside before installing again.');
   return true;
 }

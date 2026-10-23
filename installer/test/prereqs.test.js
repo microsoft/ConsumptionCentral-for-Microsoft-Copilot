@@ -61,7 +61,8 @@ test('checkPrereqs: a well-equipped admin meets everything; each item says what 
   assert.equal(byId['consent-role'].status, 'met');
   assert.match(byId['consent-role'].detail, /Active: Global Administrator/);
   assert.equal(byId['fabric-admin'].status, 'met');
-  assert.equal(byId['power-platform-admin'].status, 'missing');
+  assert.equal(byId['power-platform-admin'].status, 'met', 'a Global Administrator can sign in to the licensing connection');
+  assert.match(byId['power-platform-admin'].detail, /Active: Global Administrator/);
   assert.equal(byId['register-apps'].status, 'met');
   assert.equal(byId['power-bi-pro'].status, 'met');
   assert.equal(byId['fabric-capacity'].status, 'met');
@@ -140,17 +141,43 @@ test('checkPrereqs: the install\'s subscription is checked first; no Azure at al
   assert.equal(none['key-vault'].optional, true, 'no Key Vault is a choice on Fabric');
 });
 
-test('checkPrereqs: System Administrator per environment; a failing check is "couldn\'t check"', async () => {
+test('checkPrereqs: the Studio flow\'s licensing connection takes a Power Platform, Billing or Global Administrator', async () => {
+  const billing = await run({ roles: [{ roleTemplateId: 'b0f54661-2d74-4c50-afa3-1ec803f12efe', displayName: 'Billing Administrator' }] });
+  assert.equal(billing['power-platform-admin'].status, 'met');
+  assert.match(billing['power-platform-admin'].detail, /Active: Billing Administrator/);
+  assert.match(billing['power-platform-admin'].neededFor, /^Only the Power Automate flow for Copilot Studio credits/);
+  assert.doesNotMatch(`${billing['power-platform-admin'].neededFor} ${billing['power-platform-admin'].howTo}`, /System Administrator|Adding the app/);
+
+  const none = await run({ roles: [] });
+  assert.equal(none['power-platform-admin'].status, 'missing');
+  assert.match(none['power-platform-admin'].detail, /^You don't have Power Platform Administrator, Billing Administrator or Global Administrator active\./);
+  assert.match(none['consent-role'].detail, /^You don't have Global Administrator or Privileged Role Administrator active\./);
+  assert.match(none['power-platform-admin'].howTo, /CSV exports/);
+});
+
+test('checkPrereqs: environments: a System Administrator can make flows; anyone else is "couldn\'t tell", since Environment Maker is enough', async () => {
   const r = await run({
     envs: [
       { Url: 'https://a.crm.dynamics.com', FriendlyName: 'Dev', State: 0, IsUserSysAdmin: false },
-      { Url: 'https://b.crm.dynamics.com', FriendlyName: 'Prod', State: 0, IsUserSysAdmin: false },
+      { Url: 'https://b.crm.dynamics.com', FriendlyName: 'Prod', State: 0 },
     ],
     capacities: [{ id: 'p1', displayName: 'Premium', sku: 'P1', state: 'Active' }, { id: 'f2', displayName: 'Paused', sku: 'F2', state: 'Paused' }],
   });
-  assert.equal(r.environments.status, 'missing');
-  assert.deepEqual(r.environments.rows?.map((x) => x.status), ['missing', 'missing']);
+  assert.equal(r.environments.status, 'unknown', 'not being a System Administrator doesn\'t mean you can\'t make flows');
+  assert.deepEqual(r.environments.rows?.map((x) => x.status), ['unknown', 'unknown']);
+  assert.match(r.environments.rows?.[0].detail ?? '', /Not a System Administrator\. Environment Maker is enough/);
+  assert.equal(r.environments.rows?.[1].detail, 'Couldn\'t tell');
+  assert.match(r.environments.detail, /You have access to 2 environments, but couldn't tell .*Environment Maker or higher/);
+  assert.match(r.environments.neededFor, /^Only the Power Automate flow for Copilot Studio credits/);
   assert.equal(r['fabric-capacity'].status, 'met', 'a P SKU runs Fabric');
+
+  const admin = await run({});
+  assert.equal(admin.environments.status, 'met');
+  assert.match(admin.environments.detail, /^System Administrator in 1 of 1 environment, so you can make flows there\./);
+
+  const none = await run({ envs: [{ Url: 'https://off.crm.dynamics.com', FriendlyName: 'Off', State: 1, IsUserSysAdmin: true }] });
+  assert.equal(none.environments.status, 'missing', 'a disabled environment doesn\'t count');
+  assert.match(none.environments.howTo, /file to import|CSV exports/);
 
   const noCap = await run({ capacities: [{ id: 'a1', displayName: 'Embedded', sku: 'A1', state: 'Active' }] });
   assert.equal(noCap['fabric-capacity'].status, 'missing');
@@ -187,12 +214,25 @@ test('graph and ARM lookups keep only rows for the signed-in user\'s principals,
   assert.equal(queries[2][1].$filter, 'asTarget()');
 });
 
-test('checkPrereqs: Fabric administrator says plainly it is only needed when the tenant settings are off', async () => {
+test('checkPrereqs: Fabric administrator says plainly it is only needed when the tenant setting is off', async () => {
   const r = await run({ roles: [], eligible: async () => [{ roleDefinitionId: FABRIC_ADMIN_ROLE, principalId: USER.id }] });
-  assert.match(r['fabric-admin'].label, /only needed if the tenant settings below are off/);
+  assert.match(r['fabric-admin'].label, /only needed if the tenant setting below is off/);
   assert.equal(r['fabric-admin'].status, 'eligible');
   assert.match(r['fabric-admin'].detail, /You can activate this role in Entra \(Privileged Identity Management\)/);
   for (const i of Object.values(r)) assert.doesNotMatch(`${i.label} ${i.detail} ${i.howTo}`, /PIM-eligible/, i.id);
+});
+
+test("checkPrereqs: tenant settings flag the model connection's setting, not the Power BI SDK visuals one the report doesn't use", async () => {
+  const settings = (/** @type {boolean} */ apisOn) => async () => [
+    { settingName: 'ServicePrincipalAccessPermissionAPIs', enabled: apisOn },
+    { settingName: 'CustomVisualsTenant', enabled: false },
+  ];
+  const on = await run({ tenantSettings: settings(true) });
+  assert.equal(on['tenant-settings'].status, 'met');
+  assert.equal(on['tenant-settings'].detail, 'The setting Consumption Central needs is on.');
+  const off = await run({ tenantSettings: settings(false) });
+  assert.equal(off['tenant-settings'].status, 'missing');
+  assert.equal(off['tenant-settings'].detail, 'Off: Service principals can call Fabric public APIs.');
 });
 
 test('checkPrereqs: Power Automate Premium is optional, needed only for the flows, and read from your own licences', async () => {

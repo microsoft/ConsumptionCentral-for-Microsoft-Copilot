@@ -10,8 +10,8 @@ import {
   CONNECT_POLL_MS,
   CONNECT_POLLS,
   CONNECTION_NAMES,
+  connectFlows,
   ensureFlows,
-  FEEDBACK_EXPORT_URL,
   FLOW_FILES,
   flowDefinitions,
   flowsSkipped,
@@ -31,8 +31,6 @@ import {
   isBound,
   CONNECTORS,
   connectorsUsed,
-  FEEDBACK_FLOW_NAME,
-  feedbackFlowDefinition,
   FLOW_STATE_DIR,
   flowClientData,
   flowFile,
@@ -45,7 +43,7 @@ import {
   STUDIO_FLOW_NAME,
   studioFlowDefinition,
 } from '../src/transform/flows.js';
-import { detectSource, UPLOAD_DIR } from '../src/uploads.js';
+import { DATA_SOURCES, detectSource, routedSources, routerWanted, STUDIO_DIR, UPLOAD_DIR } from '../src/uploads.js';
 import { fakeConnections, fakeCtx, fakeFabric, fakeUi } from './fakes.js';
 
 const ENDPOINT = oneLakeEndpoint('ws-guid', 'lh-guid');
@@ -54,7 +52,7 @@ const USER = { endpoint: ENDPOINT };
 /** @type {import('../src/transform/flows.js').FlowTarget} */
 const APP = { identity: 'app', endpoint: ENDPOINT, tenantId: 't-1', clientId: 'c-1', secretName: 'my-secret' };
 const SCHEDULE = { time: '02:00', timeZone: 'GMT Standard Time' };
-const tmp = mkdtempSync(join(tmpdir(), 'ah-flows-test-'));
+const tmp = mkdtempSync(join(tmpdir(), 'consumption-central-flows-test-'));
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
 /** Every action in a definition, nested ones included. @param {any} actions @returns {[string, any][]} */
@@ -89,45 +87,6 @@ const kindOf = (/** @type {string[]} */ headers) => {
 test('hourBefore: an hour before the pipeline, wrapping past midnight', () => {
   assert.deepEqual(hourBefore('02:30'), { hours: [1], minutes: [30] });
   assert.deepEqual(hourBefore('00:15'), { hours: [23], minutes: [15] });
-});
-
-test('feedbackFlowDefinition: as a user, creates then writes the file in OneLake, with no Key Vault and no secret', () => {
-  const def = feedbackFlowDefinition(USER);
-  assertWellFormed(def);
-  const actions = Object.fromEntries(allActions(def.actions));
-  assert.equal(actions.Get_client_secret, undefined);
-  assert.deepEqual(actions.For_each_attachment.runAfter, {});
-  assert.equal(actions.Save_to_drop_folder.type, 'Scope');
-  const create = actions.Save_to_drop_folder_create.inputs;
-  const write = actions.Save_to_drop_folder_write.inputs;
-  assert.equal(create.host.connectionName, CONNECTORS.storage.name);
-  assert.equal(create.host.apiId, '/providers/Microsoft.PowerApps/apis/shared_webcontents');
-  assert.equal(create.parameters['request/method'], 'PUT');
-  assert.equal(create.parameters['request/url'], `https://onelake.dfs.fabric.microsoft.com/ws-guid/lh-guid/${UPLOAD_DIR}/@{outputs('Save_to_drop_folder_path')}?resource=file`);
-  assert.equal(write.parameters['request/method'], 'PATCH');
-  assert.match(write.parameters['request/url'], /\?action=append&position=0&flush=true$/);
-  assert.equal(write.parameters['request/body'], "@base64ToString(items('For_each_attachment')?['contentBytes'])");
-  assert.ok(write.parameters['request/headers']['x-ms-version']);
-  assert.deepEqual(actions.Save_to_drop_folder_write.runAfter, { Save_to_drop_folder_create: ['Succeeded'] });
-  assert.deepEqual(actions.Save_to_drop_folder_write.runtimeConfiguration.secureData.properties, ['inputs']);
-  assert.match(actions.Save_to_drop_folder_path.inputs, /utcNow/, 'the name is worked out once, so both calls hit the same file');
-  assert.deepEqual(connectorsUsed(def), [CONNECTORS.outlook.name, CONNECTORS.storage.name].sort());
-  assert.ok(!/keyvault|ClientSecret|secret/i.test(JSON.stringify(def)));
-});
-
-test('feedbackFlowDefinition: as the app, writes a block blob with the secret from Key Vault', () => {
-  const def = feedbackFlowDefinition(APP);
-  assertWellFormed(def);
-  const actions = Object.fromEntries(allActions(def.actions));
-  const put = actions.Save_to_drop_folder;
-  assert.equal(put.type, 'Http');
-  assert.ok(put.inputs.uri.startsWith(`https://onelake.blob.fabric.microsoft.com/ws-guid/lh-guid/${UPLOAD_DIR}/`));
-  assert.equal(put.inputs.headers['x-ms-blob-type'], 'BlockBlob');
-  assert.equal(put.inputs.authentication.secret, "@body('Get_client_secret')?['value']");
-  assert.equal(put.inputs.authentication.clientId, 'c-1');
-  assert.equal(actions.Get_client_secret.inputs.parameters.secretName, 'my-secret');
-  assert.deepEqual(actions.Get_client_secret.runtimeConfiguration.secureData.properties, ['inputs', 'outputs'], 'the secret stays out of run history');
-  assert.deepEqual(connectorsUsed(def), [CONNECTORS.keyVault.name, CONNECTORS.outlook.name].sort());
 });
 
 test('studioFlowDefinition: as a user, two HTTP connections, no Key Vault, and CSVs the router recognises', () => {
@@ -223,7 +182,6 @@ test('nameByConnection: each action on an HTTP with Microsoft Entra ID connectio
   const studio = check(studioFlowDefinition(USER, SCHEDULE), USER, 'via_OneLake');
   assert.ok(studio.has('Reset_token') && studio.has('Reset_user_token'));
   const adls = { endpoint: 'https://acct.dfs.core.windows.net/landing' };
-  check(feedbackFlowDefinition(adls), adls, 'via_Azure_Storage');
   check(studioFlowDefinition(adls, SCHEDULE), adls, 'via_Azure_Storage');
 });
 
@@ -233,6 +191,34 @@ test('the writer takes any DFS endpoint: an ADLS Gen2 container works too', () =
   assert.equal(user.Save_entitlement_create.inputs.parameters['request/url'], `${endpoint}/uploads/@{outputs('Save_entitlement_path')}?resource=file`);
   const app = Object.fromEntries(allActions(studioFlowDefinition({ ...APP, endpoint, dropDir: 'uploads' }, SCHEDULE).actions));
   assert.ok(app.Save_entitlement.inputs.uri.startsWith('https://acct.blob.core.windows.net/landing/uploads/StudioApiEntitlement_'));
+});
+
+test('the Studio flow saves to the drop folder, and the router lands its files in Files/landing/studio', () => {
+  const actions = Object.fromEntries(allActions(studioFlowDefinition(USER, SCHEDULE).actions));
+  for (const save of ['Save_agent_credits', 'Save_user_credits', 'Save_entitlement']) {
+    assert.equal(actions[`${save}_create`].inputs.parameters['request/url'], `${ENDPOINT}/${UPLOAD_DIR}/@{outputs('${save}_path')}?resource=file`);
+  }
+  const files = {
+    studioAgentDaily: Object.keys(actions.Rows.inputs.select),
+    studioUserDaily: Object.keys(actions.User_page_rows.inputs.select),
+    studioEntitlement: Object.keys(actions.Entitlement_rows.inputs.variables[0].value[0]),
+  };
+  assert.equal(STUDIO_DIR, 'Files/landing/studio');
+  for (const [kind, headers] of Object.entries(files)) {
+    const d = detectSource(headers);
+    if (!d.ok) assert.fail(`${kind}: ${d.reason}`);
+    assert.equal(d.kind.kind, kind);
+    assert.equal(d.kind.source, 'studioCredits');
+    assert.equal(d.kind.dir, 'Files/landing/studio', `${kind} lands where Copilot Studio credits are read from`);
+  }
+
+  const { config } = fakeCtx();
+  config.dataSources = { ...config.dataSources, studioCredits: 'api', coworkCredits: 'skip' };
+  assert.ok(routedSources(config.dataSources).includes('studioCredits'));
+  assert.ok(routerWanted(config.dataSources), 'the router is deployed with the flow, to move its files');
+  const deployed = flowDefinitions(config, 'tenant-1').studio;
+  assert.match(JSON.stringify(deployed.definition), new RegExp(`onelake\\.dfs\\.fabric\\.microsoft\\.com/ws-1/lh-1/${UPLOAD_DIR}/`));
+  assert.match(deployed.description, new RegExp(`to ValueLens > ${UPLOAD_DIR} each day\\. Created by the Consumption Central installer\\.$`));
 });
 
 test('flowClientData and flowFile: a reference per connection, and an update keeps the sign-ins it can', () => {
@@ -261,24 +247,26 @@ test('flowClientData and flowFile: a reference per connection, and an update kee
   assert.deepEqual(connectionReferencesOf('not json'), {});
 });
 
-test("flowsWanted: each source's Power Automate mode brings its flow; Upload CSV has none", () => {
+test("flowsWanted: only Copilot Studio credits' Power Automate mode brings a flow; Upload CSV and skip have none", () => {
   const { config } = fakeCtx();
+  assert.deepEqual(flowsWanted(config), [], 'Upload CSV, the default, has no flow');
+  config.dataSources.studioCredits = 'skip';
   assert.deepEqual(flowsWanted(config), []);
-  config.dataSources.productFeedback = 'csv';
-  config.dataSources.studioCredits = 'csv';
-  assert.deepEqual(flowsWanted(config), [], 'Upload CSV has no flow');
-  config.dataSources.productFeedback = 'api';
-  assert.deepEqual(flowsWanted(config), ['feedback']);
+  for (const s of DATA_SOURCES) if (s.id !== 'studioCredits' && s.modes.includes('api')) config.dataSources[s.id] = 'api';
+  assert.deepEqual(flowsWanted(config), [], "no other source's API brings a flow");
   config.dataSources.studioCredits = 'api';
-  assert.deepEqual(flowsWanted(config), ['feedback', 'studio']);
+  assert.deepEqual(flowsWanted(config), ['studio']);
 
-  // The secret in the notebooks no longer rules the flows out: they sign in themselves.
+  // The secret in the notebooks no longer rules the flow out: it signs in itself.
   config.keyVault.mode = 'notebook';
-  assert.deepEqual(flowsWanted(config), ['feedback', 'studio']);
+  assert.deepEqual(flowsWanted(config), ['studio']);
   assert.deepEqual(flowsSkipped(config), []);
   config.uploads.flowIdentity = 'app';
   assert.deepEqual(flowsWanted(config), []);
-  assert.deepEqual(flowsSkipped(config), [FEEDBACK_FLOW_NAME, STUDIO_FLOW_NAME]);
+  assert.deepEqual(flowsSkipped(config), [STUDIO_FLOW_NAME]);
+  delete config.keyVault.mode;
+  assert.deepEqual(flowsWanted(config), ['studio'], 'the app identity reads its secret from Key Vault');
+  assert.deepEqual(flowsSkipped(config), []);
 });
 
 test('flowDefinitions: the user identity by default, the app on request', () => {
@@ -292,7 +280,7 @@ test('flowDefinitions: the user identity by default, the app on request', () => 
   assert.match(JSON.stringify(app), /"clientId":"app-1"/);
 });
 
-test('planFlows: no follow-up about the feedback flow, just the environment from the list', async () => {
+test('planFlows: with the Studio flow, just the environment from the list; without it, no questions', async () => {
   const { ui, asked } = fakeUi({ answers: ['https://org2.crm.dynamics.com'] });
   const discovery = {
     instances: async () => [
@@ -301,18 +289,22 @@ test('planFlows: no follow-up about the feedback flow, just the environment from
     ],
   };
   const { ctx, config } = fakeCtx({ ui, discovery });
-  config.dataSources.productFeedback = 'api';
   config.dataSources.studioCredits = 'api';
   await planFlows(ctx);
-  assert.equal(asked.length, 1);
+  assert.deepEqual(asked, ['Which Power Platform environment should the flows go in?']);
   assert.deepEqual(config.uploads.flowEnvironment, { url: 'https://org2.crm.dynamics.com', id: 'env-2', name: 'Ops' });
 
-  // No flow mode, no questions.
-  const quiet = fakeUi();
-  const { ctx: ctx2, config: config2 } = fakeCtx({ ui: quiet.ui });
-  config2.dataSources.productFeedback = 'csv';
-  await planFlows(ctx2);
-  assert.equal(quiet.asked.length, 0);
+  // No flow mode, no questions, and no look at the environments.
+  for (const mode of /** @type {const} */ (['csv', 'skip'])) {
+    const quiet = fakeUi();
+    let looked = 0;
+    const { ctx: ctx2, config: config2 } = fakeCtx({ ui: quiet.ui, discovery: { instances: async () => (looked++, []) } });
+    config2.dataSources.studioCredits = mode;
+    await planFlows(ctx2);
+    assert.equal(quiet.asked.length, 0, mode);
+    assert.equal(looked, 0, mode);
+    assert.equal(config2.uploads.flowEnvironment, undefined, mode);
+  }
 });
 
 test('planFlows: the tenant\'s default environment is preselected, not the first by name, with a hint about DLP and Premium', async () => {
@@ -362,7 +354,7 @@ function fakeDataverse(fail = false) {
         calls.push(`createFlow ${f.name}`);
         if (fail) throw new HttpError('403 No privilege', { method: 'POST', url: 'https://org/api/data/v9.2/workflows', status: 403 });
         const id = `flow-${++n}`;
-        flows.set(id, { workflowid: id, name: f.name, statecode: 0, clientdata: f.clientdata });
+        flows.set(id, { workflowid: id, name: f.name, description: f.description, statecode: 0, clientdata: f.clientdata });
         return id;
       },
       async getFlow(/** @type {string} */ id) {
@@ -398,36 +390,41 @@ function signIn(dv, id) {
   flow.statecode = 1;
 }
 
-test('ensureFlows: as a user, grants nothing, creates each flow once, and updates it keeping its sign-ins', async () => {
+test('ensureFlows: as a user, grants nothing, creates the flow once, updates it keeping its sign-ins, and makes it again if deleted', async () => {
   const fabric = fakeFabric();
   const dv = fakeDataverse();
   const { ui, text } = fakeUi();
   const { ctx, config } = fakeCtx({ ui, fabric: fabric.api, dataverse: () => dv.api });
-  config.dataSources.productFeedback = 'api';
-  config.dataSources.studioCredits = 'api';
   config.uploads = { flowEnvironment: { url: 'https://org1.crm.dynamics.com', id: 'env-1', name: 'Default' } };
+  await ensureFlows(ctx);
+  assert.deepEqual(dv.calls, [], 'no flow while Copilot Studio credits are uploaded');
+  assert.equal(config.uploads.flowIds?.studio, undefined);
 
+  config.dataSources.studioCredits = 'api';
   await ensureFlows(ctx);
   assert.deepEqual(fabric.calls, [], 'the person who signs in brings their own workspace role');
-  assert.deepEqual(dv.calls, [`createFlow ${FEEDBACK_FLOW_NAME}`, `createFlow ${STUDIO_FLOW_NAME}`]);
-  assert.deepEqual(config.uploads.flowIds, { feedback: 'flow-1', studio: 'flow-2' });
-  assert.ok(JSON.parse(dv.flows.get('flow-2').clientdata).properties.definition.triggers.Daily);
+  assert.deepEqual(dv.calls, [`createFlow ${STUDIO_FLOW_NAME}`]);
+  assert.deepEqual(config.uploads.flowIds, { studio: 'flow-1' });
+  assert.ok(JSON.parse(dv.flows.get('flow-1').clientdata).properties.definition.triggers.Daily);
+  assert.match(dv.flows.get('flow-1').description, /Created by the Consumption Central installer\.$/);
+  assert.match(text(), /Created the flow Consumption Central - Copilot Studio credits, turned off until it is signed in to its connections/);
 
   await ensureFlows(ctx);
-  assert.equal(dv.calls.length, 2, 'a repair with nothing changed leaves the flows, and their sign-ins, alone');
+  assert.equal(dv.calls.length, 1, 'a repair with nothing changed leaves the flow, and its sign-ins, alone');
 
-  signIn(dv, 'flow-2');
+  signIn(dv, 'flow-1');
   config.schedule.time = '05:00';
   await ensureFlows(ctx);
-  assert.deepEqual(dv.calls.slice(2), [`updateFlow ${STUDIO_FLOW_NAME}`], 'no new connection: left on');
-  const refs = connectionReferencesOf(dv.flows.get('flow-2').clientdata);
+  assert.deepEqual(dv.calls.slice(1), [`updateFlow ${STUDIO_FLOW_NAME}`], 'no new connection: left on');
+  const refs = connectionReferencesOf(dv.flows.get('flow-1').clientdata);
   assert.deepEqual(refs.shared_webcontents_storage.connection, { name: 'shared_webcontents_storage-conn' });
-  assert.equal(dv.flows.get('flow-2').statecode, 1);
+  assert.equal(dv.flows.get('flow-1').statecode, 1);
 
   dv.flows.delete('flow-1');
   await ensureFlows(ctx);
   assert.match(text(), /was deleted\. Creating it again/);
-  assert.equal(config.uploads.flowIds.feedback, 'flow-3');
+  assert.equal(dv.calls.at(-1), `createFlow ${STUDIO_FLOW_NAME}`);
+  assert.equal(config.uploads.flowIds.studio, 'flow-2');
 });
 
 test('ensureFlows: a repair moves an app flow to the user identity, turning it off until OneLake is signed in to', async () => {
@@ -517,21 +514,21 @@ test('ensureFlows: when the flow can\'t be created, it is written to a file to i
   const { ui, text } = fakeUi();
   const { ctx, config } = fakeCtx({ ui, fabric: fabric.api, dataverse: () => dv.api });
   ctx.configFile = join(tmp, 'consumption-central-setup.json');
-  config.dataSources.productFeedback = 'api';
+  config.dataSources.studioCredits = 'api';
   config.uploads = { flowEnvironment: { url: 'https://org1.crm.dynamics.com' } };
 
   await ensureFlows(ctx);
-  const file = join(tmp, FLOW_FILES.feedback);
-  assert.equal(config.uploads.flowFiles?.feedback, file);
+  const file = join(tmp, FLOW_FILES.studio);
+  assert.equal(config.uploads.flowFiles?.studio, file, 'beside the install record');
   assert.ok(existsSync(file));
   const written = JSON.parse(readFileSync(file, 'utf8'));
-  assert.equal(written.name, FEEDBACK_FLOW_NAME);
-  assert.ok(written.definition.triggers.When_a_new_email_arrives_V3);
+  assert.equal(written.name, STUDIO_FLOW_NAME);
+  assert.ok(written.definition.triggers.Daily);
   assert.match(written.$comment, /for OneLake/);
   assert.match(text(), /Couldn't create the flow .*No privilege/);
 
   flowsSummary(ctx);
-  assert.match(text(), new RegExp(`to import: .*${FLOW_FILES.feedback}`));
+  assert.match(text(), new RegExp(`to import: .*${FLOW_FILES.studio}`));
 });
 
 test('flowsSummary: short numbered steps for each connection; the private vault note only for the app identity', () => {
@@ -981,21 +978,37 @@ test('ensureFlows: reuses signed-in connections by name, and deletes only its ow
   assert.doesNotMatch(text(), /theirs-stale/);
 });
 
-test('ensureFlows: the feedback flow gets its OneLake connection but stays off for Outlook, with the admin center link', async () => {
-  const conns = fakeConnections({ signsIn: true });
-  const { ui, text } = fakeUi({ answers: ['check'] });
-  const { ctx, config, pa } = connectCtx({ ui, conns });
-  config.dataSources.studioCredits = 'skip';
-  config.dataSources.productFeedback = 'api';
+test('connectFlows: a flow already on counts as signed in; Studio credits from uploads, a flow written to a file or no environment does nothing', async () => {
+  /** @param {(config: import('../src/config.js').InstallConfig) => void} [change] */
+  const attempt = async (change) => {
+    const conns = fakeConnections();
+    const ui = fakeUi();
+    const t = connectCtx({ ui: ui.ui, conns });
+    t.dv.flows.set('flow-1', { workflowid: 'flow-1', name: STUDIO_FLOW_NAME, statecode: 1, clientdata: flowClientData(studioFlowDefinition(USER, SCHEDULE)) });
+    t.config.uploads.flowIds = { studio: 'flow-1' };
+    change?.(t.config);
+    const on = await connectFlows(t.ctx);
+    return { on: [...on], conns, pa: t.pa, config: t.config, asked: ui.asked };
+  };
+  const started = await attempt();
+  assert.deepEqual(started.on, ['studio']);
+  assert.deepEqual(started.config.uploads.flowsConnected, { studio: 'flow-1' });
+  assert.deepEqual(started.pa.calls, ['getFlowDetails flow-1']);
+  assert.deepEqual(started.conns.calls, [], 'no connection to make or sign in to');
+  assert.deepEqual(started.asked, []);
 
-  await ensureFlows(ctx);
-  assert.deepEqual(conns.calls.filter((x) => x.startsWith('create')), [`create ${CONNECTION_NAMES.oneLake}`]);
-  assert.ok(!pa.calls.some((x) => x.startsWith('setConnections')));
-  assert.match(text(), /product feedback also needs Office 365 Outlook, which only Power Automate can sign in to/i);
-  assert.match(text(), /To finish .*product feedback/i);
-  assert.ok(text().includes(`Schedule the product feedback export to that mailbox, subject "`));
-  assert.ok(text().includes(FEEDBACK_EXPORT_URL));
-  assert.doesNotMatch(text(), /next daily load/);
+  /** @type {[string, (config: import('../src/config.js').InstallConfig) => void][]} */
+  const none = [
+    ['Studio credits uploaded', (c) => { c.dataSources.studioCredits = 'csv'; }],
+    ['a flow written to a file', (c) => { c.uploads.flowFiles = { studio: 'x.json' }; }],
+    ['no environment', (c) => { delete c.uploads.flowEnvironment; }],
+  ];
+  for (const [why, change] of none) {
+    const r = await attempt(change);
+    assert.deepEqual(r.on, [], why);
+    assert.deepEqual([...r.pa.calls, ...r.conns.calls], [], why);
+    assert.equal(r.config.uploads.flowsConnected, undefined, why);
+  }
 });
 
 test('ensureFlows: when the connections can\'t be made or bound, it says so and gives the steps', async () => {

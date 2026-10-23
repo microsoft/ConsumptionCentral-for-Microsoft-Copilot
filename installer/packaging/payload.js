@@ -3,15 +3,13 @@
  * What goes into ConsumptionCentralInstaller.exe, kept apart from the build so it can be tested.
  * The payload unpacks to:
  *   node/node.exe            Node.js, which runs everything below
- *   f/installer/             the installer, with its production dependencies
- *   f/<templates>            the notebooks, pipeline and semantic model templates it deploys
+ *   f/installer/             the installer, with its production dependencies and helper notebooks
+ *   f/<templates>            installer-assets.json and the notebooks and template it lists
  * `f` stands in for the repo root, which keeps paths short when unpacked under the user's profile.
  */
 import { posix } from 'node:path';
-import { NOTEBOOKS, NOTEBOOKS_DIR } from '../src/catalog.js';
+import { MANIFEST_FILE, resolveNotebooks } from '../src/catalog.js';
 import { EXE_NAME } from '../src/product.js';
-import { PIPELINE_TEMPLATE } from '../src/sources.js';
-import { CONSUMPTION_TEMPLATE, MODEL_TEMPLATE } from '../src/transform/model.js';
 
 export { EXE_NAME };
 /** The source folder (the repo root) inside the payload. */
@@ -35,15 +33,16 @@ export { MIRROR_REGISTRY, PUBLIC_REGISTRY, publicRegistry } from './registry.js'
 const slash = (p) => p.replaceAll('\\', '/');
 
 /**
- * The files under the source folder that `loadSources` reads, relative to it.
+ * The files under the source folder that `loadSources` reads, relative to it. The helper notebooks
+ * ship under the installer folder instead (`installerFile`).
+ * @param {any} manifest  installer-assets.json
  * @returns {string[]}
  */
-export function sourceFiles() {
+export function sourceFiles(manifest) {
   return [
-    PIPELINE_TEMPLATE,
-    ...NOTEBOOKS.map((nb) => posix.join(nb.dir ?? NOTEBOOKS_DIR, nb.file)),
-    MODEL_TEMPLATE,
-    CONSUMPTION_TEMPLATE,
+    MANIFEST_FILE,
+    ...resolveNotebooks(manifest).filter((nb) => !nb.asset).map((nb) => posix.normalize(slash(nb.path))),
+    manifest.templates.fabric.path,
   ].map(slash);
 }
 
@@ -52,7 +51,7 @@ export function sourceFiles() {
  * @param {string} rel
  */
 export function installerFile(rel) {
-  return /^(bin|src)\//.test(rel) || ['package.json', 'package-lock.json', 'README.md'].includes(rel);
+  return /^(assets|bin|src)\//.test(rel) || ['package.json', 'package-lock.json', 'README.md'].includes(rel);
 }
 
 /**

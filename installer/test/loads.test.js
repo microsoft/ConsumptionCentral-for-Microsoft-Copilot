@@ -1,100 +1,127 @@
 // @ts-check
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { fileURLToPath } from 'node:url';
 import { HttpError } from '../src/http.js';
-import { classifyFailure, conditionMet, failedCards, fillRerun, loadCards, loadWarnings, RERUN, statusConfigJson, STATUS_TABLES, WARNINGS } from '../src/loads.js';
-import { createUi } from '../src/ui.js';
-import { PIPELINE_TEMPLATE } from '../src/sources.js';
-import { ensureSparkSettings, notebookSettings } from '../src/steps/fabric.js';
+import {
+  classifyFailure,
+  conditionMet,
+  failedCards,
+  fillRerun,
+  LOAD_LABELS,
+  loadCards,
+  loadLabel,
+  loadWarnings,
+  REASONS,
+  RERUN,
+  statusConfigJson,
+  STATUS_TABLES,
+  WARNINGS,
+} from '../src/loads.js';
+import { ensureSparkSettings } from '../src/steps/fabric.js';
+import { notebookSettings } from '../src/steps/notebook-settings.js';
 import { BUSY_RETRIES, BUSY_WAIT_MS, dependencyOrder, evaluate, rerunFailed, rerunSteps, runParameters } from '../src/steps/rerun.js';
 import {
-  AGENT365_FALLBACK,
-  AGENT365_REGISTRY,
+  ACTIVITY_LABELS,
   buildPipeline,
-  findActivity,
-  PIPELINE_VERSION,
+  COWORK_DATAFLOW_ACTIVITY,
+  COWORK_WRAPPER_ACTIVITY,
   REFRESH_ACTIVITY,
-  SESSION_TAG,
+  SKIP_COWORK_PARAMETER,
   STATUS_ACTIVITY,
 } from '../src/transform/pipeline.js';
-import { NOTEBOOKS } from '../src/catalog.js';
-import { fakeCtx, fakeFabric, fakeUi } from './fakes.js';
+import { createUi } from '../src/ui.js';
+import { defaultDataSources } from '../src/uploads.js';
+import { fakeCtx, fakeFabric, fakeUi, realSources } from './fakes.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const template = JSON.parse(readFileSync(join(here, '..', '..', PIPELINE_TEMPLATE), 'utf8'));
+/** @typedef {import('../src/uploads.js').DataSourceModes} DataSourceModes */
+/** @typedef {import('../src/catalog.js').NotebookKey} NotebookKey */
 
-const WS = 'f0000000-0000-0000-0000-000000000000';
-const id = (/** @type {number} */ n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
-const ids = {
-  auditIngester: id(1),
-  licensedUsers: id(2),
-  processor: id(3),
-  orgData: id(4),
-  agent365Registry: id(5),
-  agent365Lander: id(6),
-  productFeedback: id(7),
-  refreshModel: id(9),
-  loadStatus: id(10),
-};
-const modules = { orgData: true, agent365: true, productFeedback: false, consumption: false };
-/** @param {Partial<import('../src/transform/pipeline.js').PipelineSettings>} [more] */
-const build = (more = {}) => buildPipeline(template, { workspaceId: WS, notebookIds: ids, modules, semanticModelId: 'model-1', ...more });
+const { catalog } = realSources();
+const WS = 'ws-1';
+/** An ID for every notebook in the catalog. */
+const ids = /** @type {Partial<Record<NotebookKey, string>>} */ (Object.fromEntries(catalog.map((nb) => [nb.key, `nb-${nb.key}`])));
+/** Every source on, from its API. */
+const ALL_API = /** @type {Partial<DataSourceModes>} */ ({ coworkCredits: 'api', studioCredits: 'api', github: 'api', azureAi: 'api', orgData: 'api', commercialTerms: 'api' });
+
+/**
+ * The pipeline for the default sources with some changed, refreshing the model.
+ * @param {Partial<DataSourceModes>} [more]
+ * @param {Partial<import('../src/transform/pipeline.js').PipelineSettings>} [settings]
+ */
+const build = (more = {}, settings = {}) =>
+  buildPipeline(catalog, { workspaceId: WS, notebookIds: ids, dataSources: { ...defaultDataSources(), ...more }, modelId: 'model-1', ...settings });
+/** Every source from its API, with the model and the Cowork Dataflow. */
+const everything = () => build(ALL_API, { coworkDataflowId: 'df-1' });
+
+const ROUTER = 'Run_Upload_Router';
+const AZURE = 'Run_Consumption_Azure_AI';
+const STUDIO = 'Run_Consumption_Studio';
+const VIVA = 'Run_Consumption_Viva';
+const GITHUB = 'Run_Consumption_GitHub';
+const ORG = 'Run_Org_Data';
 
 /** Every activity, nested ones included. @param {any[]} activities @returns {any[]} */
 const all = (activities) =>
   activities.flatMap((a) => [a, ...all([...(a.typeProperties?.ifTrueActivities ?? []), ...(a.typeProperties?.ifFalseActivities ?? [])])]);
 
-/** "Run_X: Succeeded" style runs, as activityRuns returns them. @param {Record<string, string | [string, any]>} spec */
-const runsOf = (spec) =>
-  new Map(Object.entries(spec).map(([name, s]) => {
+/**
+ * The last attempt of each activity, as activityRuns returns them: every step succeeded but these.
+ * 'absent': it never started.
+ * @param {any[]} activities
+ * @param {Record<string, string | [string, any]>} [changed]
+ */
+function runsOf(activities, changed = {}) {
+  /** @type {Map<string, any>} */
+  const runs = new Map();
+  for (const a of all(activities)) {
+    const s = changed[a.name] ?? 'Succeeded';
+    if (s === 'absent') continue;
     const [status, error] = Array.isArray(s) ? s : [s, undefined];
-    return [name, { activityName: name, status, error, attempts: 1 }];
-  }));
+    runs.set(a.name, { activityName: a.name, activityType: a.type, status, error, attempts: 1 });
+  }
+  return runs;
+}
 
 const BUSY = { errorCode: 'RequestExecutionFailed', message: 'Failed to create Livy session. Error: [TooManyRequestsForCapacity] You have hit a spark compute limit.' };
 
-/* ---------- Pipeline ---------- */
+/* ---------- Labels and the status notebook ---------- */
 
-test('pipeline: every notebook shares one Spark session, nested ones too', () => {
-  const doc = build();
-  const notebooks = all(doc.properties.activities).filter((a) => a.type === 'TridentNotebook');
-  assert.ok(notebooks.length > 5);
-  for (const nb of notebooks) assert.equal(nb.typeProperties.sessionTag, SESSION_TAG, nb.name);
-  assert.ok(PIPELINE_VERSION >= 4);
+test('labels: every step gets the plain name the pipeline gives it', () => {
+  assert.equal(LOAD_LABELS, ACTIVITY_LABELS);
+  for (const a of all(everything().properties.activities)) {
+    // The If shows as the Dataflow refresh inside it, so it needs no name of its own.
+    if (a.name === COWORK_WRAPPER_ACTIVITY) continue;
+    assert.ok(ACTIVITY_LABELS[a.name], a.name);
+    assert.equal(loadLabel(a.name), ACTIVITY_LABELS[a.name]);
+  }
+  assert.equal(loadLabel(VIVA), 'Cowork and Work IQ credits');
+  assert.equal(loadLabel(COWORK_DATAFLOW_ACTIVITY), 'Cowork credits (Viva Insights Dataflow)');
+  assert.equal(loadLabel(REFRESH_ACTIVITY), 'Semantic model refresh');
+  assert.equal(loadLabel('Run_Partner_Usage'), 'Partner Usage', 'a step it has no name for reads from its activity name');
+  assert.equal(loadLabel('Run_PartnerUsage'), 'Partner Usage');
 });
 
-test('pipeline: the status step runs last, whatever happened before it', () => {
-  const doc = build();
-  const acts = doc.properties.activities;
-  const status = findActivity(acts, STATUS_ACTIVITY);
-  assert.equal(acts.at(-1).name, STATUS_ACTIVITY);
-  assert.equal(status.typeProperties.notebookId, ids.loadStatus);
-  const others = acts.filter((/** @type {any} */ a) => a.name !== STATUS_ACTIVITY);
-  const leaves = others.filter((/** @type {any} */ a) => !others.some((/** @type {any} */ b) => b.dependsOn?.some((/** @type {any} */ d) => d.activity === a.name)));
-  assert.ok(leaves.length >= 1);
-  assert.deepEqual(status.dependsOn.map((/** @type {any} */ d) => d.activity).sort(), leaves.map((/** @type {any} */ a) => a.name).sort());
-  for (const d of status.dependsOn) assert.deepEqual(d.dependencyConditions, ['Completed', 'Skipped']);
-  assert.match(status.typeProperties.parameters.PIPELINE_RUN_ID.value.value, /pipeline\(\)\.RunId/);
-
-  const { loadStatus: _, ...without } = ids;
-  const old = buildPipeline(template, { workspaceId: WS, notebookIds: without, modules });
-  assert.equal(findActivity(old.properties.activities, STATUS_ACTIVITY), undefined, 'no status notebook, no status step');
-});
-
-test('the status notebook is a core notebook that gets the labels and reasons', () => {
-  const nb = NOTEBOOKS.find((n) => n.key === 'loadStatus');
+test('the status notebook gets the labels, reasons and warnings, without the fixes', () => {
+  const nb = catalog.find((n) => n.key === 'loadStatus');
   assert.ok(nb);
-  assert.equal(nb.module, 'core');
+  assert.equal(nb.run, 'pipeline');
   assert.deepEqual(nb.parameters, ['PIPELINE_RUN_ID', 'PIPELINE_TRIGGER_TIME']);
   const { ctx } = fakeCtx({ fabric: fakeFabric().api });
-  const settings = notebookSettings(ctx, nb);
-  assert.equal(settings.values?.STATUS_JSON, statusConfigJson());
+  assert.equal(notebookSettings(ctx, nb).values?.STATUS_JSON, statusConfigJson());
   const json = JSON.parse(statusConfigJson());
-  assert.equal(json.labels.Run_Audit_Log_Ingester, 'Copilot audit log');
+  assert.deepEqual(json.labels, ACTIVITY_LABELS);
+  assert.equal(json.reasons.length, REASONS.length);
   assert.ok(json.reasons.every((/** @type {any} */ r) => r.kind && r.pattern && r.text && !('fix' in r)));
+  assert.ok(json.warnings.every((/** @type {any} */ w) => w.kind && w.text && !('fix' in w)));
+});
+
+test('nothing is left of the Analytics Hub loads: no status tables and no Agent 365 step', () => {
+  assert.deepEqual(STATUS_TABLES, []);
+  const json = statusConfigJson();
+  assert.deepEqual(JSON.parse(json).statusTables, []);
+  assert.doesNotMatch(json, /agent ?365|audit log|licensed users|resource graph/i);
+  assert.doesNotMatch(JSON.stringify([REASONS, WARNINGS]), /agent ?365|PERMISSIONS\.md/i);
+  for (const a of all(everything().properties.activities)) assert.doesNotMatch(a.name, /Agent365|Audit|Licensed|Resource_Graph/i);
 });
 
 /* ---------- Cards ---------- */
@@ -105,9 +132,12 @@ test('classifyFailure names the usual reasons in plain words', () => {
   assert.equal(classifyFailure({ message: 'AADSTS7000215: Invalid client secret' }).kind, 'signIn');
   assert.equal(classifyFailure({ errorCode: '2011', message: 'Forbidden' }).kind, 'signIn');
   assert.equal(classifyFailure({ message: 'The activity timed out' }).kind, 'timeout');
-  const lag = classifyFailure({ errorCode: '2011', message: "RuntimeError: The refresh ended as Failed. Table 'copilot_interactions_curated' is not in database" });
+  const lag = classifyFailure({ errorCode: '2011', message: "RuntimeError: The refresh ended as Failed. Table 'viva_credits_weekly' is not in database" }, REFRESH_ACTIVITY);
   assert.equal(lag.kind, 'notSynced');
   assert.ok(lag.fix.includes(RERUN));
+  const missing = classifyFailure({ message: 'AnalysisException: [PATH_NOT_FOUND] Path does not exist: Files/landing/studio' }, STUDIO);
+  assert.equal(missing.kind, 'noData');
+  assert.match(missing.fix, /Upload the export on the Data sources screen, or set the source to Skip/);
   const other = classifyFailure({ message: 'KeyError: tenant\n  at line 3' });
   assert.equal(other.kind, 'other');
   assert.equal(other.text, 'It stopped with an error: KeyError: tenant');
@@ -124,29 +154,29 @@ test('conditionMet follows Fabric dependency rules', () => {
   assert.equal(conditionMet('TimedOut', ['Failed']), true);
 });
 
-test('loadCards: one card per source; switched-off sources and covered API loads are left out', () => {
-  const acts = build().properties.activities;
-  const runs = runsOf({
-    Run_Audit_Log_Ingester: 'Succeeded',
-    Run_Licensed_Users_Ingester: ['Failed', BUSY],
-    Conditionally_Run_Agent365: 'Failed',
-    [AGENT365_REGISTRY]: 'Failed',
-    [AGENT365_FALLBACK]: 'Succeeded',
-    Conditionally_Run_Org_Data: 'Succeeded',
-  });
+test('loadCards: one card per source in pipeline order, a failed load with why, and the refresh that waited for it as skipped', () => {
+  const acts = everything().properties.activities;
+  const runs = runsOf(acts, { [STUDIO]: ['Failed', BUSY], [REFRESH_ACTIVITY]: 'absent', [STATUS_ACTIVITY]: 'Failed' });
   const cards = loadCards(runs, acts);
+  assert.deepEqual(cards.map((c) => c.activity), [ROUTER, AZURE, STUDIO, COWORK_DATAFLOW_ACTIVITY, VIVA, GITHUB, ORG, REFRESH_ACTIVITY]);
   const by = Object.fromEntries(cards.map((c) => [c.activity, c]));
-  assert.equal(by.Run_Audit_Log_Ingester.state, 'ok');
-  assert.equal(by.Run_Licensed_Users_Ingester.state, 'failed');
-  assert.equal(by.Run_Licensed_Users_Ingester.kind, 'capacity');
-  assert.equal(by[AGENT365_FALLBACK].state, 'ok');
-  assert.equal(by[AGENT365_REGISTRY], undefined, 'the export covered it');
-  assert.equal(by.Run_Org_Data_Ingester, undefined, 'its condition chose the empty branch');
-  assert.equal(by[STATUS_ACTIVITY], undefined);
-  const processor = by.Run_Audit_Log_Processor;
-  assert.equal(processor.state, 'skipped');
-  assert.match(processor.reason ?? '', /waits for: Licensed users/);
-  assert.deepEqual(failedCards(cards).map((c) => c.activity), ['Run_Licensed_Users_Ingester']);
+  assert.equal(by[STUDIO].name, 'Copilot Studio credits');
+  assert.equal(by[STUDIO].state, 'failed');
+  assert.equal(by[STUDIO].kind, 'capacity');
+  assert.equal(by[COWORK_DATAFLOW_ACTIVITY].state, 'ok', 'the Dataflow shows, not the If around it');
+  assert.equal(by[VIVA].state, 'ok', 'each load waits only for the one before it to finish');
+  assert.equal(by[REFRESH_ACTIVITY].state, 'skipped');
+  assert.equal(by[REFRESH_ACTIVITY].reason, "It didn't run, because it waits for: Copilot Studio credits.");
+  assert.deepEqual(by[REFRESH_ACTIVITY].fix, [`It runs again once those succeed: ${RERUN}.`]);
+  assert.deepEqual(failedCards(cards).map((c) => c.activity), [STUDIO]);
+});
+
+test('loadCards: without the definition only what ran shows, and never an If step', () => {
+  const acts = everything().properties.activities;
+  const cards = loadCards(runsOf(acts, { [STUDIO]: 'absent', [REFRESH_ACTIVITY]: 'absent' }));
+  assert.deepEqual(cards.map((c) => c.activity), [ROUTER, AZURE, COWORK_DATAFLOW_ACTIVITY, VIVA, GITHUB, ORG]);
+  assert.ok(cards.every((c) => c.state === 'ok'));
+  assert.deepEqual(loadCards(null), []);
 });
 
 test('fillRerun capitalises the instruction at the start of a sentence', () => {
@@ -158,16 +188,35 @@ test('fillRerun capitalises the instruction at the start of a sentence', () => {
 /* ---------- Rerun ---------- */
 
 test('evaluate reads the expressions the pipeline uses', () => {
-  const p = { EnableOrgDataPull: true, AuditMode: 'Backfill', BackfillDays: 90 };
-  assert.equal(evaluate('@pipeline().parameters.EnableOrgDataPull', p), true);
-  assert.equal(evaluate("@equals(pipeline().parameters.AuditMode, 'backfill')", p), true);
-  assert.equal(evaluate("@if(equals(pipeline().parameters.AuditMode,'incremental'), 1, pipeline().parameters.BackfillDays)", p), 90);
+  const p = { [SKIP_COWORK_PARAMETER]: false, Mode: 'Backfill', Days: 90 };
+  assert.equal(evaluate(`@not(pipeline().parameters.${SKIP_COWORK_PARAMETER})`, p), true);
+  assert.equal(evaluate('@pipeline().parameters.SkipCowork', p), false);
+  assert.equal(evaluate("@equals(pipeline().parameters.Mode, 'backfill')", p), true);
+  assert.equal(evaluate("@if(equals(pipeline().parameters.Mode,'incremental'), 1, pipeline().parameters.Days)", p), 90);
   assert.equal(evaluate('@and(true, not(false))', p), true);
   assert.equal(evaluate('@or(false, false)', p), false);
   assert.equal(evaluate("@string('it''s')", p), "it's");
   assert.throws(() => evaluate('@pipeline().RunId', p), /can't fill in pipeline\(\)\.RunId/);
   assert.throws(() => evaluate('@pipeline().parameters.Nope', p), /no parameter Nope/);
   assert.throws(() => evaluate('@concat(1)', p), /can't evaluate concat/);
+});
+
+test("a rerun can fill in every expression in the pipeline but the status step's, which it never runs", () => {
+  const doc = everything();
+  const params = runParameters(doc);
+  /** @type {string[]} */
+  const found = [];
+  for (const a of all(doc.properties.activities)) {
+    const values = [a.typeProperties?.expression, ...Object.values(a.typeProperties?.parameters ?? {}).map((/** @type {any} */ p) => p.value)];
+    for (const v of values) {
+      const text = v?.type === 'Expression' ? String(v.value) : typeof v === 'string' && v.startsWith('@') ? v : undefined;
+      if (!text) continue;
+      found.push(text);
+      if (a.name === STATUS_ACTIVITY) assert.throws(() => evaluate(text, params), /can't fill in pipeline\(\)\./);
+      else assert.doesNotThrow(() => evaluate(text, params), `${a.name}: ${text}`);
+    }
+  }
+  assert.deepEqual(found, [`@not(pipeline().parameters.${SKIP_COWORK_PARAMETER})`, '@pipeline().RunId', '@string(pipeline().TriggerTime)']);
 });
 
 test('dependencyOrder puts each step after what it waits for', () => {
@@ -179,87 +228,76 @@ test('dependencyOrder puts each step after what it waits for', () => {
   assert.deepEqual(order, ['a', 'b', 'c']);
 });
 
-test('rerunSteps reruns the failed load, what waited for it and the refresh, but not what worked', async () => {
-  const acts = build().properties.activities;
-  const params = runParameters(build(), /** @type {any} */ ({ firstRun: undefined }), 'job-1');
-  const runs = runsOf({
-    Run_Audit_Log_Ingester: 'Succeeded',
-    Run_Licensed_Users_Ingester: ['Failed', BUSY],
-    Conditionally_Run_Agent365: 'Succeeded',
-    [AGENT365_REGISTRY]: 'Succeeded',
-    Conditionally_Run_Org_Data: 'Succeeded',
-    Run_Org_Data_Ingester: 'Succeeded',
-  });
+test('rerunSteps reruns the failed load and the model refresh that waited for it, but not what worked', async () => {
+  const doc = everything();
+  const acts = doc.properties.activities;
+  const runs = runsOf(acts, { [STUDIO]: ['Failed', BUSY], [REFRESH_ACTIVITY]: 'absent', [STATUS_ACTIVITY]: 'Failed' });
   /** @type {string[]} */
   const ran = [];
   /** @type {Record<string, any>} */
   const given = {};
-  const result = await rerunSteps(acts, runs, params, async (a, parameters) => {
+  const result = await rerunSteps(acts, runs, runParameters(doc), async (a, parameters) => {
     ran.push(a.name);
     given[a.name] = parameters;
     return { status: 'Succeeded' };
   });
-  assert.equal(ran[0], 'Run_Licensed_Users_Ingester');
-  assert.ok(ran.includes('Run_Audit_Log_Processor'));
-  assert.ok(ran.includes(REFRESH_ACTIVITY));
-  assert.ok(!ran.includes('Run_Audit_Log_Ingester'));
-  assert.ok(!ran.includes(STATUS_ACTIVITY));
-  assert.ok(ran.indexOf('Run_Audit_Log_Processor') < ran.indexOf(REFRESH_ACTIVITY));
-  assert.equal(given.Run_Audit_Log_Processor?.WRITE_MODE?.value, 'merge', 'expressions are filled in from the run parameters');
-  assert.equal(result.runs.get('Run_Licensed_Users_Ingester').status, 'Succeeded');
+  assert.deepEqual(ran, [STUDIO, REFRESH_ACTIVITY]);
+  assert.deepEqual(result.reran, ran);
+  assert.deepEqual(given[STUDIO], {}, 'the loads take no parameters');
+  assert.deepEqual(given[REFRESH_ACTIVITY], {
+    WORKSPACE_ID: { value: WS, type: 'string' },
+    SEMANTIC_MODEL_ID: { value: 'model-1', type: 'string' },
+    TIMEOUT_MINUTES: { value: 170, type: 'int' },
+  });
+  assert.equal(result.runs.get(STUDIO).status, 'Succeeded');
+  assert.equal(result.runs.get(STATUS_ACTIVITY).status, 'Failed', 'the status record is left as the run had it');
 });
 
-test('rerunSteps runs a condition branch, and marks steps whose loads still fail as skipped', async () => {
-  const acts = build().properties.activities;
-  const params = runParameters(build(), /** @type {any} */ ({}), 'job-1');
-  const runs = runsOf({
-    Run_Audit_Log_Ingester: ['Failed', BUSY],
-    Run_Licensed_Users_Ingester: 'Succeeded',
-    Conditionally_Run_Org_Data: 'Failed',
-    Run_Org_Data_Ingester: ['Failed', { message: 'Forbidden' }],
-  });
+test("rerunSteps: a load that fails again doesn't hold up the next one, but the refresh waits for every usage load", async () => {
+  const doc = build(ALL_API);
+  const acts = doc.properties.activities;
+  const runs = runsOf(acts, { [STUDIO]: ['Failed', BUSY], [VIVA]: ['Failed', { message: 'boom' }], [REFRESH_ACTIVITY]: 'absent' });
   /** @type {string[]} */
   const ran = [];
-  const result = await rerunSteps(acts, runs, params, async (a) => {
+  const result = await rerunSteps(acts, runs, runParameters(doc), async (a) => {
     ran.push(a.name);
-    return a.name === 'Run_Audit_Log_Ingester' ? { status: 'Failed', error: BUSY } : { status: 'Succeeded' };
+    return a.name === STUDIO ? { status: 'Failed', error: BUSY } : { status: 'Succeeded' };
   });
-  assert.ok(ran.includes('Run_Org_Data_Ingester'), 'the condition is evaluated and its branch run');
-  assert.equal(result.runs.get('Conditionally_Run_Org_Data').status, 'Succeeded');
-  assert.ok(!ran.includes('Run_Audit_Log_Processor'));
-  assert.equal(result.runs.get('Run_Audit_Log_Processor').status, 'Skipped');
+  assert.deepEqual(ran, [STUDIO, VIVA]);
+  assert.equal(result.runs.get(STUDIO).status, 'Failed');
+  assert.equal(result.runs.get(VIVA).status, 'Succeeded');
+  assert.equal(result.runs.get(REFRESH_ACTIVITY).status, 'Skipped');
 });
 
-test('runParameters uses the first load history for the first-load job', () => {
-  const doc = build();
-  const config = /** @type {any} */ ({ firstRun: { jobId: 'job-1' }, history: { days: 30 } });
-  assert.equal(runParameters(doc, config, 'job-1').AuditMode, 'backfill');
-  assert.equal(runParameters(doc, config, 'job-1').BackfillDays, 30);
-  assert.equal(runParameters(doc, config, 'job-2').AuditMode, 'incremental');
+test('runParameters: a rerun takes the pipeline defaults, so it refreshes the Cowork Dataflow even if the first load left it out', () => {
+  assert.deepEqual(runParameters(everything()), { [SKIP_COWORK_PARAMETER]: false });
+  assert.deepEqual(runParameters(build()), {});
+  assert.deepEqual(runParameters(undefined), {});
 });
 
-/** A workspace whose latest pipeline run left the licensed users unloaded. */
+/** One activity run, as Fabric's queryActivityRuns returns it. */
+const activityRun = (/** @type {string} */ activityName, status = 'Succeeded', /** @type {any} */ error = undefined) => ({
+  activityName,
+  activityType: 'TridentNotebook',
+  status,
+  activityRunStart: '2026-06-01T02:00:00Z',
+  error,
+});
+
+/** A workspace whose latest pipeline run didn't load the Copilot Studio credits, so the model wasn't refreshed. */
 function failedRun() {
   const fabric = fakeFabric();
   const ui = fakeUi();
   const { ctx, config, sleeps } = fakeCtx({ fabric: fabric.api, ui: ui.ui });
-  const pipe = fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', build({ workspaceId: 'ws-1' }));
+  const pipe = fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', build());
   config.fabric.pipelineId = pipe.id;
+  config.semanticModel = { ...config.semanticModel, enabled: true, id: 'model-1', bound: true };
   fabric.jobList.push({ id: 'j-1', status: 'Failed', startTimeUtc: '2026-06-01T02:00:00', endTimeUtc: '2026-06-01T03:00:00' });
-  const ran = (/** @type {string} */ activityName, /** @type {string} */ status = 'Succeeded', /** @type {any} */ error = undefined) => ({
-    activityName,
-    activityType: activityName.startsWith('Conditionally_') ? 'IfCondition' : 'TridentNotebook',
-    status,
-    activityRunStart: '2026-06-01T02:00:00Z',
-    error,
-  });
   fabric.activityRuns['j-1'] = [
-    ran('Run_Audit_Log_Ingester'),
-    ran('Run_Licensed_Users_Ingester', 'Failed', BUSY),
-    ran('Conditionally_Run_Agent365'),
-    ran(AGENT365_REGISTRY),
-    ran('Conditionally_Run_Org_Data'),
-    ran('Run_Org_Data_Ingester'),
+    activityRun(ROUTER),
+    activityRun(STUDIO, 'Failed', BUSY),
+    activityRun(VIVA),
+    activityRun(STATUS_ACTIVITY, 'Failed', { message: '1 load(s) failed: Copilot Studio credits. See dbo.load_log for why.' }),
   ];
   // A test that starts more jobs than it planned for fails instead of polling forever.
   const getJob = fabric.api.getJob;
@@ -270,30 +308,34 @@ function failedRun() {
   return { fabric, ui, ctx, config, sleeps };
 }
 
-test('rerun-failed: a busy capacity is waited out, then the rest of the chain runs', async () => {
-  const { fabric, ui, ctx, sleeps } = failedRun();
-  // Licensed users: busy, then loads. The processor and the model refresh load first time.
-  fabric.jobs.push({ status: 'Failed', failureReason: BUSY }, { status: 'Completed' }, { status: 'Completed' }, { status: 'Completed' });
+test('rerun-failed: a busy capacity is waited out, then the model is refreshed and the first load counts as done', async () => {
+  const { fabric, ui, ctx, config, sleeps } = failedRun();
+  config.firstRun = { jobId: 'j-1', status: 'Incomplete' };
+  // Studio: busy, then loads. The model refresh works first time.
+  fabric.jobs.push({ status: 'Failed', failureReason: BUSY }, { status: 'Completed' }, { status: 'Completed' });
   const result = await rerunFailed(ctx);
-  assert.deepEqual(result.reran, ['Run_Licensed_Users_Ingester', 'Run_Audit_Log_Processor', REFRESH_ACTIVITY]);
-  assert.deepEqual(result.failed, []);
+  assert.deepEqual(result, { reran: [STUDIO, REFRESH_ACTIVITY], failed: [] });
   assert.ok(sleeps.includes(BUSY_WAIT_MS));
   const text = ui.text();
-  assert.match(text, /capacity is busy\. Trying again in 5 minutes/);
-  assert.match(text, /Licensed users: loaded/);
+  assert.match(text, /Rerunning what didn't load in the run from 2026-06-01 02:00 UTC/);
+  assert.match(text, /Copilot Studio credits: Fabric's capacity is busy\. Trying again in 5 minutes/);
+  assert.match(text, /Copilot Studio credits: loaded/);
+  assert.match(text, /Semantic model refresh: loaded/);
   assert.match(text, /Now, by source/);
   const runs = fabric.calls.filter((c) => c.startsWith('runJob'));
-  assert.equal(runs.length, 4, 'one extra start for the busy retry');
-  assert.match(runs[1], /^runJob RunNotebook/);
-  assert.match(runs[3], /^runJob RunNotebook/, 'the model refresh is a notebook');
+  assert.equal(runs.length, 3, 'one extra start for the busy retry');
+  assert.equal(runs[0], 'runJob RunNotebook {"parameters":{}}');
+  assert.match(runs[2], /^runJob RunNotebook .*"SEMANTIC_MODEL_ID":\{"value":"model-1","type":"string"\}/, 'the refresh notebook gets the parameters the pipeline gives it');
+  assert.equal(config.firstRun?.status, 'Completed');
 });
 
-test('rerun-failed gives up after the busy retries and says so', async () => {
-  const { fabric, ctx } = failedRun();
+test('rerun-failed gives up after the busy retries, says so, and leaves the refresh for later', async () => {
+  const { fabric, ui, ctx } = failedRun();
   for (let i = 0; i <= BUSY_RETRIES; i++) fabric.jobs.push({ status: 'Failed', failureReason: BUSY });
   const result = await rerunFailed(ctx);
-  assert.deepEqual(result.reran, ['Run_Licensed_Users_Ingester']);
-  assert.deepEqual(result.failed, ['Run_Licensed_Users_Ingester']);
+  assert.deepEqual(result, { reran: [STUDIO], failed: [STUDIO] });
+  assert.match(ui.text(), /Copilot Studio credits: failed/);
+  assert.equal(fabric.calls.filter((c) => c.startsWith('runJob')).length, BUSY_RETRIES + 1);
 });
 
 test("rerun-failed doesn't run anything while the pipeline is running", async () => {
@@ -302,6 +344,22 @@ test("rerun-failed doesn't run anything while the pipeline is running", async ()
   assert.deepEqual(await rerunFailed(ctx), { reran: [], failed: [] });
   assert.deepEqual(fabric.calls, []);
   assert.match(ui.text(), /pipeline is running/);
+});
+
+test('rerun-failed: nothing to rerun after a run that worked or before the first run, and no pipeline is an error', async () => {
+  const { fabric, ui, ctx, config } = failedRun();
+  fabric.jobList[0].status = 'Completed';
+  fabric.activityRuns['j-1'] = [ROUTER, STUDIO, VIVA, REFRESH_ACTIVITY, STATUS_ACTIVITY].map((name) => activityRun(name));
+  assert.deepEqual(await rerunFailed(ctx), { reran: [], failed: [] });
+  assert.match(ui.text(), /Nothing to rerun: every load in the latest run worked, or was switched off/);
+
+  fabric.jobList.length = 0;
+  assert.deepEqual(await rerunFailed(ctx), { reran: [], failed: [] });
+  assert.match(ui.text(), /The pipeline hasn't run yet/);
+  assert.deepEqual(fabric.calls, []);
+
+  delete config.fabric.pipelineId;
+  await assert.rejects(rerunFailed(ctx), /There is no pipeline yet\. Run the installer first\./);
 });
 
 /* ---------- Shared Spark session ---------- */
@@ -328,49 +386,52 @@ test('ensureSparkSettings only warns when it may not change the setting', async 
   assert.match(ui.text(), /High concurrency/);
 });
 
-/* ---------- Warnings from the status tables ---------- */
+/* ---------- Warnings from the status notebook ---------- */
 
-const RG = 'Run_Resource_Graph_Ingester';
-const WARNED = { warnings: { [RG]: { kind: 'forbidden', reason: 'It ran, but wasn\'t allowed to read arg_agent_config.' } } };
+const WARNED = { warnings: { [AZURE]: { kind: 'forbidden', reason: "It ran, but wasn't allowed to read 1 of the 2 pay-as-you-go subscriptions." } } };
 
-test('loadWarnings: reads the notebook\'s exit value, or its error when a load failed, and nothing else', () => {
+test("loadWarnings: reads the status notebook's exit value, or its error when a load failed, and nothing else", () => {
   assert.deepEqual(loadWarnings({ status: 'Succeeded', output: { result: { exitValue: JSON.stringify(WARNED) } } }), WARNED.warnings);
-  const failed = { status: 'Failed', error: { message: `1 load(s) failed: Copilot audit log. See dbo.load_log for why.\nload_warnings=${JSON.stringify(WARNED)}` } };
+  const failed = { status: 'Failed', error: { message: `1 load(s) failed: Copilot Studio credits. See dbo.load_log for why.\nload_warnings=${JSON.stringify(WARNED)}` } };
   assert.deepEqual(loadWarnings(failed), WARNED.warnings);
   assert.deepEqual(loadWarnings({ status: 'Failed', error: { message: '1 load(s) failed.' } }), {});
   assert.deepEqual(loadWarnings({ output: { result: { exitValue: 'not json' } } }), {});
   assert.deepEqual(loadWarnings(undefined), {});
 });
 
-test('loadCards: a load the notebook flagged is a warning with its reason and fix; a failed one stays failed', () => {
-  const runs = runsOf({ [RG]: 'Succeeded', Run_Licensed_Users_Ingester: 'Succeeded', [STATUS_ACTIVITY]: 'Succeeded' });
-  /** @type {any} */ (runs.get(STATUS_ACTIVITY)).output = { result: { exitValue: JSON.stringify(WARNED) } };
-  const cards = loadCards(runs);
-  const rg = cards.find((c) => c.activity === RG);
-  assert.equal(rg?.state, 'warning');
-  assert.equal(rg?.kind, 'forbidden');
-  assert.match(rg?.reason ?? '', /arg_agent_config/);
-  assert.match(rg?.fix[0] ?? '', /PERMISSIONS/);
-  assert.equal(cards.find((c) => c.activity === 'Run_Licensed_Users_Ingester')?.state, 'ok');
+test('loadCards: a load the status notebook flagged is a warning with its reason and fix; a failed one stays failed', () => {
+  const acts = build(ALL_API).properties.activities;
+  const runs = runsOf(acts);
+  runs.get(STATUS_ACTIVITY).output = { result: { exitValue: JSON.stringify(WARNED) } };
+  const cards = loadCards(runs, acts);
+  const azure = cards.find((c) => c.activity === AZURE);
+  assert.equal(azure?.state, 'warning');
+  assert.equal(azure?.kind, 'forbidden');
+  assert.match(azure?.reason ?? '', /pay-as-you-go subscriptions/);
+  assert.match(azure?.fix[0] ?? '', /Data sources and exports/);
+  assert.equal(cards.find((c) => c.activity === STUDIO)?.state, 'ok');
   assert.deepEqual(failedCards(cards), [], 'a warning is not a failure, so rerun-failed leaves it alone');
 
-  const failedRuns = runsOf({ [RG]: ['Failed', { message: 'boom' }], [STATUS_ACTIVITY]: 'Succeeded' });
-  /** @type {any} */ (failedRuns.get(STATUS_ACTIVITY)).output = { result: { exitValue: JSON.stringify(WARNED) } };
-  assert.equal(loadCards(failedRuns)[0].state, 'failed');
+  const failedRuns = runsOf(acts, { [AZURE]: ['Failed', { message: 'boom' }] });
+  failedRuns.get(STATUS_ACTIVITY).output = { result: { exitValue: JSON.stringify(WARNED) } };
+  assert.equal(loadCards(failedRuns, acts).find((c) => c.activity === AZURE)?.state, 'failed');
 });
 
 test('terminal: a warning shows amber, with its reason', () => {
   /** @type {string[]} */
   const out = [];
-  createUi({ write: (s) => out.push(s) }).loads([{ activity: RG, name: 'Agent configuration', state: 'warning', reason: 'It ran, but wasn\'t allowed to read arg_agent_config.', fix: ['Give it the role.'] }]);
+  createUi({ write: (s) => out.push(s) }).loads([
+    { activity: AZURE, name: 'Azure AI spend', state: 'warning', reason: "It ran, but wasn't allowed to read 1 of the 2 pay-as-you-go subscriptions.", fix: ['Give it the role.'] },
+  ]);
   const text = out.join('');
-  assert.match(text, /! Agent configuration: loaded with a warning/);
-  assert.match(text, /wasn't allowed to read arg_agent_config/);
+  assert.match(text, /! Azure AI spend: loaded with a warning/);
+  assert.match(text, /wasn't allowed to read 1 of the 2 pay-as-you-go subscriptions/);
 });
 
-test('status tables and warnings: every kind has a plain text, and the notebook gets them', () => {
+test('warnings: every kind has a plain text and a fix, and the notebook gets them', () => {
   const json = JSON.parse(statusConfigJson());
   assert.deepEqual(json.statusTables, STATUS_TABLES);
   assert.deepEqual(json.warnings.map((/** @type {any} */ w) => w.kind), ['forbidden', 'unlicensed', 'other', 'empty']);
+  assert.deepEqual(json.warnings.map((/** @type {any} */ w) => w.all), [false, false, false, true]);
   for (const w of WARNINGS) assert.ok(w.text.includes('{items}') && w.fix, w.kind);
 });

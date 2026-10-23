@@ -1,17 +1,21 @@
 // @ts-check
 /**
  * Runs the pipeline and the data check, and reports on them. The data check isn't in the pipeline:
- * it runs after the first load, after `run`, and on `check`.
+ * it asks the semantic model how many rows each source gave it, after the first load, after `run`,
+ * and on `check`.
  */
 import { isTransientNetworkError } from '../auth.js';
+import { onceNotebooks } from '../catalog.js';
 import { commandLine } from '../launch.js';
 import { failedCards, fillRerun, loadCards, VIVA_ACTIVITY } from '../loads.js';
-import { DATA_CHECK_FILE } from '../transform/notebook.js';
-import { COWORK_DATAFLOW_ACTIVITY, COWORK_WRAPPER_ACTIVITY, firstRunParameters, REFRESH_ACTIVITY, SKIP_COWORK_PARAMETER } from '../transform/pipeline.js';
+import { INSTALLER_DIR, PRODUCT_NAME } from '../product.js';
+import { COWORK_DATAFLOW_ACTIVITY, COWORK_WRAPPER_ACTIVITY, REFRESH_ACTIVITY, SKIP_COWORK_PARAMETER, STATUS_ACTIVITY } from '../transform/pipeline.js';
 import { formatDuration } from '../ui.js';
+import { dataSource } from '../uploads.js';
 import { coworkConnections, coworkNextStep, coworkSignInSteps, VIVA_LOAD_FILE } from './consumption.js';
-import { coworkDataflowOn, modelDeployed } from './fabric.js';
-import { modelRefreshes } from './model.js';
+import { coworkDataflowOn, deployedSources, modelDeployed } from './fabric.js';
+import { tokenLine, TOKEN_WARN_DAYS } from './github.js';
+import { countModelRows, modelRefreshes, verifyModel } from './model.js';
 
 /** @typedef {import('../install.js').Ctx} Ctx */
 /** @typedef {import('../loads.js').LoadCard} LoadCard */
@@ -98,9 +102,10 @@ function busyNote(ctx, again) {
  * @param {Ctx} ctx
  * @param {any} job
  * @param {string} what
- * @param {string} [again]  The command to suggest when a busy capacity turned the job away.
+ * @param {{ again?: string, warn?: boolean }} [o]  again: the command to suggest when a busy capacity turned the job away.
+ *   warn: a failure only warns, because the install carries on and still counts as set up.
  */
-function reportJob(ctx, job, what, again) {
+function reportJob(ctx, job, what, o = {}) {
   const { ui } = ctx;
   const start = utc(job?.startTimeUtc);
   const end = utc(job?.endTimeUtc);
@@ -110,8 +115,9 @@ function reportJob(ctx, job, what, again) {
       ui.ok(`${what} finished${took}`);
       return true;
     case 'Failed':
-      ui.fail(`${what} failed${took}`);
-      if (again && capacityBusy(job.failureReason)) busyNote(ctx, again);
+      if (o.warn) ui.warn(`${what} failed${took}`);
+      else ui.fail(`${what} failed${took}`);
+      if (o.again && capacityBusy(job.failureReason)) busyNote(ctx, o.again);
       else if (job.failureReason?.message) ui.info(String(job.failureReason.message).slice(0, 1200));
       return false;
     default:
@@ -131,32 +137,17 @@ function reportJob(ctx, job, what, again) {
  * @property {string[]} [counted]  Those that leave an install partly set up: see {@link countedFailures}.
  */
 
-/**
- * How long loading the audit history is likely to take. Microsoft queues each audit query for a few
- * minutes whatever its size, so the time grows with the days asked for and, on a large tenant, with
- * the number of short windows.
- * @param {number} days
- * @param {string} [scale]
- */
-export function firstLoadEstimate(days, scale) {
-  if (scale === 'large') {
-    return `Loading ${days} days of history on a large tenant can take several hours, and may need more than one run: each run picks up where the last stopped. An F64 or larger capacity helps. `;
-  }
-  if (days > 30) {
-    return `Loading ${days} days of history can take a few hours, longer on a trial or small capacity. Each run picks up where the last stopped. `;
-  }
-  return 'Loading the history usually takes under an hour, longer on a trial or small capacity. ';
-}
+/** How long the first load is likely to take. Each load reads everything its source has, every run. */
+export const FIRST_LOAD_ESTIMATE = 'The first load usually takes under an hour, longer on a trial or small capacity. ';
 
 /** A run that started longer ago than this is stuck, not running. */
 const STUCK_MS = 24 * 3_600_000;
 
 /**
- * Starts the pipeline. With `backfillDays` it reloads that much audit history and rebuilds the curated table.
- * It doesn't start a run while another is going: two at once overload a small capacity.
+ * Starts the pipeline. It doesn't start a run while another is going: two at once overload a small capacity.
  * @param {Ctx} ctx
- * @param {{ backfillDays?: number, wait?: boolean, first?: boolean, skipCowork?: boolean }} opts  skipCowork: leave the Cowork
- *   Dataflow out of this run only (SkipCowork), because its connections aren't signed in yet.
+ * @param {{ wait?: boolean, first?: boolean, skipCowork?: boolean }} opts  first: record the run as the first load.
+ *   skipCowork: leave the Cowork Dataflow out of this run only (SkipCowork), because its connections aren't signed in yet.
  * @returns {Promise<RunResult>}
  */
 export async function runPipeline(ctx, opts) {
@@ -172,10 +163,7 @@ export async function runPipeline(ctx, opts) {
     ui.note(`Check on it with "${commandLine('status')}". Once it has finished, run "${commandLine('run')}" to start a new run.`);
     return { jobId: running.id, status: running.status, ok: false, started: false };
   }
-  const days = opts.backfillDays;
-  /** @type {Record<string, any> | undefined} */
-  let parameters = days ? firstRunParameters(days) : undefined;
-  if (opts.skipCowork) parameters = { ...parameters, [SKIP_COWORK_PARAMETER]: true };
+  const parameters = opts.skipCowork ? { [SKIP_COWORK_PARAMETER]: true } : undefined;
   const startedAt = ctx.now().toISOString();
   const url = await api.fabric.runJob(f.workspaceId, f.pipelineId, 'Pipeline', parameters ? { parameters } : undefined);
   const jobId = jobIdFrom(url);
@@ -183,14 +171,12 @@ export async function runPipeline(ctx, opts) {
     config.firstRun = { jobId, status: 'NotStarted', startedAt, ...(opts.skipCowork ? { coworkSkipped: true } : {}) };
     ctx.save();
   }
-  if (!days) ui.ok('Started the pipeline');
-  else if (opts.first) ui.ok(`Started the first load: ${days} days of audit history`);
-  else ui.ok(`Started the pipeline with ${days} days of audit history`);
+  ui.ok(opts.first ? 'Started the first load' : 'Started the pipeline');
   if (!opts.wait) {
     ui.note(`It runs in Fabric. Check on it with "${commandLine('status')}".`);
     return { jobId, status: 'NotStarted', started: true };
   }
-  ui.note(`${days ? firstLoadEstimate(days, config.scale) : ''}${ui.web ? 'You can close this window' : 'You can press Ctrl+C'}; the run carries on in Fabric.`);
+  ui.note(`${opts.first ? FIRST_LOAD_ESTIMATE : ''}${ui.web ? 'You can close this window' : 'You can press Ctrl+C'}; the run carries on in Fabric.`);
   const job = await waitForJob(ctx, url, 'Pipeline');
   const ok = reportJob(ctx, job, 'Pipeline');
   const runs = TERMINAL.has(job?.status) ? await activityRuns(ctx, jobId, { startTimeUtc: job.startTimeUtc ?? startedAt, endTimeUtc: job.endTimeUtc }) : null;
@@ -330,21 +316,21 @@ export async function activityRuns(ctx, jobId, job) {
 }
 
 /**
- * Whether a run loaded the history: the audit log and its processor succeeded, and so did the model
- * refresh when it is installed.
+ * Whether a run loaded the data. With the model deployed, its refresh succeeded: that waits for every
+ * usage load to succeed. Without it, every step but the status record succeeded.
  * @param {import('../config.js').InstallConfig} config
  * @param {Map<string, any>} runs
  */
 export function loadedBy(config, runs) {
-  const needed = ['Run_Audit_Log_Ingester', 'Run_Audit_Log_Processor'];
-  if (modelDeployed(config)) needed.push(REFRESH_ACTIVITY);
-  return needed.every((name) => runs.get(name)?.status === 'Succeeded');
+  if (modelDeployed(config)) return runs.get(REFRESH_ACTIVITY)?.status === 'Succeeded';
+  const steps = [...runs.values()].filter((r) => r.activityName !== STATUS_ACTIVITY);
+  return steps.length > 0 && steps.every((r) => r.status === 'Succeeded');
 }
 
 /**
  * The first load's status to record. A pipeline job can complete with failed loads, so 'Completed'
- * is kept only when its activity runs prove the history loaded; otherwise it is 'Incomplete' and the
- * next run offers the first load again.
+ * is kept only when its activity runs prove the data loaded; otherwise it is 'Incomplete' and the
+ * next run counts as the first load again.
  * @param {import('../config.js').InstallConfig} config
  * @param {string | undefined} status
  * @param {Map<string, any> | null} runs
@@ -354,8 +340,8 @@ export function firstRunStatus(config, status, runs) {
 }
 
 /**
- * Whether the history has loaded. A first load that failed only in other loads did load it, so it is
- * marked completed. Installs from before the installer tracked the first load count any completed run.
+ * Whether a run has loaded the data. A first load whose activity runs show it loaded is marked
+ * completed. Without a first load on record, any completed run counts.
  * @param {Ctx} ctx
  */
 export async function historyLoaded(ctx) {
@@ -375,70 +361,109 @@ export async function historyLoaded(ctx) {
 }
 
 /**
- * What `run` starts: the first load, with the history, until a run has loaded it; then the usual
- * incremental run. Asking for history days always loads that much.
+ * What `run` starts: the first load until a run has loaded the data, then the usual run. The two
+ * run the same pipeline; the first is recorded, so the install knows when the data has loaded.
  * @param {Ctx} ctx
- * @param {{ backfillDays?: number, wait: boolean }} opts
- * @returns {Promise<{ backfillDays?: number, wait: boolean, first?: boolean }>}
+ * @param {{ wait: boolean }} opts
+ * @returns {Promise<{ wait: boolean, first?: boolean }>}
  */
 export async function chooseLoad(ctx, opts) {
-  const loaded = await historyLoaded(ctx);
-  if (opts.backfillDays) return { ...opts, first: !loaded };
-  if (loaded) return opts;
-  return { ...opts, backfillDays: ctx.config.history.days, first: true };
+  return (await historyLoaded(ctx)) ? opts : { ...opts, first: true };
 }
 
-/** @param {import('../config.js').InstallConfig} config */
-const dataCheckName = (config) => config.fabric.notebookNames?.dataCheck ?? 'the data check notebook';
+/** Where the data check leaves its result, so `status` shows it on any PC. */
+export const DATA_CHECK_FILE = `${INSTALLER_DIR}/data_check.json`;
 
 /**
- * Runs the data check notebook and reads back the summary it leaves in the Lakehouse.
+ * Asks the semantic model how many rows each chosen source gave it, prints that, and saves it in the
+ * Lakehouse for `status`.
  * @param {Ctx} ctx
- * @returns {Promise<any>} The summary; false when the check failed, saying how to run it again; null when it isn't
- *   deployed, didn't finish or left no summary, which only warns.
+ * @returns {Promise<any>} The summary; false when the query failed, saying how to run it again; null when
+ *   there is no model to ask or it can't be queried, which only warns.
  */
 export async function runDataCheck(ctx) {
   const { ui, config, api } = ctx;
   const f = config.fabric;
-  const notebookId = f.notebooks.dataCheck;
-  if (!f.workspaceId || !f.lakehouseId || !notebookId) {
-    ui.warn('The data check notebook isn\'t deployed.');
-    return null;
-  }
-  /** @type {any} */
-  let job;
-  for (let attempt = 0; ; attempt++) {
-    const url = await api.fabric.runJob(f.workspaceId, notebookId, 'RunNotebook');
-    job = await waitForJob(ctx, url, 'Data check', { pollMs: 15_000, timeoutMs: 45 * 60_000 });
-    // Straight after a run, the pipeline's Spark session can hold the capacity for a few minutes.
-    if (job?.status !== 'Failed' || !capacityBusy(job.failureReason) || attempt >= BUSY_RETRIES) break;
-    ui.warn(`Data check: Fabric's capacity is still busy. Trying again in ${BUSY_WAIT_MS / 60_000} minutes.`);
-    await ctx.sleep(BUSY_WAIT_MS);
-  }
-  if (!reportJob(ctx, job, 'Data check', 'check')) {
-    if (job?.status !== 'Failed') return null;
-    // A busy capacity's note already says to run it again.
-    if (!capacityBusy(job.failureReason)) ui.info(`Run "${commandLine('check')}" to try it again.`);
+  const counted = await countModelRows(ctx);
+  if (counted.skipped) return null;
+  if (!counted.tables) {
+    ui.fail(`Data check: the query on ${config.semanticModel.name} failed`);
+    if (counted.error) ui.info(counted.error);
+    ui.info(`Run "${commandLine('check')}" to try it again.`);
     return false;
   }
-  const summary = await api.oneLake.readJson(f.workspaceId, f.lakehouseId, DATA_CHECK_FILE).catch(() => null);
-  if (!summary) {
-    ui.note(`Open ${dataCheckName(config)} in Fabric to see its results.`);
-    return null;
+  const summary = { checkedAt: ctx.now().toISOString(), tables: counted.tables };
+  if (api.oneLake && f.workspaceId && f.lakehouseId) {
+    const data = new TextEncoder().encode(`${JSON.stringify(summary, null, 2)}\n`);
+    await api.oneLake.writeFile(f.workspaceId, f.lakehouseId, DATA_CHECK_FILE, data).catch(() => {});
   }
   printDataCheck(ctx, summary);
   return summary;
 }
 
 /**
- * The `check` command: runs the data check on its own, without the pipeline.
+ * The `check` command: checks the model answers queries, then asks it what each source gave it,
+ * without running the pipeline.
  * @param {Ctx} ctx
+ * @returns {Promise<boolean>} false when a check failed.
  */
 export async function checkData(ctx) {
-  const f = ctx.config.fabric;
-  if (!f.workspaceId || !f.lakehouseId || !f.notebooks.dataCheck) throw new Error('There is no data check notebook yet. Run the installer first.');
-  ctx.ui.note('It reads each table in the Lakehouse and usually takes a few minutes.');
-  return runDataCheck(ctx);
+  if (!modelDeployed(ctx.config)) throw new Error('There is no semantic model yet. Run the installer first.');
+  if (!(await verifyModel(ctx)).ok) return false;
+  return (await runDataCheck(ctx)) !== false;
+}
+
+/** How long a notebook that runs once is waited for. It makes one Cost Management query. */
+export const ONCE_TIMEOUT_MS = 30 * 60_000;
+
+/**
+ * Runs the notebooks that run once at setup rather than in the pipeline. Ingest_CommercialTerms is
+ * the only one: it reads the credit rate from Cost Management, as the signed-in user, into
+ * commercial_terms, which the model reads instead of its price parameters. It needs no app secret.
+ * It runs until a run completes, again when its scope changes (the plan clears its status), and on
+ * every `update`.
+ * @param {Ctx} ctx
+ * @param {{ force?: boolean, timeoutMs?: number, again?: string }} [opts]  force: run it even when it has completed before.
+ *   again: the command to suggest when a busy capacity turned it away (default install).
+ * @returns {Promise<boolean>}  false when one didn't complete.
+ */
+export async function runOnceNotebooks(ctx, opts = {}) {
+  const { ui, config, api } = ctx;
+  const f = config.fabric;
+  let ok = true;
+  for (const nb of onceNotebooks(ctx.sources.catalog, deployedSources(config))) {
+    const id = f.notebooks[nb.key];
+    if (!f.workspaceId || !id) continue;
+    const name = f.notebookNames?.[nb.key] ?? nb.displayName;
+    // Ingest_CommercialTerms is the only notebook that runs once, so its state is config.commercialTerms.
+    const terms = (config.commercialTerms ??= {});
+    const where = terms.scopeName ?? terms.scope ?? 'the billing scope';
+    if (terms.status === 'Completed' && !opts.force) {
+      ui.ok(`${name} read the credit rate from ${where}${terms.ranAt ? ` on ${terms.ranAt.slice(0, 10)}` : ''}`);
+      continue;
+    }
+    ui.info(`${name} reads the credit rate you pay from Cost Management for ${where}.`);
+    /** @type {any} */
+    let job;
+    for (let attempt = 0; ; attempt++) {
+      const url = await api.fabric.runJob(f.workspaceId, id, 'RunNotebook');
+      job = await waitForJob(ctx, url, name, { timeoutMs: opts.timeoutMs ?? ONCE_TIMEOUT_MS });
+      if (job?.status !== 'Failed' || !capacityBusy(job.failureReason) || attempt >= BUSY_RETRIES) break;
+      ui.warn(`Fabric's capacity is too busy to start ${name}. Trying again in ${BUSY_WAIT_MS / 60_000} minutes.`);
+      await ctx.sleep(BUSY_WAIT_MS);
+    }
+    const status = String(job?.status ?? 'Unknown');
+    terms.status = status;
+    if (TERMINAL.has(status)) terms.ranAt = ctx.now().toISOString();
+    ctx.save();
+    if (reportJob(ctx, job, name, { again: opts.again ?? 'install', warn: true })) continue;
+    ok = false;
+    const prices = 'Until it completes, the model prices credits at the rates set in the installer, or the template\'s.';
+    // A busy capacity's note already says to run it again; the role isn't what stopped it.
+    if (job?.status === 'Failed' && capacityBusy(job.failureReason)) ui.note(prices);
+    else ui.note(`${prices} It runs as you, so you need Cost Management Reader on ${where}. Run the installer again to retry.`);
+  }
+  return ok;
 }
 
 /**
@@ -452,34 +477,31 @@ export function ranSince(jobs, checkedAt) {
   return jobs.some((j) => (j.status === 'Completed' || j.status === 'Failed') && (utc(j.endTimeUtc)?.getTime() ?? 0) > at);
 }
 
-const TABLE_LABELS = /** @type {const} */ ({
-  licensed: 'Licensed users',
-  audit: 'Copilot interactions',
-  org: 'Org data',
-  agents: 'Agents',
-});
-
 /**
  * @param {Ctx} ctx
  * @param {any} summary
  */
 export function printDataCheck(ctx, summary) {
-  const { ui } = ctx;
-  const tables = summary?.tables ?? {};
-  for (const [key, label] of Object.entries(TABLE_LABELS)) {
-    const t = tables[key];
-    if (!t) {
-      if (key === 'licensed' || key === 'audit') ui.warn(`${label}: no table yet`);
-      else ui.note(`${label}: not loaded`);
+  const { ui, config } = ctx;
+  const n = (/** @type {number} */ v) => v.toLocaleString('en-GB');
+  for (const [source, t] of Object.entries(summary?.tables ?? {})) {
+    const id = /** @type {import('../uploads.js').DataSourceId} */ (source);
+    const label = dataSource(id)?.label ?? source;
+    const rows = Number(t?.rows ?? 0);
+    if (rows) {
+      const range = t.from && t.to ? `, ${String(t.from).slice(0, 10)} to ${String(t.to).slice(0, 10)}` : '';
+      ui.ok(`${label}: ${n(rows)} rows in the model${range}`);
+      if (t.filled !== undefined && t.filled !== null) printDepartmentCoverage(ctx, rows, Number(t.filled));
       continue;
     }
-    const rows = Number(t.rows ?? 0).toLocaleString('en-GB');
-    const range = t.from && t.to ? `, ${String(t.from).slice(0, 10)} to ${String(t.to).slice(0, 10)}` : '';
-    (t.rows ? ui.ok : ui.warn)(`${label}: ${rows} rows${range}`);
-    if (key === 'audit' && !t.rows) printAuditExcluded(ctx, summary?.auditExcluded);
-    if (key === 'org' && t.rows) printDepartmentCoverage(ctx, Number(t.rows), t.withDepartment);
+    ui.warn(`${label}: no rows in the model yet`);
+    const mode = config.dataSources?.[id];
+    if (id === 'coworkCredits' && mode === 'api' && config.firstRun?.coworkSkipped) {
+      ui.note('They load once the Cowork Dataflow is signed in: see the next step.');
+    } else if (mode === 'csv') {
+      ui.note(`Upload its export with "${commandLine('upload <file> --run')}".`);
+    }
   }
-  printIdentityMatch(ctx, summary?.identity);
 }
 
 /** Below this share of people with a department, by-department views leave most people out. */
@@ -489,65 +511,20 @@ export const LOW_DEPARTMENT_COVERAGE = 0.8;
  * Says how many people in the org data have a department, and how to fill the gaps when few do.
  * @param {Ctx} ctx
  * @param {number} people
- * @param {number | undefined} withDepartment  Missing when the data check predates this count.
+ * @param {number} withDepartment
  */
 function printDepartmentCoverage(ctx, people, withDepartment) {
-  const { ui } = ctx;
-  if (withDepartment === undefined || withDepartment === null) return;
+  const { ui, config } = ctx;
   const n = (/** @type {number} */ v) => v.toLocaleString('en-GB');
-  const have = Number(withDepartment);
-  const line = `Org data: ${n(have)} of ${n(people)} people have a department`;
-  if (have / people >= LOW_DEPARTMENT_COVERAGE) {
+  const line = `Org data: ${n(withDepartment)} of ${n(people)} people have a department`;
+  if (withDepartment / people >= LOW_DEPARTMENT_COVERAGE) {
     ui.ok(line);
     return;
   }
   ui.warn(line);
-  ui.note('Views by department leave out everyone without one. Fill in Department on users in Microsoft Entra ID');
-  ui.note('(or the HR system that feeds it). The next pipeline run picks it up.');
-}
-
-/**
- * Explains an empty audit table when the processor left out every record as test or admin activity.
- * @param {Ctx} ctx
- * @param {{ parsed?: number, reasons?: Record<string, number> } | null | undefined} excluded
- */
-function printAuditExcluded(ctx, excluded) {
-  const { ui } = ctx;
-  const parsed = Number(excluded?.parsed ?? 0);
-  if (!parsed) {
-    ui.note('No Copilot activity was found in the audit log yet. It appears after people use Copilot and the pipeline runs again.');
-    return;
-  }
-  const n = (/** @type {number} */ v) => v.toLocaleString('en-GB');
-  const reasons = Object.entries(excluded?.reasons ?? {}).map(([r, c]) => `${r}: ${n(Number(c))}`).join(', ');
-  ui.note(`${n(parsed)} audit records were found, but all were test or admin activity that the dashboard leaves out (${reasons}).`);
-  ui.note('Activity by people appears after they use Copilot and the pipeline runs again.');
-}
-
-/**
- * Says whether licences match Copilot activity. With no match the app shows 0 licensed users.
- * @param {Ctx} ctx
- * @param {{ licensed?: number, audit?: number, matched?: number, masked?: number } | null | undefined} identity
- */
-function printIdentityMatch(ctx, identity) {
-  const { ui, config } = ctx;
-  if (!identity) return;
-  const licensed = Number(identity.licensed ?? 0);
-  const audit = Number(identity.audit ?? 0);
-  const matched = Number(identity.matched ?? 0);
-  const masked = Number(identity.masked ?? 0);
-  if (!licensed || !audit) return;
-  const n = (/** @type {number} */ v) => v.toLocaleString('en-GB');
-  if (masked * 2 >= licensed) {
-    ui.warn(`Licensed users: ${n(masked)} of ${n(licensed)} user names are hidden, so no licence matches Copilot activity`);
-    ui.note('In the Microsoft 365 admin center, go to Settings > Org settings > Reports and untick');
-    ui.note('"Display concealed user, group, and site names in all reports". The next pipeline run picks it up.');
-  } else if (!matched) {
-    ui.warn(`Licensed users: none of the ${n(audit)} people using Copilot match a licensed user`);
-    ui.note(`Open ${dataCheckName(config)} in Fabric to compare the user names in both tables.`);
-  } else {
-    ui.ok(`Licensed users: ${n(matched)} of ${n(audit)} people using Copilot have a licence`);
-  }
+  ui.note('Views by department leave out everyone without one.');
+  if (config.dataSources?.orgData === 'csv') ui.note('Fill in the Department column in the org data file, then upload it again.');
+  else ui.note('Fill in Department on users in Microsoft Entra ID (or the HR system that feeds it). The next pipeline run picks it up.');
 }
 
 /**
@@ -560,16 +537,22 @@ export async function status(ctx) {
     ui.warn('Nothing is installed yet.');
     return;
   }
-  ui.heading('Consumption Central');
+  ui.heading(PRODUCT_NAME);
   ui.info(`Workspace: ${f.workspaceName ?? f.workspaceId}`);
   ui.info(`Lakehouse: ${f.lakehouseName ?? f.lakehouseId}`);
   ui.info(`Pipeline:  ${f.pipelineName ?? f.pipelineId}`);
   const sm = config.semanticModel;
-  const cm = config.consumption?.model;
   if (sm?.id) ui.info(`Model:     ${sm.name}${sm.bound ? '' : ' (not connected to the Lakehouse yet)'}`);
-  if (cm?.id) ui.info(`Model:     ${cm.name}${cm.bound ? '' : ' (not connected to the Lakehouse yet)'}`);
   expiry(ctx, 'Client secret', config.app.secretExpires);
   if (sm?.connectionId) expiry(ctx, 'Model connection secret', sm.secretExpires);
+  const token = tokenLine(config);
+  if (token) {
+    const expires = config.github?.tokenExpires;
+    const days = expires ? Math.floor((Date.parse(expires) - ctx.now().getTime()) / 86_400_000) : Infinity;
+    if (!config.github?.tokenSetAt) ui.warn(token);
+    else if (days < TOKEN_WARN_DAYS) ui.warn(`${token} (${days} days). Run "${commandLine('github-token')}".`);
+    else ui.info(token);
+  }
 
   ui.heading('Recent runs');
   const jobs = (await api.fabric.listJobs(f.workspaceId, f.pipelineId))
@@ -607,11 +590,10 @@ export async function status(ctx) {
     }
   }
 
-  for (const m of [sm, cm]) {
-    if (!m?.id) continue;
-    const refreshes = await modelRefreshes(ctx, m).catch(() => null);
+  if (sm?.id) {
+    const refreshes = await modelRefreshes(ctx, sm).catch(() => null);
     if (refreshes) {
-      ui.heading(m === sm ? 'Model refreshes' : `${m.name} refreshes`);
+      ui.heading('Model refreshes');
       if (!refreshes.length) ui.note('No refreshes yet.');
       for (const r of refreshes) {
         const start = utc(r.startTime);
@@ -638,7 +620,7 @@ export async function status(ctx) {
         ui.note(`Run "${commandLine('check')}" to check the data again.`);
       }
       printDataCheck(ctx, summary);
-    } else if (f.notebooks.dataCheck && jobs.some((j) => j.status === 'Completed')) {
+    } else if (modelDeployed(config) && jobs.some((j) => j.status === 'Completed')) {
       ui.heading('Data check');
       ui.note(`It hasn't run yet. Run "${commandLine('check')}" to see what the pipeline loaded.`);
     }

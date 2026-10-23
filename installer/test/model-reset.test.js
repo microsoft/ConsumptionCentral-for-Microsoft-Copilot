@@ -105,7 +105,7 @@ test('a model a stopped run created is updated with the same consent rule', asyn
     const ui = fakeUi(o);
     const t = fakeCtx({ fabric: fabric.api, graph: fakeGraph().api, ui: ui.ui });
     t.config.semanticModel.enabled = true;
-    const item = fabric.add('SemanticModel', 'Consumption Central Model', 'half-made', 'ValueLens. (ref cc33)');
+    const item = fabric.add('SemanticModel', 'Consumption Central Model', 'half-made', 'Consumption Central. (ref cc33)');
     t.config.fabric.pendingItems = { 'SemanticModel:main': { name: 'Consumption Central Model', ref: 'cc33' } };
     fabric.failures.updateSemanticModel = [RESETS.operation()];
     return { ...t, fabric, ui, item, deploy: () => deployModel(t.ctx, t.config.semanticModel, { signature: 's', definition: () => 'v2' }) };
@@ -175,7 +175,7 @@ test('update: a failed refresh is reported, not "Up to date", and the model stay
   const text = t.ui.text();
   assert.doesNotMatch(text, /Up to date/);
   assert.match(text, /Consumption Central Model has no data until a refresh finishes/);
-  assert.match(text, /The update isn't finished: the models weren't reloaded/);
+  assert.match(text, /The update isn't finished: the model wasn't reloaded/);
   assert.equal(t.sm.reload?.cleared, true);
 });
 
@@ -210,7 +210,7 @@ test('update on the page says the same: still reloading, or not finished, never 
     const lines = web.history().filter((/** @type {any} */ e) => e.type === 'line').map((/** @type {any} */ e) => `${e.kind}: ${e.text}`);
     assert.ok(!lines.some((l) => /Up to date/.test(l)), lines.join('\n'));
     if (outcome === 'reloading') assert.ok(lines.some((l) => /^ok: Updated\. Consumption Central Model is still reloading/.test(l)), lines.join('\n'));
-    else assert.ok(lines.some((l) => /^fail: The update isn't finished: the models weren't reloaded/.test(l)), lines.join('\n'));
+    else assert.ok(lines.some((l) => /^fail: The update isn't finished: the model wasn't reloaded/.test(l)), lines.join('\n'));
   }
 });
 
@@ -303,7 +303,7 @@ test('loadState: how far a pipeline run got with reloading the models', () => {
 
 /** Writes the record on every save, as the installer does, so a new context can read it back. */
 function persisted(/** @type {{ ctx: any, config: any }} */ t) {
-  const dir = mkdtempSync(join(tmpdir(), 'ah-reload-'));
+  const dir = mkdtempSync(join(tmpdir(), 'cc-reload-'));
   const file = join(dir, 'consumption-central-setup.json');
   t.ctx.save = () => saveConfig(file, t.config);
   t.ctx.save();
@@ -625,7 +625,7 @@ test('scope: following a busy table refresh never retires the reload; its own wh
       svc.ran('table-only', { objects: ['FactAlpha'] });
       svc.setBusy(2);
       assert.equal(await finishUpdate(busy.ctx), false);
-      assert.match(busy.ui.text(), /The update isn't finished: the models weren't reloaded/);
+      assert.match(busy.ui.text(), /The update isn't finished: the model wasn't reloaded/);
       assert.doesNotMatch(busy.ui.text(), /Up to date/);
       assert.deepEqual(svc.tables, { FactAlpha: true, FactBeta: false });
       assert.deepEqual(loadConfig(saved.file).config.semanticModel.reload, { since: '2026-06-01T12:00:00.000Z', cleared: true });
@@ -697,16 +697,15 @@ test('a change that may not have finished is applied again before anything count
   assert.equal(t.sm.reload, undefined);
 });
 
-test('a Consumption model kept while credit consumption is off is owed no reload until it is used again', () => {
+test('the Consumption Central model is owed a reload only once it is deployed and its change recorded', () => {
   const { config } = fakeCtx();
-  const reload = { since: '2026-06-01T12:00:00.000Z', unsettled: true };
-  Object.assign(config.semanticModel, { id: 'vl-1', reload: { ...reload } });
-  Object.assign(config.consumption.model, { id: 'cc-1', reload: { ...reload } });
   const owed = () => pendingReloads(config).map((m) => m.id);
-  config.modules.consumption = true;
-  assert.deepEqual(owed(), ['vl-1', 'cc-1']);
-  config.modules.consumption = false;
-  assert.deepEqual(owed(), ['vl-1'], 'unticked');
+  config.semanticModel.reload = { since: '2026-06-01T12:00:00.000Z', unsettled: true };
+  assert.deepEqual(owed(), [], 'no model yet');
+  config.semanticModel.id = 'cc-1';
+  assert.deepEqual(owed(), ['cc-1']);
+  delete config.semanticModel.reload;
+  assert.deepEqual(owed(), []);
 });
 
 test('--allow-model-reset: only with install, update or access, and not with --ui', () => {

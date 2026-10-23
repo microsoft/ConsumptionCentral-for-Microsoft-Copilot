@@ -5,11 +5,11 @@
  * install uploads it, then deleted.
  */
 import { randomBytes } from 'node:crypto';
-import { closeSync, existsSync, mkdtempSync, openSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdtempSync, openSync, readdirSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { PRODUCT_ID } from './product.js';
-import { dataSource, decodeStart, detectSource, MAX_UPLOAD_BYTES, parseCsvHeader, routedSources } from './uploads.js';
+import { dataSource, decodeStart, detectSource, MAX_UPLOAD_BYTES, parseCsvHeader, PEOPLE_ALONE, routedSources } from './uploads.js';
 
 /**
  * @typedef {object} PendingUpload  A recognised CSV waiting to go to the drop folder.
@@ -69,12 +69,50 @@ function recognise(f, modes) {
  * @param {import('./uploads.js').DataSourceModes} modes
  */
 export function inspectFile(path, modes) {
-  const p = path.trim().replace(/^"(.*)"$/, '$1');
+  const p = unquote(path);
   if (!p || !existsSync(p)) return /** @type {const} */ ({ ok: false, error: `There's no file at ${p || '(blank)'}.` });
   const st = statSync(p);
   if (!st.isFile()) return /** @type {const} */ ({ ok: false, error: `${p} is a folder. Choose a .csv file.` });
   const headers = st.size && st.size <= MAX_UPLOAD_BYTES ? parseCsvHeader(decodeStart(readHead(p))) : [];
   return recognise({ path: p, name: basename(p), size: st.size, headers }, modes);
+}
+
+/** @param {string} path */
+const unquote = (path) => path.trim().replace(/^"(.*)"$/, '$1');
+
+/**
+ * A file, or the CSVs at the top of a folder, recognised. In a folder, a file that isn't an export
+ * the chosen sources take is skipped with the reason, and so is a PeopleMetaData.csv with no Cowork
+ * task export beside it: a Viva credits export ships one too. A named file has to be recognised.
+ * @param {string} path
+ * @param {import('./uploads.js').DataSourceModes} modes
+ * @returns {{ ok: true, files: PendingUpload[], skipped: string[] } | { ok: false, error: string }}
+ */
+export function inspectPath(path, modes) {
+  const p = unquote(path);
+  if (!p || !existsSync(p) || !statSync(p).isDirectory()) {
+    const r = inspectFile(p, modes);
+    return r.ok ? { ok: true, files: [r.file], skipped: [] } : r;
+  }
+  /** @type {PendingUpload[]} */
+  let files = [];
+  /** @type {string[]} */
+  const skipped = [];
+  for (const name of readdirSync(p).sort()) {
+    const full = join(p, name);
+    if (!/\.csv$/i.test(name) || !statSync(full).isFile()) continue;
+    const r = inspectFile(full, modes);
+    if (r.ok) files.push(r.file);
+    else skipped.push(r.error);
+  }
+  if (!files.some((f) => f.kind === 'coworkTasks')) {
+    for (const f of files.filter((x) => x.kind === 'coworkPeople')) skipped.push(`${f.name}: ${PEOPLE_ALONE}`);
+    files = files.filter((f) => f.kind !== 'coworkPeople');
+  }
+  if (!files.length) {
+    return { ok: false, error: `Nothing in ${p} is an export the chosen sources take.${skipped.length ? ` ${skipped.slice(0, 3).join(' ')}` : ' It has no .csv files.'}` };
+  }
+  return { ok: true, files, skipped };
 }
 
 /** @param {string} path */

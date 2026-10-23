@@ -1,13 +1,12 @@
 // @ts-check
 /**
- * The Power BI reports from the templates, published to the workspace and bound to the
- * installer's semantic models, so nobody has to open Power BI Desktop.
+ * The Power BI report from the Fabric template, published to the workspace and bound to the
+ * installer's semantic model, so nobody has to open Power BI Desktop.
  */
-import { CONSUMPTION_REPORT_NAME, REPORT_NAME } from '../config.js';
+import { REPORT_NAME } from '../config.js';
 import { commandLine } from '../launch.js';
 import { loadTemplateReport, reportDefinition, reportSignature } from '../transform/report.js';
 import { c } from '../ui.js';
-import { consumptionModelWanted } from './consumption.js';
 import { createItem, modelKey } from './fabric.js';
 
 /** @typedef {import('../install.js').Ctx} Ctx */
@@ -30,19 +29,14 @@ export const reportsOn = (config) => !!(config.semanticModel.enabled && config.s
  */
 
 /**
- * The reports to publish: ValueLens, and the credit consumption one with its model.
+ * The report to publish: Consumption Central, on the semantic model.
  * @param {Ctx} ctx
  * @returns {WantedReport[]}
  */
 export function reportsWanted(ctx) {
   const { config, sources } = ctx;
   if (!reportsOn(config)) return [];
-  /** @type {{ model: ModelConfig, file?: string, name: string }[]} */
-  const all = [
-    { model: config.semanticModel, file: sources.modelFile, name: REPORT_NAME },
-    ...(consumptionModelWanted(ctx) ? [{ model: config.consumption.model, file: sources.consumptionModelFile, name: CONSUMPTION_REPORT_NAME }] : []),
-  ];
-  return /** @type {WantedReport[]} */ (all.filter((r) => r.file));
+  return [{ model: config.semanticModel, file: sources.modelFile, name: REPORT_NAME }];
 }
 
 /**

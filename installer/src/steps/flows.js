@@ -1,11 +1,11 @@
 // @ts-check
 /**
- * The Power Automate flows: product feedback exports emailed to the admin, and Copilot Studio
- * credits from the Power Platform licensing API. The installer creates each flow, turned off, in a
- * Power Platform environment the user picks. It makes the HTTP with Microsoft Entra ID connections
- * the flows need, gives a sign-in link for each, and once they're signed in to, points the flows at
- * them and turns them on. Anything else (e.g. Outlook) the user signs in to in Power Automate.
- * When a flow can't be created, it is written to a file to import instead.
+ * The Power Automate flow: Copilot Studio credits from the Power Platform licensing API. The
+ * installer creates it, turned off, in a Power Platform environment the user picks. It makes the
+ * HTTP with Microsoft Entra ID connections the flow needs, gives a sign-in link for each, and once
+ * they're signed in to, points the flow at them and turns it on. Anything else (e.g. Key Vault) the
+ * user signs in to in Power Automate. When the flow can't be created, it is written to a file to
+ * import instead.
  */
 import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
@@ -20,9 +20,6 @@ import {
   connectorByName,
   connectorsUsed,
   CONNECTORS,
-  FEEDBACK_FLOW_NAME,
-  FEEDBACK_SUBJECT,
-  feedbackFlowDefinition,
   flowClientData,
   FLOW_STATE_DIR,
   flowFile,
@@ -42,21 +39,19 @@ import { UPLOAD_DIR } from '../uploads.js';
 import { ensureWorkspaceRole } from './model.js';
 
 /** @typedef {import('../install.js').Ctx} Ctx */
-/** @typedef {'feedback' | 'studio'} FlowKind */
+/** @typedef {'studio'} FlowKind */
 
 const MAKER = 'https://make.powerautomate.com/';
 export const FLOW_FILES = /** @type {Record<FlowKind, string>} */ ({
-  feedback: `${PRODUCT_ID}-feedback-flow.json`,
   studio: `${PRODUCT_ID}-studio-credits-flow.json`,
 });
 
 /** @type {Record<FlowKind, string>} */
-export const FLOW_NAMES = { feedback: FEEDBACK_FLOW_NAME, studio: STUDIO_FLOW_NAME };
+export const FLOW_NAMES = { studio: STUDIO_FLOW_NAME };
 
 /** @param {import('../config.js').InstallConfig} config @returns {FlowKind[]} */
 const flowsChosen = (config) => {
   return [
-    ...(config.dataSources.productFeedback === 'api' ? /** @type {const} */ (['feedback']) : []),
     ...(config.dataSources.studioCredits === 'api' ? /** @type {const} */ (['studio']) : []),
   ];
 };
@@ -84,8 +79,7 @@ function validateUrl(v) {
 }
 
 /**
- * Asks where to create the flows. Each comes with its source's api mode: product feedback's
- * "Power Automate (emailed export)" and Studio credits' "Connected (Power Automate flow)".
+ * Asks where to create the flow. It comes with Studio credits' api mode, "Connected (Power Automate flow)".
  * @param {Ctx} ctx
  */
 export async function planFlows(ctx) {
@@ -166,11 +160,6 @@ export function flowDefinitions(config, tenantId) {
   const where = `${config.fabric.lakehouseName ?? 'the Lakehouse'} > ${UPLOAD_DIR}`;
   const schedule = { time: config.schedule.time, timeZone: config.schedule.timeZone };
   return {
-    feedback: {
-      name: FEEDBACK_FLOW_NAME,
-      description: `Saves product feedback exports emailed with the subject "${FEEDBACK_SUBJECT}" to ${where}. Created by the Consumption Central installer.`,
-      definition: nameByConnection(feedbackFlowDefinition(t), t),
-    },
     studio: {
       name: STUDIO_FLOW_NAME,
       description: `Saves Copilot Studio credits from the Power Platform licensing API to ${where} each day. Created by the Consumption Central installer.`,
@@ -636,15 +625,10 @@ export function connectionSteps(config, kind) {
       ? `${CONNECTORS.keyVault.label}: vault ${config.keyVault.name ?? 'your Key Vault'}.`
       : `${CONNECTORS.storage.label}: Base Resource URL ${ONELAKE_DFS}, Resource URI ${STORAGE_RESOURCE}. Sign in as someone with Contributor or higher on ${workspace}. Its actions end in "via OneLake".`) +
     (flowIdentity(config) === 'app' ? '' : orPick(CONNECTORS.storage.name));
-  if (kind === 'feedback') return [`${CONNECTORS.outlook.label}: sign in as the mailbox the export is emailed to.`, storage];
   const ppApi = `${CONNECTORS.entra.label}: Base Resource URL and Resource URI ${PPAPI}.`;
   const ppActions = `Its actions end in "via Power Platform API".${orPick(CONNECTORS.entra.name)}`;
   return [`${ppApi} Sign in as a Power Platform, Billing or Global administrator. ${ppActions}`, storage];
 }
-
-/** The Microsoft 365 admin center page for product feedback (Health > Product feedback), where the export is scheduled. */
-export const FEEDBACK_EXPORT_URL = 'https://admin.microsoft.com/Adminportal/Home#/tenantfeedback';
-const feedbackExportStep = `Schedule the product feedback export to that mailbox, subject "${FEEDBACK_SUBJECT}": ${FEEDBACK_EXPORT_URL} (Microsoft 365 admin center > Health > Product feedback).`;
 
 /**
  * Whether the installer signed the flow in and turned it on, and it hasn't been replaced since.
@@ -666,11 +650,8 @@ function flowSteps(ctx, kind, link) {
   ui.info(`  ${n++}. Allow pop-ups for make.powerautomate.com: each sign-in opens one. Sign in on the first action for each connection below, then pick that connection on its other actions.`);
   for (const step of connectionSteps(config, kind)) ui.info(`  ${n++}. ${step}`);
   ui.info(`  ${n++}. Save, then turn it on.`);
-  if (kind === 'feedback') ui.info(`  ${n++}. ${feedbackExportStep}`);
-  else {
-    ui.info(`  ${n++}. To load about six months now rather than at its first daily run, click Run. Or use "${commandLine('run')}", which offers to run it before the pipeline.`);
-    ui.note('     After that it runs daily, an hour before the pipeline.');
-  }
+  ui.info(`  ${n++}. To load about six months now rather than at its first daily run, click Run. Or use "${commandLine('run')}", which offers to run it before the pipeline.`);
+  ui.note('     After that it runs daily, an hour before the pipeline.');
 }
 
 /**
@@ -690,7 +671,6 @@ export function flowsSummary(ctx) {
     const file = up.flowFiles?.[kind];
     if (up.flowIds?.[kind] && !file && flowConnected(config, kind)) {
       ui.info(c.bold(name) + c.dim(`  in ${env?.name ?? env?.url}, signed in and on`));
-      if (kind === 'feedback') ui.info(`  1. ${feedbackExportStep}`);
       continue;
     }
     if (up.flowIds?.[kind] && !file) ui.info(c.bold(name) + c.dim(`  in ${env?.name ?? env?.url}, turned off`));

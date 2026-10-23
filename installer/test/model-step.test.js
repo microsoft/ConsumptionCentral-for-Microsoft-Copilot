@@ -7,7 +7,7 @@ import { HttpError } from '../src/http.js';
 import { nodeVersionOk } from '../src/node-version.js';
 import { CONNECTION_SECRET_NAME, connectionName, definitionHash, ensureModelConnection, ensureSemanticModel, MODEL_PROBE, refreshModel, rotateModelSecret, verifyModel } from '../src/steps/model.js';
 import { blockedSettings } from '../src/steps/plan.js';
-import { buildModel, loadTemplateModel } from '../src/transform/model.js';
+import { buildModel, loadTemplateModel, mNumberParameter } from '../src/transform/model.js';
 import { fakeCtx, fakeFabric, fakeGraph, fakePowerBi, fakeUi, httpError, realSources, throttledThenTaken } from './fakes.js';
 
 /** @param {any} item */
@@ -21,12 +21,12 @@ function setup(o = {}) {
   const ui = fakeUi({ answers: o.answers, yes: o.yes });
   const config = o.config ?? emptyConfig();
   config.semanticModel.enabled = true;
-  config.app.displayName = 'ValueLens Data Collector';
+  config.app.displayName = 'Consumption Central (Fabric)';
   const made = fakeCtx({ ui: ui.ui, fabric: fabric.api, graph: graph.api, powerBi: powerBi.api, config });
   return { ...made, fabric, graph, powerBi, ui };
 }
 
-test('semantic model: created from the template, left alone on re-run, updated when modules change', async () => {
+test('semantic model: created from the template, left alone on re-run, updated when the prices change', async () => {
   const t = setup();
   await ensureSemanticModel(t.ctx);
   const item = t.fabric.items.find((i) => i.type === 'SemanticModel');
@@ -34,7 +34,7 @@ test('semantic model: created from the template, left alone on re-run, updated w
   assert.equal(item.displayName, 'Consumption Central Model');
   assert.deepEqual(item.content.parts.map((/** @type {any} */ p) => p.path), ['model.bim', 'definition.pbism']);
   const bim = modelBim(item);
-  assert.ok(bim.model.expressions.find((/** @type {any} */ e) => e.name === 'Fabric SQL Endpoint').expression.startsWith('"abc.datawarehouse.fabric.microsoft.com"'));
+  assert.ok(bim.model.expressions.find((/** @type {any} */ e) => e.name === 'FabricSQLEndpoint').expression.startsWith('"abc.datawarehouse.fabric.microsoft.com"'));
   assert.equal(t.config.semanticModel.id, item.id);
   assert.equal(t.config.semanticModel.bound, false);
   assert.equal(t.config.semanticModel.server, 'abc.datawarehouse.fabric.microsoft.com');
@@ -44,10 +44,11 @@ test('semantic model: created from the template, left alone on re-run, updated w
   assert.deepEqual(t.fabric.calls, ['createSemanticModel Consumption Central Model']);
   assert.equal(t.config.semanticModel.bound, true);
 
-  t.config.modules.agent365 = !t.config.modules.agent365;
+  t.config.prices = { creditRate: 0.02 };
   await ensureSemanticModel(t.ctx);
   assert.deepEqual(t.fabric.calls.slice(1), ['updateSemanticModel Consumption Central Model']);
   assert.equal(t.config.semanticModel.bound, false, 'an update needs the connection bound again');
+  assert.equal(mNumberParameter(modelBim(item).model, 'CreditRate'), 0.02);
 
   await ensureSemanticModel(t.ctx, { force: true });
   assert.equal(t.fabric.calls.length, 3);
@@ -102,18 +103,27 @@ test('semantic model: a re-run redeploys a model whose definition changed, such 
   assert.notEqual(definitionHash({ a: 1 }), definitionHash({ a: 2 }));
 });
 
+/**
+ * DAX without its comments, which CC's template uses to explain its VAR names. Strings and names are
+ * kept whole, so a "//" or "--" inside one isn't read as a comment.
+ * @param {string} dax
+ */
+const withoutComments = (dax) => dax.replace(/"(?:[^"]|"")*"|'(?:[^']|'')*'|\[(?:[^\]]|\]\])*\]|\/\/[^\n]*|--[^\n]*|\/\*[\s\S]*?\*\//g, (m) => (/^["'[]/.test(m) ? m : ''));
+
 test('the built model has no DAX variable named after a reserved word, which would leave its tables uncalculated', () => {
   const reserved = new Set(
-    readFileSync(new URL('../../tests/fixtures/dax_reserved_names.txt', import.meta.url), 'utf8')
+    // Copied from AnalyticsHub-Dashboard tests/fixtures/dax_reserved_names.txt at 1af87db.
+    readFileSync(new URL('./fixtures/dax_reserved_names.txt', import.meta.url), 'utf8')
       .split(/\r?\n/)
       .map((l) => l.trim().toUpperCase())
       .filter((l) => l && !l.startsWith('#')),
   );
   assert.ok(reserved.has('LASTDATE'));
   const sources = realSources();
-  const models = [buildModel(loadTemplateModel(/** @type {string} */ (sources.modelFile)), { server: 's', database: 'd', modules: emptyConfig().modules })];
+  const models = [buildModel(loadTemplateModel(/** @type {string} */ (sources.modelFile)), { server: 's', database: 'd' })];
   /** @type {string[]} */
   const bad = [];
+  let vars = 0;
   for (const model of models) {
     for (const table of model.model.tables) {
       const texts = [
@@ -122,12 +132,17 @@ test('the built model has no DAX variable named after a reserved word, which wou
         ...(table.partitions ?? []).filter((/** @type {any} */ p) => p.source?.type === 'calculated').map((/** @type {any} */ p) => p.source.expression),
       ];
       for (const text of texts) {
-        const dax = Array.isArray(text) ? text.join('\n') : String(text ?? '');
-        for (const [, name] of dax.matchAll(/\bVAR\s+([A-Za-z_][A-Za-z0-9_.]*)/gi)) if (reserved.has(name.toUpperCase())) bad.push(`${table.name}: VAR ${name}`);
+        const dax = withoutComments(Array.isArray(text) ? text.join('\n') : String(text ?? ''));
+        for (const [, name] of dax.matchAll(/\bVAR\s+([A-Za-z_][A-Za-z0-9_.]*)/gi)) {
+          vars++;
+          if (reserved.has(name.toUpperCase())) bad.push(`${table.name}: VAR ${name}`);
+        }
       }
     }
   }
+  assert.ok(vars > 0, 'the model declares DAX variables to check');
   assert.deepEqual(bad, []);
+  assert.equal(withoutComments('VAR A = "x // y" // VAR Top\n-- VAR Top\n/* VAR\nTop */ RETURN A'), 'VAR A = "x // y" \n\n RETURN A');
 });
 
 /** @param {ReturnType<typeof setup>} t */
@@ -264,19 +279,19 @@ test('refresh: Completed with a warning or error message is a failure, since par
   assert.deepEqual(await refreshModel(t.ctx), { ok: true, status: 'Completed' });
 });
 
-test('probe: a model whose Calendar has days passes; an empty or broken one fails; a blocked API is skipped', async () => {
+test('probe: a model whose Date table has days passes; an empty or broken one fails; a blocked API is skipped', async () => {
   const t = setup();
   Object.assign(t.config.semanticModel, { id: 'model-1', bound: true });
   assert.deepEqual(await verifyModel(t.ctx), { ok: true, calendarDays: 90 });
   assert.deepEqual(t.powerBi.calls, ['executeQueries model-1']);
-  assert.match(MODEL_PROBE, /COUNTROWS\('Calendar'\)/);
-  assert.match(t.ui.text(), /answers queries \(its Calendar has 90 days\)/);
+  assert.match(MODEL_PROBE, /COUNTROWS\('Date'\)/);
+  assert.match(t.ui.text(), /answers queries \(its Date table has 90 days\)/);
 
   t.powerBi.answers.push({ results: [{ tables: [{ rows: [{ '[CalendarDays]': 0 }] }] }] });
   assert.equal((await verifyModel(t.ctx)).ok, false);
-  assert.match(t.ui.text(), /its Calendar table is empty/);
+  assert.match(t.ui.text(), /its Date table is empty/);
 
-  const detail = "Query (1, 26) The expression referenced column 'Calendar'[Date] which does not hold any data because it needs to be recalculated.";
+  const detail = "Query (1, 26) The expression referenced column 'Date'[Date] which does not hold any data because it needs to be recalculated.";
   t.powerBi.failures.executeQueries = [new HttpError('Bad request', { status: 400, method: 'POST', url: 'https://x', body: { error: { code: 'DatasetExecuteQueriesError', 'pbi.error': { details: [{ code: 'DetailsMessage', detail: { value: detail } }] } } } })];
   const broken = await verifyModel(t.ctx);
   assert.equal(broken.ok, false);
@@ -419,12 +434,11 @@ test('connection secret: a stopped run that made the connection but not the reco
 });
 
 test('tenant settings: only a setting that is off and not delegated is flagged', () => {
-  const settings = {
-    ServicePrincipalAccessPermissionAPIs: { enabled: false },
-    CustomVisualsTenant: { enabled: false, delegateToCapacity: true },
-  };
-  assert.deepEqual(blockedSettings(settings, {}).map((s) => s.name), ['ServicePrincipalAccessPermissionAPIs']);
-  assert.deepEqual(blockedSettings(settings, { reports: true }).map((s) => s.name), ['ServicePrincipalAccessPermissionAPIs']);
+  const name = 'ServicePrincipalAccessPermissionAPIs';
+  assert.deepEqual(blockedSettings({ [name]: { enabled: false } }, {}).map((s) => s.name), [name]);
+  assert.deepEqual(blockedSettings({ [name]: { enabled: false } }, { reports: true }).map((s) => s.name), [name]);
+  assert.deepEqual(blockedSettings({ [name]: { enabled: false, delegateToCapacity: true } }, { reports: true }), []);
+  assert.deepEqual(blockedSettings({ [name]: { enabled: true } }, { reports: true }), []);
   assert.deepEqual(blockedSettings(undefined, { reports: true }), []);
 });
 

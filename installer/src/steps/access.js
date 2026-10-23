@@ -1,11 +1,16 @@
 // @ts-check
 /**
  * Who can view Consumption Central: one Entra security group. Its members get Build on the semantic
- * models. Sharing is then adding people to the group, from the installer or My Groups.
+ * model, and the report is shared with the group once, by hand. Sharing is then adding people to
+ * the group, from the installer or My Groups.
+ *
+ * The group gets no workspace role: workspace viewers can read notebook code, and the notebooks can
+ * hold a client secret or a GitHub token.
  */
 import { HttpError } from '../http.js';
 import { VIEWER_GROUP } from '../product.js';
 import { asksAdvanced } from './advanced.js';
+import { reportsOn, reportUrl } from './report.js';
 
 /** @typedef {import('../install.js').Ctx} Ctx */
 /** @typedef {{ workspaceId: string, datasetId: string, name: string }} ModelRef */
@@ -63,6 +68,7 @@ export async function planAccess(ctx) {
   if (mode === 'new') {
     if (!access.createdGroup) {
       delete access.groupId;
+      delete access.reportShared;
     }
     access.groupName = access.createdGroup ? access.groupName ?? VIEWER_GROUP_NAME : VIEWER_GROUP_NAME;
   } else {
@@ -70,6 +76,7 @@ export async function planAccess(ctx) {
       const name = (await ui.input('Group name or object ID', { default: access.createdGroup ? undefined : access.groupName ?? access.groupId })).trim();
       const found = await api.graph.resolvePrincipal(name).catch(() => null);
       if (found?.kind === 'group') {
+        if (found.id !== access.groupId) delete access.reportShared;
         Object.assign(access, { groupId: found.id, groupName: found.displayName, createdGroup: false });
         ui.ok(`Viewers: ${found.displayName}`);
         break;
@@ -96,7 +103,7 @@ export function accessReview(config, where) {
   const owners = a.groupId && !a.createdGroup ? 'Its owners share it by adding people to it.' : 'You are its owner; share by adding people to it.';
   return {
     creates: [{ kind: 'Entra group', name, isNew: !a.groupId, detail: `Who can view Consumption Central. ${owners}` }],
-    grants: [{ who: `${name} (group)`, what: 'Build (ReadExplore)', where, detail: 'So its members can view the reports.' }],
+    grants: [{ who: `${name} (group)`, what: 'Build (ReadExplore)', where, detail: 'So its members can view the report, once you share it with the group. Power BI has no API for that, so the installer shows you the clicks.' }],
   };
 }
 
@@ -118,6 +125,7 @@ export async function ensureViewerGroup(ctx) {
     }
     ui.warn(`The viewer group ${a.groupName ?? a.groupId} is gone.${a.createdGroup ? ' Creating it again.' : ''}`);
     delete a.groupId;
+    delete a.reportShared;
     a.grantedModels = [];
     if (!a.createdGroup) {
       ctx.save();
@@ -202,6 +210,68 @@ export async function grantModelAccess(ctx, models) {
 }
 
 /**
+ * The clicks that share the report with the viewer group, one whole step each.
+ * @param {import('../config.js').InstallConfig} config
+ */
+export function shareReportSteps(config) {
+  const group = config.access?.groupName ?? VIEWER_GROUP_NAME;
+  const ws = config.fabric.workspaceId;
+  const r = config.semanticModel.report;
+  const url = ws && r?.id ? reportUrl(ws, r.id) : undefined;
+  return [
+    `Open the ${r?.name ?? 'Consumption Central'} report${url ? ` (${url})` : ''}, or in ${config.fabric.workspaceName ?? 'the workspace'} choose … (More options) next to it.`,
+    'Choose Manage permissions, then Add user.',
+    `Enter "${group}" and choose Grant.`,
+  ];
+}
+
+/**
+ * The report still needs sharing with the viewer group: there is a group and a report, and nobody
+ * has said this report was shared. A report published again has a new ID, so it's asked again.
+ * @param {import('../config.js').InstallConfig} config
+ */
+export const shareReportPending = (config) => {
+  const id = config.semanticModel.report?.id;
+  return reportsOn(config) && !!config.access?.groupId && !!id && config.access.reportShared !== id;
+};
+
+/**
+ * Asks the user to share the report with the viewer group, once. Build on the model lets members
+ * query it, but opening the report takes a share, and Power BI has no API for sharing a report
+ * with a group. Asked straight after the report is published and before the first load, which can
+ * take hours, so viewers can open it while the data loads. Not asked again once done.
+ * @param {Ctx} ctx
+ */
+export async function shareReport(ctx) {
+  const { ui, config } = ctx;
+  const a = config.access;
+  if (!shareReportPending(config)) {
+    if (!a?.groupId) ui.warn("There's no viewer group yet, so there's nothing to share. The summary at the end says what to do.");
+    else if (!config.semanticModel.report?.id) ui.warn("There's no report yet, so there's nothing to share. The summary at the end says how to publish it.");
+    return;
+  }
+  const group = a?.groupName ?? VIEWER_GROUP_NAME;
+  ui.info(`Members of "${group}" can open the report once it's shared with the group. Power BI has no API for that, so it takes a few clicks:`);
+  shareReportSteps(config).forEach((s, i) => ui.info(`  ${i + 1}. ${s}`));
+  ui.note('After that, give people access by adding them to the group.');
+  const done = await ui.select(
+    'Have you shared the report?',
+    [
+      { name: "I've shared it", value: true, description: `Members of "${group}" can open the report.` },
+      { name: 'Later', value: false, description: 'The summary at the end reminds you, and Repair asks again.' },
+    ],
+    false,
+  );
+  if (!done) {
+    ui.note('Until it\'s shared, people in the group get "no access" when they open the report.');
+    return;
+  }
+  /** @type {import('../config.js').AccessConfig} */ (a).reportShared = config.semanticModel.report?.id;
+  ctx.save();
+  ui.ok(`The report is shared with "${group}"`);
+}
+
+/**
  * The `access` command: shows the viewer group and adds viewers or owners to it.
  * @param {Ctx} ctx
  * @param {ModelRef[]} models  The models the group should have Build on.
@@ -222,7 +292,8 @@ export async function accessCommand(ctx, models) {
       [
         { name: 'Add viewers', value: 'members', description: 'People or groups, by email or group name.' },
         { name: 'Add an owner', value: 'owner', description: 'Owners can add and remove viewers themselves.' },
-        { name: 'Give the group Build on the models again', value: 'grants', description: 'Repairs access to the models.' },
+        { name: 'Give the group Build on the model again', value: 'grants', description: 'Repairs access to the model.' },
+        ...(shareReportPending(config) ? [{ name: 'Share the report with the group', value: 'share', description: 'Once only. Members get "no access" on the report until it\'s shared.' }] : []),
         { name: 'Done', value: 'done' },
       ],
       'done',
@@ -230,6 +301,10 @@ export async function accessCommand(ctx, models) {
     if (action === 'done') return;
     if (action === 'grants') {
       await grantModelAccess(ctx, models);
+      continue;
+    }
+    if (action === 'share') {
+      await shareReport(ctx);
       continue;
     }
     const names = (await ui.input(action === 'owner' ? 'Owner email' : 'Emails or group names, separated by commas')).split(/[,;]/).map((s) => s.trim()).filter(Boolean);

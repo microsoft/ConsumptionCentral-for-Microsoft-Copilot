@@ -53,30 +53,30 @@ const COMMANDS = {
   'load-cowork': {
     title: 'Load Cowork now', short: 'Load Cowork', icon: 'database', section: 'Cowork credits',
     row: 'Load Cowork now', button: 'Load Cowork',
-    desc: 'Once the Cowork Dataflow is signed in and published: refresh it, load the Viva credits and refresh the consumption model.',
+    desc: 'Once the Cowork Dataflow is signed in and published: refresh it, load the Viva credits and refresh the semantic model.',
     off: 'There is no Cowork credits Dataflow.',
   },
   refresh: {
-    title: 'Refresh the models', short: 'Refresh', icon: 'refresh', section: 'Model refresh',
-    row: 'Refresh the models', button: 'Refresh',
-    desc: 'Refresh the semantic models from the Lakehouse now.',
+    title: 'Refresh the model', short: 'Refresh', icon: 'refresh', section: 'Model refresh',
+    row: 'Refresh the model', button: 'Refresh',
+    desc: 'Refresh the semantic model from the Lakehouse now.',
     off: 'No semantic model is deployed.',
   },
   status: {
     title: 'Check status', short: 'Status', icon: 'pulse', section: 'Status',
     row: 'Check status', button: 'Check status',
-    desc: 'Recent runs, model refreshes, secret expiry and the last data check. Changes nothing.',
+    desc: 'Recent runs, model refreshes, secret and token expiry and the last data check. Changes nothing.',
   },
   check: {
     title: 'Check the data', short: 'Check data', icon: 'database', section: 'Data check',
     row: 'Check the data', button: 'Check the data',
-    desc: 'Read the Lakehouse tables again for row counts, date ranges and licence matches, without running the pipeline. Takes a few minutes.',
-    off: 'The data check notebook isn\'t deployed.',
+    desc: 'Check the semantic model answers queries, and count the rows each data source gave it, without running the pipeline.',
+    off: 'No semantic model is deployed.',
   },
   update: {
     title: 'Update Consumption Central', short: 'Update', icon: 'upload', section: 'Update', adopt: true,
     row: 'Update', button: 'Update',
-    desc: 'Push the notebooks, pipeline and semantic model from this checkout to Fabric, then refresh the models. If Fabric can\'t update a model and keep its data, the page asks before the data is cleared and reloaded.',
+    desc: 'Push the notebooks, pipeline and semantic model from this installer to Fabric, then refresh the model. If Fabric can\'t update the model and keep its data, the page asks before the data is cleared and reloaded.',
     off: 'Nothing is installed yet.',
   },
   'rotate-secret': {
@@ -85,10 +85,16 @@ const COMMANDS = {
     desc: 'Replace the app\'s client secret in Key Vault (or show a vault admin the steps), or in the notebooks, and the model connection\'s.',
     off: 'There is no app registration or client secret yet.',
   },
+  'github-token': {
+    title: 'New GitHub token', short: 'GitHub token', icon: 'key', section: 'New GitHub token', adopt: true,
+    row: 'Replace the GitHub token', button: 'New token',
+    desc: 'Put a new GitHub token in Key Vault (or show a vault admin the steps), or in Ingest_GitHub_API, before the old one expires.',
+    off: 'GitHub isn\'t read from the API, or nothing is installed yet.',
+  },
   access: {
     title: 'Manage access', short: 'Access', icon: 'shield', section: 'Viewer access',
     row: 'Manage access', button: 'Manage access',
-    desc: 'Choose the viewer group, add viewers or owners, and give the group Build on the models again. To share Consumption Central, add people to the group.',
+    desc: 'Choose the viewer group, add viewers or owners, and give the group Build on the semantic model again. To share Consumption Central, add people to the group.',
     off: 'Viewers need the semantic model first.',
   },
   upload: {
@@ -109,7 +115,7 @@ const COMMANDS = {
     desc: 'See which roles, licences, capacities and Azure access you have and which are missing. Changes nothing.',
   },
 };
-const ROW_ORDER = ['run', 'rerun-failed', 'load-cowork', 'refresh', 'status', 'upload', 'check', 'update', 'access', 'rotate-secret', 'uninstall', 'install'];
+const ROW_ORDER = ['run', 'rerun-failed', 'load-cowork', 'refresh', 'status', 'upload', 'check', 'update', 'access', 'rotate-secret', 'github-token', 'uninstall', 'install'];
 /** The id of the Cowork Dataflow card in steps/next-steps.js. */
 const COWORK_STEP_ID = 'cowork-dataflow';
 
@@ -117,15 +123,17 @@ const COWORK_STEP_ID = 'cowork-dataflow';
 // Who can view, Schedule...) slot in as they come.
 const INSTALL_STAGES = [
   'Sign in', 'Checking your tenant', 'Data sources', 'Power BI', 'Fabric', 'App registration',
-  'Key Vault for the app secret', 'Ready to set up', 'Setting up', 'Done',
+  'Key Vault', 'Ready to set up', 'Setting up', 'Done',
 ];
 // Stages only one target has. The rail shows the chosen target's; the record's target, else Fabric, until one is entered.
 const TARGET_STAGES = {
-  fabric: new Set(['Data sources', 'Fabric', 'App registration', 'Key Vault for the app secret']),
+  fabric: new Set(['Data sources', 'Fabric', 'App registration', 'Key Vault']),
 };
+/** The stage a heading belongs to: the Key Vault heading names the secrets it holds. */
+const stageTitle = (title) => (title.startsWith('Key Vault for ') ? 'Key Vault' : title);
 const stageTarget = (title) => Object.keys(TARGET_STAGES).find((k) => TARGET_STAGES[k].has(title));
 const applies = (run, s) => !s.only || s.only === run.platform;
-const DONE_HEADINGS = new Set(['Consumption Central is set up', 'Consumption Central is partly set up', 'Connect Power BI']);
+const DONE_HEADINGS = new Set(['Consumption Central is set up', 'Consumption Central is set up, still reloading', 'Consumption Central is partly set up', 'Connect Power BI']);
 
 const METHODS = [
   { value: 'browser', name: 'Browser', tag: 'Recommended', desc: 'A Microsoft sign-in window opens on this computer.' },
@@ -139,7 +147,7 @@ const WAITING = {
 };
 const NEEDS = [
   'An active Fabric capacity (F2 or larger, or a trial) you can assign workspaces to, or a workspace where you\'re an Admin or Member.',
-  'Optional: an Azure subscription where you can create a Key Vault, or a vault you can read secrets from. By default on Fabric, the app\'s client secret goes in the notebooks instead, where anyone with a role in the workspace can read it.',
+  'Optional: an Azure subscription where you can create a Key Vault, or a vault you can read secrets from, for sources you read by API. By default on Fabric, their secrets go in the notebooks instead, where anyone with a role in the workspace can read them.',
   'Permission to register apps in Entra, or an app registration you already have. If you have neither, you get an admin pack to send an admin.',
   'A Global Administrator or Privileged Role Administrator to grant admin consent. If that isn\'t you, you get a link to send them.',
 ];
@@ -775,8 +783,10 @@ function onHeading(run, e) {
     return;
   }
   run.phase = 'questions';
-  const known = run.stages.find((s) => s.status === 'upcoming' && s.title === title);
+  // "Key Vault for the client secret and the GitHub token" is the Key Vault stage.
+  const known = run.stages.find((s) => s.status === 'upcoming' && s.title === stageTitle(title));
   if (known) {
+    if (known.title !== title) known.heading = title;
     enter(run, known, e.at);
     return;
   }
@@ -1511,7 +1521,7 @@ function renderHome() {
     kids.push(staleBanner(busy));
     if (running) kids.push(runningBanner());
     kids.push(h('p', { class: 'lede' },
-      'Answer a few questions and review the plan. Then the installer builds Consumption Central in your tenant: an app registration with its secret in the notebooks (or, if you choose, in Key Vault), a Fabric workspace and Lakehouse, the notebooks and pipeline, and the semantic model with the Consumption Central app on top.'));
+      'Answer a few questions and review the plan. Then the installer builds Consumption Central in your tenant: an app registration, a Fabric workspace and Lakehouse, the notebooks and pipeline, and the semantic model with the Consumption Central report on top. Sources you read by API keep their secrets in the notebooks, or in Key Vault if you choose.'));
     if (rec) kids.push(h('p', { class: 'hint' }, 'Your answers from last time are saved, so the questions start from them.'));
 
     const tenantInput = h('input', {
@@ -1555,12 +1565,12 @@ function renderHome() {
     ['Tenant', rec.tenantId],
     ['Workspace', link(rec.workspace, rec.workspaceUrl)],
     ['Lakehouse', rec.lakehouse],
-    ['Collects', rec.data.join(', ')],
+    ['Collects', rec.data.map((d) => h('div', null, d))],
     ['Semantic model', rec.model ?? 'Not deployed'],
     ['Schedule', rec.schedule ?? 'Not set'],
-    ['Client secret expires', rec.secretExpires ? h('span', { class: soon ? 'soon' : null }, `${rec.secretExpires} (${days < 0 ? 'expired' : `in ${days} days`})`) : 'Unknown'],
+    ['Client secret expires', rec.secretExpires ? h('span', { class: soon ? 'soon' : null }, `${rec.secretExpires} (${days < 0 ? 'expired' : `in ${days} days`})`) : rec.app ? 'Unknown' : null],
+    ['GitHub token expires', rec.tokenExpires ?? null],
     ['First load', firstRun],
-    ['Audit history', rec.historyDays ? `${rec.historyDays} days` : null],
     ['Install record', [h('div', null, st.configFile),
       h('p', { class: 'hint' }, 'If OneDrive syncs your Documents folder, this record follows you to your other PCs.')]],
   ].filter(([, v]) => v != null && v !== '');
@@ -1573,16 +1583,14 @@ function renderHome() {
   const actions = ROW_ORDER.map((cmd) => {
     const c = COMMANDS[cmd];
     const can = cmd === 'install' || !!rec.can[cmd];
-    const history = cmd === 'run' && can ? historyPicker(busy) : null;
     return h('li', { class: 'row' }, icon(c.icon),
       h('div', { class: 'row-text' },
         h('span', { class: 'row-title' }, c.row),
         h('span', { class: 'row-desc' }, c.desc),
-        !can && c.off ? h('span', { class: 'row-why' }, c.off) : null,
-        history),
+        !can && c.off ? h('span', { class: 'row-why' }, c.off) : null),
       h('button', {
         type: 'button', class: cmd === primary ? 'btn primary' : 'btn', disabled: !can || busy,
-        onclick: () => start(cmd, cmd === 'run' && app.backfill ? { backfillDays: Number(app.backfill) } : {}),
+        onclick: () => start(cmd, {}),
       }, c.button));
   });
   kids.push(h('section', { class: 'panel' },
@@ -1591,33 +1599,6 @@ function renderHome() {
     h('ul', { class: 'rows' }, actions)));
   kids.push(prereqsPanel(busy));
   return h('div', { class: 'page' }, kids);
-}
-
-const BACKFILL = [
-  { value: '', name: 'Usual run' },
-  { value: '30', name: 'Reload the last 30 days of audit history' },
-  { value: '90', name: 'Reload the last 90 days of audit history' },
-  { value: '180', name: 'Reload the last 180 days of audit history' },
-];
-
-/** Run now can reload older audit history, like run --backfill-days. */
-function historyPicker(busy) {
-  const hint = h('span', { class: 'row-desc', id: 'backfill-hint' });
-  const paint = () => {
-    const n = Number(app.backfill || 0);
-    hint.textContent = n >= 90
-      ? `In a large tenant, ${n} days can take several hours to load. The usual schedule carries on afterwards.`
-      : n ? 'Reloads these days and rebuilds the curated table, then runs the data check.' : '';
-    hint.hidden = !n;
-  };
-  const sel = h('select', { id: 'backfill', class: 'field', disabled: busy, 'aria-describedby': 'backfill-hint' },
-    BACKFILL.map((o) => h('option', { value: o.value, selected: (app.backfill ?? '') === o.value }, o.name)));
-  sel.addEventListener('change', () => {
-    app.backfill = sel.value;
-    paint();
-  });
-  paint();
-  return h('div', { class: 'history-pick' }, h('label', { class: 'label', for: 'backfill' }, 'Audit history'), sel, hint);
 }
 
 /**

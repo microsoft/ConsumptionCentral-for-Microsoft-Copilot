@@ -4,10 +4,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { archiveConfig, loadConfig, removeFile, saveConfig } from './config.js';
 import { armErrors } from './clients/azure.js';
+import { appNeeded, appWanted, permissionsFor, secretWanted } from './catalog.js';
+import { describePrices } from './prices.js';
 import { plan, preflight, confirmPlan } from './steps/plan.js';
 import { flowsWanted } from './steps/flows.js';
 import { isResumeLater } from './steps/identity.js';
 import { checkStaged } from './staging.js';
+import { describeSources } from './uploads.js';
 
 /** @typedef {import('./install.js').Ctx} Ctx */
 /** @typedef {import('./config.js').InstallConfig} InstallConfig */
@@ -17,19 +20,43 @@ const draftFile = (/** @type {string} */ file) => `${file}.draft.json`;
 const recordRevision = (/** @type {string} */ file) => existsSync(file) ? createHash('sha256').update(readFileSync(file)).digest('hex') : 'new';
 
 /** @param {InstallConfig} config */
+function identitySummary(config) {
+  const ds = config.dataSources;
+  if (!appNeeded(config) && !secretWanted(ds)) return 'No app registration or secret needed';
+  const app = appNeeded(config) ? config.app.displayName ?? config.app.appId ?? 'App registration' : 'No app registration';
+  if (!secretWanted(ds)) return app;
+  return `${app}; ${config.keyVault.mode === 'notebook' ? 'secrets in the notebooks' : config.keyVault.name ?? 'Key Vault'}`;
+}
+
+/** @param {InstallConfig} config */
+function sourcesSummary(config) {
+  const ds = config.dataSources;
+  const cc = config.consumption;
+  return [
+    ds.azureAi === 'api' ? `Azure AI: ${cc.azureSubscriptionName ?? cc.azureSubscriptionId ?? 'choose a subscription'}` : undefined,
+    ds.coworkCredits === 'api' ? `Cowork: ${cc.vivaQuery ? `Viva Insights query ${cc.vivaQuery}` : 'choose the Viva Insights query'}` : undefined,
+    ds.github === 'api' ? `GitHub: ${config.github?.enterprise ?? 'choose the enterprise'}` : undefined,
+    ds.commercialTerms === 'api' ? `Credit rate: ${config.commercialTerms?.scopeName ?? config.commercialTerms?.scope ?? 'choose a billing scope'}` : undefined,
+    config.semanticModel.enabled === false ? undefined : `Prices: ${describePrices(config.prices)}`,
+  ]
+    .filter(Boolean)
+    .join('; ') || 'Nothing to connect';
+}
+
+/** @param {InstallConfig} config */
 export function setupCategories(config) {
   const done = new Set(config.setup?.completed ?? []);
   const entry = (/** @type {string} */ id, /** @type {string} */ title, /** @type {string} */ summary) => ({ id, title, summary, complete: done.has(id) });
   const flowEnvironment = config.uploads?.flowEnvironment;
   return [
-    entry('data', 'Data collection', Object.entries(config.modules).filter(([, on]) => on).map(([name]) => name).join(', ')),
+    entry('data', 'Data sources', describeSources(config.dataSources).join('; ')),
     entry('placement', 'Fabric placement', `${config.fabric.workspaceName ?? 'Choose workspace'}; capacity: ${config.fabric.capacityId ?? 'not set'}`),
     entry('powerbi', 'Power BI', `Semantic model: ${config.semanticModel.enabled === false ? 'off' : 'on'}; reports: ${config.semanticModel.reports === false ? 'off' : 'on'}`),
     entry('access', 'Viewer access', config.access?.groupName ?? config.access?.groupId ?? 'Choose who can view'),
-    entry('identity', 'Identity and secrets', `${config.app.displayName ?? config.app.appId ?? 'App registration'}; ${config.keyVault.mode === 'notebook' ? 'secret in notebooks' : config.keyVault.name ?? 'Key Vault'}`),
-    entry('sources', 'Module connections', 'Credit consumption, data sources and module-specific connections'),
-    entry('governance', 'Governance and flows', `Flows: ${flowsWanted(config).length ? flowEnvironment?.name ?? flowEnvironment?.url ?? 'choose environment' : 'none'}`),
-    entry('schedule', 'Schedule and loading', `${config.schedule.frequency}, ${config.schedule.time} ${config.schedule.timeZone}; ${config.history.days} days; ${config.reporting?.currency ?? 'USD'}`),
+    entry('identity', 'Identity and secrets', identitySummary(config)),
+    entry('sources', 'Data source connections', sourcesSummary(config)),
+    entry('governance', 'Power Automate flow', `Flows: ${flowsWanted(config).length ? flowEnvironment?.name ?? flowEnvironment?.url ?? 'choose environment' : 'none'}`),
+    entry('schedule', 'Schedule and first load', `${config.schedule.frequency}, ${config.schedule.time} ${config.schedule.timeZone}`),
   ];
 }
 
@@ -71,7 +98,6 @@ export function restoreSetupDraft(ctx) {
   if (config.setup?.baseRevision !== recordRevision(ctx.file)) return false;
   replaceConfig(ctx.config, config);
   ctx.runFirstLoad = config.setup?.runFirstLoad;
-  ctx.reloadHistoryDays = config.setup?.reloadHistoryDays;
   return true;
 }
 
@@ -82,27 +108,33 @@ function replaceConfig(target, source) {
 }
 
 /**
- * First-load and history-reload choices apply to one deployment, so they stay out of the install record.
+ * The first-load choice applies to one deployment, so it stays out of the install record.
  * @param {NonNullable<InstallConfig['setup']>} setup
  */
 function oneOff(setup) {
   delete setup.runFirstLoad;
-  delete setup.reloadHistoryDays;
   return setup;
 }
+
+/**
+ * What the identity section's questions depend on. When the data or Power BI choices change it, the
+ * section is asked again.
+ * @param {InstallConfig} config
+ */
+const identityNeeds = (config) => JSON.stringify([appNeeded(config), appWanted(config.dataSources), secretWanted(config.dataSources), permissionsFor(config.dataSources)]);
 
 /** @param {InstallConfig} before @param {InstallConfig} after */
 function changedCategories(before, after) {
   const old = setupCategories(before);
   const values = (/** @type {InstallConfig} */ config) => ({
-    data: [config.modules, config.dataSources],
-    placement: [config.fabric.capacityId, config.fabric.workspaceName, config.fabric.lakehouseName, config.scale],
+    data: [config.dataSources],
+    placement: [config.fabric.capacityId, config.fabric.workspaceName, config.fabric.lakehouseName],
     powerbi: [config.semanticModel.enabled, config.semanticModel.reports],
     access: config.access,
     identity: [config.app, config.keyVault],
-    sources: [config.dataSources, config.consumption],
+    sources: [config.consumption, config.github, config.commercialTerms, config.prices],
     governance: [config.uploads],
-    schedule: [config.schedule, config.history, config.reporting, config.setup?.runFirstLoad, config.setup?.reloadHistoryDays],
+    schedule: [config.schedule, config.setup?.runFirstLoad],
   });
   const previousValues = values(before);
   const nextValues = values(after);
@@ -142,7 +174,7 @@ export async function reviewSetup(ctx) {
   // One-off answers: a restored draft carries them for this session; the install record never does.
   oneOff(ctx.config.setup);
   ctx.runFirstLoad ??= ctx.config.firstRun?.status !== 'Completed';
-  baseline.setup = { ...(baseline.setup ?? { completed: [] }), runFirstLoad: ctx.runFirstLoad, reloadHistoryDays: ctx.reloadHistoryDays };
+  baseline.setup = { ...(baseline.setup ?? { completed: [] }), runFirstLoad: ctx.runFirstLoad };
   if (ctx.config.app.existing && !ctx.config.keyVault.secretSetAt && !ctx.pendingSecret) {
     ctx.config.setup.completed = ctx.config.setup.completed.filter((id) => id !== 'identity');
   }
@@ -157,7 +189,7 @@ export async function reviewSetup(ctx) {
     }
     if (missing.length) {
       ctx.config.setup.completed = ctx.config.setup.completed.filter((id) => id !== 'data');
-      notice = `These selected uploads are no longer available: ${missing.join(', ')}. Open Data collection and select them again before deployment.`;
+      notice = `These selected uploads are no longer available: ${missing.join(', ')}. Open Data sources and select them again before deployment.`;
       ctx.setupRetry = false;
       ctx.setupSection = undefined;
     }
@@ -169,7 +201,7 @@ export async function reviewSetup(ctx) {
   let approved = false;
   const checkpoint = () => {
     ctx.config.setup = {
-      completed: ctx.config.setup?.completed ?? [], runFirstLoad: ctx.runFirstLoad, reloadHistoryDays: ctx.reloadHistoryDays, baseRevision,
+      completed: ctx.config.setup?.completed ?? [], runFirstLoad: ctx.runFirstLoad, baseRevision,
       uploads: (ctx.pendingUploads ?? []).map(({ token, name }) => ({ token, name })),
     };
     saveConfig(draftFile(ctx.file), ctx.config);
@@ -200,7 +232,7 @@ export async function reviewSetup(ctx) {
         continue;
       }
       const before = structuredClone(ctx.config);
-      const answers = { pendingSecret: ctx.pendingSecret, pendingUploads: ctx.pendingUploads, runFirstLoad: ctx.runFirstLoad, reloadHistoryDays: ctx.reloadHistoryDays };
+      const answers = { pendingSecret: ctx.pendingSecret, pendingUploads: ctx.pendingUploads, runFirstLoad: ctx.runFirstLoad };
       let planned = false;
       try {
         // Refresh before every edit and retry, never use the rewind API cache for live availability.
@@ -212,11 +244,15 @@ export async function reviewSetup(ctx) {
           planned = true;
           const completed = new Set(ctx.config.setup?.completed);
           completed.add(choice);
-          // Data affects connections and access requirements.
-          if (choice === 'data' && JSON.stringify(before.modules) !== JSON.stringify(ctx.config.modules)) {
-            for (const dependent of ['sources', 'access', 'governance']) completed.delete(dependent);
+          // Data sources decide which connections and flows are asked for.
+          if (choice === 'data' && JSON.stringify(before.dataSources) !== JSON.stringify(ctx.config.dataSources)) {
+            for (const dependent of ['sources', 'governance']) completed.delete(dependent);
           }
-          if (choice === 'powerbi' && before.semanticModel.enabled !== ctx.config.semanticModel.enabled) completed.delete('access');
+          if (choice === 'powerbi' && before.semanticModel.enabled !== ctx.config.semanticModel.enabled) {
+            for (const dependent of ['access', 'sources']) completed.delete(dependent);
+          }
+          // e.g. an API source that needs the app, or a model that needs its connection.
+          if (choice !== 'identity' && identityNeeds(before) !== identityNeeds(ctx.config)) completed.delete('identity');
           ctx.config.setup = { completed: [...completed] };
           checkpoint();
           continue;

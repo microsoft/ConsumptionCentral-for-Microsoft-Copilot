@@ -1,7 +1,7 @@
 // @ts-check
 /**
- * Copilot pay-as-you-go as billed in Azure. The installer adds this table to the Consumption
- * model at deploy time, so the template stays as it is. Before the first load, or when Azure AI
+ * Copilot pay-as-you-go as billed in Azure. The installer adds this table to the semantic model at
+ * deploy time, so the template stays as it is. Before the first load, or when Azure AI
  * is left out, the table is there but empty, so queries against it never fail.
  */
 import { createHash } from 'node:crypto';
@@ -80,7 +80,7 @@ function column(c) {
  */
 export function addCopilotPaygSpend(model) {
   if (model.tables.some((t) => t.name === PAYG_TABLE)) return;
-  if (!model.expressions?.some((e) => e.name === 'GetTable')) throw new Error('The credit consumption model template has no "GetTable" function.');
+  if (!model.expressions?.some((e) => e.name === 'GetTable')) throw new Error('The semantic model template has no "GetTable" function.');
   model.tables.push({
     name: PAYG_TABLE,
     description:

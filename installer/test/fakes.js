@@ -12,7 +12,7 @@ import { createUi } from '../src/ui.js';
 /** @typedef {import('../src/clients/fabric.js').ItemRef} ItemRef */
 
 /** Where fake installs keep their record, so it stays out of the repo. */
-const TEST_RECORD_DIR = mkdtempSync(join(tmpdir(), 'consumption-central-installerer-test-'));
+const TEST_RECORD_DIR = mkdtempSync(join(tmpdir(), 'consumption-central-installer-test-'));
 
 let sources;
 /** Loads the real notebooks and pipeline once. */

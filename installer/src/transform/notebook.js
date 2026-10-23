@@ -1,27 +1,30 @@
 // @ts-check
 /**
- * Prepares a repo notebook for a customer's workspace, without touching the
- * source file: fills in the tenant and app IDs, reads the client secret from
- * Key Vault, tags the parameters cell and binds the default Lakehouse.
+ * Prepares a repo notebook for a workspace, without touching the source file: fills in the
+ * tenant and app IDs and the installer's settings, reads secrets from Key Vault (or, with no
+ * Key Vault, writes them in), tags the parameters cell and binds the default Lakehouse.
  */
 
 /**
  * @typedef {{ cell_type: string, source: string | string[], metadata?: Record<string, any>, [k: string]: any }} Cell
  * @typedef {{ cells: Cell[], metadata: Record<string, any>, nbformat?: number, nbformat_minor?: number }} Notebook
  *
+ * @typedef {{ vaultUri: string, secretName: string } | { value: string }} NotebookSecret
+ *   Read from Key Vault at run time, or (with no Key Vault) the value itself.
+ *
  * @typedef {object} NotebookSettings
  * @property {string} [tenantId]
  * @property {string} [clientId]
- * @property {{ vaultUri: string, secretName: string } | { value: string }} [secret]  Read from Key Vault at run time, or (with no Key Vault) the value itself.
+ * @property {NotebookSecret} [secret]  The app's client secret, assigned to CLIENT_SECRET.
+ * @property {Record<string, NotebookSecret>} [secrets]  Other secrets, by the name they are assigned to.
  * @property {string[]} [parameters]  Assignments the pipeline overrides.
  * @property {Record<string, string>} [values]  Defaults to write into the notebook, e.g. IDs for a manual run.
  * @property {Record<string, string>} [expressions]  Python expressions to assign as they are, e.g. `True`.
  * @property {{ id: string, name: string, workspaceId: string }} [lakehouse]
- * @property {boolean} [dataCheckSummary]  Append a cell that returns a JSON summary to the installer.
  * @property {import('../catalog.js').NotebookPatch[]} [patches]  Text changes to code cells.
  */
 
-import { INSTALLER_DIR, INSTALLER_TITLE } from '../product.js';
+import { INSTALLER_TITLE } from '../product.js';
 
 export const MARKER = `Set by the ${INSTALLER_TITLE}`;
 
@@ -93,61 +96,17 @@ export function findAssignmentCell(nb, name) {
 }
 
 /**
- * Python that reads the client secret from Key Vault at run time, or, when the install keeps
- * the secret in the notebook, the value as a string literal.
- * @param {{ vaultUri: string, secretName: string } | { value: string }} secret
+ * Python that reads a secret from Key Vault at run time, or, when the install keeps the secret
+ * in the notebook, the value as a string literal.
+ * @param {NotebookSecret} secret
  */
 export function secretExpression(secret) {
   if ('value' in secret) return pyString(secret.value);
   return `notebookutils.credentials.getSecret(${pyString(secret.vaultUri)}, ${pyString(secret.secretName)})`;
 }
 
-/** The comment next to a client secret kept in the notebook. */
+/** The comment next to a secret kept in the notebook. */
 export const INLINE_SECRET_NOTE = `${MARKER}: no Key Vault, so the secret is here. Anyone with a role in this workspace can read it. Each install, repair or update replaces it`;
-
-/** Where the data check's summary lands, relative to the Lakehouse root. */
-export const DATA_CHECK_FILE = `${INSTALLER_DIR}/data_check.json`;
-
-const DATA_CHECK_SUMMARY = `# ${MARKER}: save a short summary for the installer to read back.
-# This is the only thing the installer's copy writes: one small JSON file under ${DATA_CHECK_FILE}.
-import json as _json
-import os as _os
-from datetime import datetime as _dt, timezone as _tz
-from pyspark.sql import functions as _F
-
-_tables = dict(resolved)
-_tables['org'] = _resolve('copilot_org_data')
-_summary = {'checkedAt': _dt.now(_tz.utc).isoformat(timespec='seconds'), 'tables': {}}
-for _key, _table in _tables.items():
-    if not _table:
-        _summary['tables'][_key] = None
-        continue
-    _df = spark.read.table(_table)
-    _info = {'table': _table, 'rows': _df.count()}
-    if _key == 'audit' and _info['rows']:
-        _col = _pick(_df, DATE_NAMES, ['creationdate', 'activitydate'])
-        if _col:
-            _r = _df.select(_F.min(_col).alias('lo'), _F.max(_col).alias('hi')).collect()[0]
-            _info['from'], _info['to'] = str(_r['lo']), str(_r['hi'])
-    _summary['tables'][_key] = _info
-# How many people in the org data have a department, so thin by-department views can be explained.
-if _summary['tables'].get('org') and _summary['tables']['org']['rows']:
-    _org = spark.read.table(_tables['org'])
-    if 'Organization' in _org.columns:
-        _summary['tables']['org']['withDepartment'] = _org.filter(
-            _F.length(_F.trim(_F.col('Organization'))) > 0).count()
-# How many licensed users match Copilot activity, from the notebook's overlap check.
-_summary['identity'] = globals().get('overlap_summary')
-# Why the audit table is empty, if the processor left out every record as test activity.
-_summary['auditExcluded'] = globals().get('audit_excluded')
-
-_path = '/lakehouse/default/${DATA_CHECK_FILE}'
-_os.makedirs(_os.path.dirname(_path), exist_ok=True)
-with open(_path, 'w') as _fh:
-    _fh.write(_json.dumps(_summary))
-print(_json.dumps(_summary, indent=2))
-notebookutils.notebook.exit(_json.dumps(_summary))
-`;
 
 /**
  * Returns a prepared copy of `source`. The input is never modified.
@@ -170,15 +129,7 @@ export function prepareNotebook(source, settings) {
 
     updateCell(nb.cells[idx], (t) => setAssignment(t, 'TENANT_ID', pyString(/** @type {string} */ (settings.tenantId))));
     updateCell(nb.cells[clientIdx], (t) => setAssignment(t, 'CLIENT_ID', pyString(/** @type {string} */ (settings.clientId))));
-    const secret = /** @type {{ vaultUri: string, secretName: string } | { value: string }} */ (settings.secret);
-    updateCell(nb.cells[secretIdx], (t) =>
-      'value' in secret
-        ? setAssignment(t, 'CLIENT_SECRET', secretExpression(secret), { comment: INLINE_SECRET_NOTE })
-        : setAssignment(t, 'CLIENT_SECRET', secretExpression(secret), {
-            comment: `${MARKER}: read from Azure Key Vault at run time`,
-            before: 'import notebookutils',
-          }),
-    );
+    setSecret(nb.cells[secretIdx], 'CLIENT_SECRET', /** @type {NotebookSecret} */ (settings.secret));
   }
 
   if (settings.parameters?.length) {
@@ -206,6 +157,12 @@ export function prepareNotebook(source, settings) {
     updateCell(nb.cells[idx], (t) => setAssignment(t, name, expression, { comment: MARKER }));
   }
 
+  for (const [name, secret] of Object.entries(settings.secrets ?? {})) {
+    const idx = findAssignmentCell(nb, name);
+    if (idx < 0) throw new Error(`Could not find "${name} = ..." in the notebook.`);
+    setSecret(nb.cells[idx], name, secret);
+  }
+
   for (const patch of settings.patches ?? []) {
     const hits = nb.cells.filter((c) => c.cell_type === 'code' && cellText(c).includes(patch.find));
     const count = hits.reduce((n, c) => n + cellText(c).split(patch.find).length - 1, 0);
@@ -227,10 +184,6 @@ export function prepareNotebook(source, settings) {
     };
   }
 
-  if (settings.dataCheckSummary) {
-    nb.cells.push({ cell_type: 'code', execution_count: null, metadata: {}, outputs: [], source: toSourceLines(DATA_CHECK_SUMMARY) });
-  }
-
   return nb;
 }
 
@@ -240,6 +193,23 @@ export function prepareNotebook(source, settings) {
  */
 function updateCell(cell, fn) {
   cell.source = toSourceLines(fn(cellText(cell)));
+}
+
+/**
+ * Assigns a secret: the Key Vault read, or with no Key Vault the value and a note saying who can read it.
+ * @param {Cell} cell
+ * @param {string} name
+ * @param {NotebookSecret} secret
+ */
+function setSecret(cell, name, secret) {
+  updateCell(cell, (t) =>
+    'value' in secret
+      ? setAssignment(t, name, secretExpression(secret), { comment: INLINE_SECRET_NOTE })
+      : setAssignment(t, name, secretExpression(secret), {
+          comment: `${MARKER}: read from Azure Key Vault at run time`,
+          before: 'import notebookutils',
+        }),
+  );
 }
 
 /**

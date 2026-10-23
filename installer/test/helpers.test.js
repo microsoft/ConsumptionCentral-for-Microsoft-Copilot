@@ -6,7 +6,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { checkTokens, createTokenProvider, isMsiAudienceError, isTransientNetworkError, TOKEN_ATTEMPTS } from '../src/auth.js';
-import { collectedLabels, ESSENTIAL_MODULES, normaliseModules, OPTIONAL_MODULES, permissionsFor } from '../src/catalog.js';
 import { help, parseCli } from '../src/cli.js';
 import { allowsAction, armLocation, parseResourceId, validateVaultName } from '../src/clients/azure.js';
 import { notebookDefinition, notebookJobParameters, scheduleBody } from '../src/clients/fabric.js';
@@ -18,7 +17,7 @@ import { addDays, addMonths, notebookSecretDays } from '../src/steps/identity.js
 import { jobIdFrom, utc } from '../src/steps/run.js';
 import { formatDuration } from '../src/ui.js';
 
-const dir = mkdtempSync(join(tmpdir(), 'vl-installer-'));
+const dir = mkdtempSync(join(tmpdir(), 'cc-installer-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 test('tokens are tried again when the network or DNS blips, and not otherwise', async () => {
@@ -233,11 +232,11 @@ test('allowsAction handles wildcards, notActions and data actions', () => {
 });
 
 test('Key Vault names, regions and resource IDs', () => {
-  assert.equal(validateVaultName('kv-valuelens-01'), true);
+  assert.equal(validateVaultName('kv-consumption-01'), true);
   assert.notEqual(validateVaultName('1kv'), true);
   assert.notEqual(validateVaultName('kv'), true);
-  assert.notEqual(validateVaultName('kv--valuelens'), true);
-  assert.notEqual(validateVaultName('kv-valuelens-'), true);
+  assert.notEqual(validateVaultName('kv--consumption'), true);
+  assert.notEqual(validateVaultName('kv-consumption-'), true);
   assert.notEqual(validateVaultName('a'.repeat(25)), true);
 
   assert.equal(armLocation('UK South'), 'uksouth');
@@ -265,28 +264,6 @@ test('resolveAppRoles: required permissions must exist, optional ones are report
   assert.deepEqual(withOptional.missing, ['CopilotPackages.Read.All']);
   assert.deepEqual(withOptional.roles, [{ value: 'User.Read.All', id: 'r2' }]);
   assert.throws(() => resolveAppRoles(sp, ['Reports.Read.All']), /no application permission named Reports\.Read\.All/);
-});
-
-test('what to collect: audit log, licensed users and org data are essential; the rest are extras', () => {
-  assert.deepEqual([...ESSENTIAL_MODULES], ['core', 'orgData']);
-  assert.ok(!OPTIONAL_MODULES.some((id) => ESSENTIAL_MODULES.includes(/** @type {any} */ (id))));
-  assert.equal(normaliseModules({ orgData: false }).orgData, true);
-  assert.deepEqual(collectedLabels(normaliseModules({ consumption: true })), ['Copilot usage and licences', 'Org data', 'Credit consumption']);
-});
-
-test('permissions follow the chosen modules', () => {
-  assert.deepEqual(permissionsFor({ orgData: false, agent365: false, productFeedback: false, consumption: false }), [
-    'AuditLogsQuery.Read.All',
-    'Reports.Read.All',
-    'User.Read.All',
-  ]);
-  assert.deepEqual(permissionsFor({ orgData: true, agent365: true, productFeedback: true, consumption: false }), [
-    'Application.Read.All',
-    'AuditLogsQuery.Read.All',
-    'CopilotPackages.Read.All',
-    'Reports.Read.All',
-    'User.Read.All',
-  ]);
 });
 
 test('schedule body starts tomorrow and is compared on what matters', () => {
@@ -357,9 +334,8 @@ test('parseCli: commands, sign-in methods and validation', () => {
   assert.equal(d.yes, false);
   assert.match(d.configFile, /consumption-central-setup\.json$/);
 
-  const r = parseCli(['run', '--backfill-days', '30', '--use-az', '-y', '--no-wait', '--config', 'x.json']);
+  const r = parseCli(['run', '--use-az', '-y', '--no-wait', '--config', 'x.json']);
   assert.equal(r.command, 'run');
-  assert.equal(r.backfillDays, 30);
   assert.equal(r.method, 'azure-cli');
   assert.equal(r.yes, true);
   assert.equal(r.wait, false);
@@ -371,9 +347,7 @@ test('parseCli: commands, sign-in methods and validation', () => {
   assert.throws(() => parseCli(['nope']), /Unknown command "nope"/);
   assert.throws(() => parseCli(['run', 'extra']), /Unexpected argument: extra/);
   assert.throws(() => parseCli(['--device-code', '--use-az']), /Choose one/);
-  assert.throws(() => parseCli(['run', '--backfill-days', '0']), /1 to 180/);
-  assert.throws(() => parseCli(['run', '--backfill-days', '181']), /1 to 180/);
-  assert.throws(() => parseCli(['run', '--backfill-days', '2.5']), /1 to 180/);
+  assert.throws(() => parseCli(['run', '--backfill-days', '30']), /Unknown option '--backfill-days'/, 'there is no history to reload');
   assert.throws(() => parseCli(['--bogus']), /Unknown option/);
 });
 
@@ -384,17 +358,17 @@ test('install record round-trips, fills defaults and refuses secrets', () => {
   const config = emptyConfig();
   config.tenantId = 't';
   config.fabric.workspaceId = 'w';
-  config.fabric.notebooks.processor = 'nb';
+  config.fabric.notebooks.vivaConsumption = 'nb';
   saveConfig(file, config);
   const { config: back, existed } = loadConfig(file);
   assert.equal(existed, true);
   assert.deepEqual(back, config);
 
-  writeFileSync(file, JSON.stringify({ version: 1, schedule: { time: '05:00' }, modules: { agent365: true } }));
+  writeFileSync(file, JSON.stringify({ version: 1, schedule: { time: '05:00' }, dataSources: { github: 'csv' } }));
   const partial = loadConfig(file).config;
   assert.equal(partial.schedule.time, '05:00');
   assert.equal(partial.schedule.frequency, 'daily');
-  assert.deepEqual(partial.modules, { orgData: true, agent365: true, productFeedback: false, consumption: false });
+  assert.deepEqual(partial.dataSources, { ...emptyConfig().dataSources, github: 'csv' });
   assert.deepEqual(partial.fabric.notebooks, {});
 
   const leaky = /** @type {any} */ (emptyConfig());
@@ -407,8 +381,11 @@ test('install record round-trips, fills defaults and refuses secrets', () => {
   writeFileSync(file, '{not json');
   assert.throws(() => loadConfig(file), /not valid JSON/);
 
-  writeFileSync(file, JSON.stringify({ version: 1, modules: { orgData: false } }));
-  assert.equal(loadConfig(file).config.modules.orgData, true, 'org data is always collected, even in older records');
+  writeFileSync(file, JSON.stringify({ version: 1, dataSources: { azureAi: 'csv' }, uploads: { studioFlow: true } }));
+  const older = loadConfig(file).config;
+  assert.equal(older.dataSources.azureAi, 'skip', 'a mode the source doesn\'t have falls back to its default');
+  assert.equal(older.dataSources.studioCredits, 'api', 'an older record\'s Studio flow is the API mode');
+  assert.deepEqual(older.uploads, {});
 });
 
 test('messages name the exe when it started the installer', () => {

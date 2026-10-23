@@ -1,21 +1,28 @@
 // @ts-check
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { test } from 'node:test';
-import { notebooksFor, STUDIO_LANDING, VIVA_LANDING } from '../src/catalog.js';
+import { notebooksFor } from '../src/catalog.js';
 import { ROLES } from '../src/clients/azure.js';
-import { CONFIG_VERSION, CONSUMPTION_MODEL_NAME, emptyConfig, loadConfig } from '../src/config.js';
-import { refresh } from '../src/install.js';
-import { consumptionSummary, ensureAzureAiAccess, ensureConsumptionModel, ensureLandingFolders, planConsumption, policiesBySubscription } from '../src/steps/consumption.js';
-import { azureAiOn, consumptionModelDeployed, ensureNotebooks, notebookSettings, PAYG_FIND, pipelineSignature } from '../src/steps/fabric.js';
-import { ensureModelConnection, ensureSemanticModel } from '../src/steps/model.js';
+import { emptyConfig } from '../src/config.js';
+import { APP_REGISTRATION, LAKEHOUSE_NAME, SECRET_NAME } from '../src/product.js';
+import {
+  COWORK_DATAFLOW_NAME,
+  consumptionSummary,
+  coworkSignInSteps,
+  DATAFLOW_GUIDE,
+  ensureAzureAiAccess,
+  ensureLandingFolders,
+  landingFolders,
+  planConsumption,
+  policiesBySubscription,
+  STAGING_ITEMS_NOTE,
+} from '../src/steps/consumption.js';
+import { azureAiOn, deployedSources, ensureNotebooks, pipelineSignature } from '../src/steps/fabric.js';
+import { notebookSettings, PAYG_FIND } from '../src/steps/notebook-settings.js';
 import { MARKER, prepareNotebook, cellText } from '../src/transform/notebook.js';
 import { addCopilotPaygSpend, PAYG_SOURCE_TABLE, PAYG_TABLE } from '../src/transform/payg.js';
-import { buildPipeline, CONSUMPTION_REFRESH_ACTIVITY, findActivity, REFRESH_ACTIVITY } from '../src/transform/pipeline.js';
-import { UPLOAD_DIR } from '../src/uploads.js';
-import { fakeCtx, fakeFabric, fakeGraph, fakePowerBi, fakeUi, httpError, realSources } from './fakes.js';
+import { GITHUB_DIR, ORG_DIR, STUDIO_DIR, UPLOAD_DIR, VIVA_DIR } from '../src/uploads.js';
+import { fakeCtx, fakeFabric, fakeUi, httpError, realSources } from './fakes.js';
 
 const SUB = '11111111-0000-0000-0000-000000000000';
 /** A subscription that only a billing policy charges. */
@@ -24,6 +31,9 @@ const PAYG = '4b7e2d10-0000-0000-0000-000000000000';
 const HIDDEN = '7d31c5a2-0000-0000-0000-000000000000';
 /** @param {string} sub @param {string} name */
 const policy = (sub, name) => ({ id: `bp-${name}`, name, billingInstrument: { subscriptionId: sub, resourceGroup: 'rg-billing' } });
+
+/** @param {string} text @param {string} part */
+const has = (text, part) => assert.ok(text.includes(part), `"${part}" is missing from:\n${text}`);
 
 /** Resource Manager: role assignments and AI accounts per subscription. */
 function fakeArm() {
@@ -74,16 +84,13 @@ function fakeOneLake() {
 /** @param {{ answers?: any[], yes?: boolean, policies?: any[] | Error }} [o] */
 function setup(o = {}) {
   const fabric = fakeFabric();
-  const graph = fakeGraph();
-  const powerBi = fakePowerBi();
   const arm = fakeArm();
   const oneLake = fakeOneLake();
   const ui = fakeUi({ answers: o.answers, yes: o.yes });
   const config = emptyConfig();
-  config.semanticModel.enabled = true;
-  config.modules.consumption = true;
   config.dataSources.azureAi = 'api';
-  config.app.displayName = 'ValueLens Data Collector';
+  config.app.displayName = APP_REGISTRATION;
+  config.fabric.lakehouseName = LAKEHOUSE_NAME;
   const policies = o.policies;
   const powerPlatform = {
     billingPolicies: async () => {
@@ -91,105 +98,79 @@ function setup(o = {}) {
       return policies ?? [];
     },
   };
-  const made = fakeCtx({ ui: ui.ui, fabric: fabric.api, graph: graph.api, powerBi: powerBi.api, arm: arm.api, oneLake: oneLake.api, powerPlatform, config });
-  return { ...made, fabric, graph, powerBi, arm, oneLake, ui };
+  const made = fakeCtx({ ui: ui.ui, fabric: fabric.api, arm: arm.api, oneLake: oneLake.api, powerPlatform, config });
+  return { ...made, fabric, arm, oneLake, ui };
 }
 
-const ids = {
-  auditIngester: 'nb-audit',
-  licensedUsers: 'nb-users',
-  processor: 'nb-processor',
-  orgData: 'nb-org',
-  refreshModel: 'nb-refresh',
-  azureAi: 'nb-azure',
-  studioConsumption: 'nb-studio',
-  vivaConsumption: 'nb-viva',
-};
-const modules = { orgData: true, agent365: false, productFeedback: false, consumption: true };
-/** @param {any} doc */
-const names = (doc) => doc.properties.activities.map((/** @type {any} */ a) => a.name);
+/** The Azure AI notebook as the installer deploys it. */
+const azureAi = () => /** @type {import('../src/catalog.js').NotebookInfo} */ (realSources().catalog.find((n) => n.key === 'azureAi'));
 
-test('pipeline: consumption loads run one after another in lane 2, then refresh their own model', () => {
-  const doc = buildPipeline(realSources().pipeline, { workspaceId: 'ws-1', notebookIds: ids, modules, semanticModelId: 'model-1', azureAi: true, consumptionModelId: 'cc-1' });
-  const all = names(doc);
-  for (const n of ['Run_Consumption_Azure_AI', 'Run_Consumption_Studio', 'Run_Consumption_Viva', REFRESH_ACTIVITY, CONSUMPTION_REFRESH_ACTIVITY]) assert.ok(all.includes(n), n);
-  assert.ok(!all.includes('Conditionally_Run_Credit_Consumption'), 'the archived branch stays out');
-  assert.equal(doc.properties.parameters.EnableConsumption, undefined);
-
-  const azure = findActivity(doc.properties.activities, 'Run_Consumption_Azure_AI');
-  assert.deepEqual(azure.dependsOn, [{ activity: 'Conditionally_Run_Org_Data', dependencyConditions: ['Completed'] }]);
-  assert.deepEqual(findActivity(doc.properties.activities, 'Run_Consumption_Studio').dependsOn, [{ activity: 'Run_Consumption_Azure_AI', dependencyConditions: ['Completed'] }]);
-  assert.deepEqual(findActivity(doc.properties.activities, 'Run_Consumption_Viva').dependsOn, [{ activity: 'Run_Consumption_Studio', dependencyConditions: ['Completed'] }]);
-  assert.equal(azure.typeProperties.notebookId, 'nb-azure');
-  assert.equal(azure.policy.retry, 2, 'new Azure roles take a while to apply');
-  assert.equal(azure.policy.retryIntervalInSeconds, 300);
-  assert.equal(findActivity(doc.properties.activities, 'Run_Consumption_Studio').policy.retry, 3);
-
-  const ccRefresh = findActivity(doc.properties.activities, CONSUMPTION_REFRESH_ACTIVITY);
-  assert.deepEqual(ccRefresh.dependsOn, [
-    { activity: 'Run_Consumption_Azure_AI', dependencyConditions: ['Succeeded'] },
-    { activity: 'Run_Consumption_Studio', dependencyConditions: ['Succeeded'] },
-    { activity: 'Run_Consumption_Viva', dependencyConditions: ['Succeeded'] },
-    { activity: 'Conditionally_Run_Org_Data', dependencyConditions: ['Completed'] },
-  ]);
-  assert.equal(ccRefresh.typeProperties.notebookId, 'nb-refresh');
-  assert.equal(ccRefresh.typeProperties.parameters.SEMANTIC_MODEL_ID.value, 'cc-1');
-  assert.equal(ccRefresh.typeProperties.parameters.WRITE_MODE.value, 'merge');
-  assert.equal(findActivity(doc.properties.activities, REFRESH_ACTIVITY).typeProperties.parameters.SEMANTIC_MODEL_ID.value, 'model-1');
-});
-
-test('pipeline: without Azure access or a Consumption model, those steps are left out', () => {
-  const noAzure = buildPipeline(realSources().pipeline, { workspaceId: 'ws-1', notebookIds: ids, modules, semanticModelId: 'model-1', consumptionModelId: 'cc-1' });
-  assert.ok(!names(noAzure).includes('Run_Consumption_Azure_AI'));
-  assert.deepEqual(
-    findActivity(noAzure.properties.activities, CONSUMPTION_REFRESH_ACTIVITY).dependsOn.map((/** @type {any} */ d) => d.activity),
-    ['Run_Consumption_Studio', 'Run_Consumption_Viva', 'Conditionally_Run_Org_Data'],
-  );
-
-  const noModel = buildPipeline(realSources().pipeline, { workspaceId: 'ws-1', notebookIds: ids, modules });
-  assert.ok(names(noModel).includes('Run_Consumption_Studio'));
-  assert.ok(!names(noModel).includes(CONSUMPTION_REFRESH_ACTIVITY));
-
-  const off = buildPipeline(realSources().pipeline, { workspaceId: 'ws-1', notebookIds: ids, modules: { ...modules, consumption: false }, azureAi: true, consumptionModelId: 'cc-1' });
-  assert.ok(!names(off).some((/** @type {string} */ n) => n.includes('Consumption')));
-
-  const { studioConsumption, ...missing } = ids;
-  assert.throws(() => buildPipeline(realSources().pipeline, { workspaceId: 'ws-1', notebookIds: missing, modules }), /Consumption Studio notebook/);
-});
-
-test('notebooks and signature: Azure AI only with access; existing installs keep their signature', () => {
+test('notebooks and signature: Azure AI is deployed only once the app can read its subscription', () => {
+  const { catalog } = realSources();
   const config = emptyConfig();
-  Object.assign(config.semanticModel, { enabled: true, id: 'model-1', bound: true });
-  assert.equal(pipelineSignature(config), 'core,orgData;model=model-1', 'no consumption parts without consumption');
-
-  config.modules.consumption = true;
-  assert.deepEqual(notebooksFor(config.modules, { semanticModel: true }).filter((n) => n.module === 'consumption').map((n) => n.key), ['studioConsumption', 'vivaConsumption']);
-  assert.ok(notebooksFor(config.modules, { azureAi: true }).some((n) => n.key === 'azureAi'));
+  config.dataSources.azureAi = 'api';
+  const keys = () => notebooksFor(catalog, deployedSources(config)).map((n) => n.key);
+  assert.ok(!keys().includes('azureAi'), 'no subscription chosen yet');
 
   config.consumption.azureSubscriptionId = SUB;
   assert.equal(azureAiOn(config), false, 'not until the app has the roles');
-  config.consumption.azureAccess = true;
-  Object.assign(config.consumption.model, { id: 'cc-1', bound: true });
-  assert.equal(azureAiOn(config), true);
-  assert.equal(consumptionModelDeployed(config), true);
-  assert.equal(pipelineSignature(config), 'core,orgData,consumption;model=model-1;azureAi;consumption=cc-1');
+  assert.equal(deployedSources(config).azureAi, 'skip');
+  assert.equal(config.dataSources.azureAi, 'api', 'the choice itself stays');
+  assert.ok(!keys().includes('azureAi'));
+  assert.equal(pipelineSignature(config, catalog), 'uploadRouter,studioConsumption,vivaConsumption,loadStatus');
 
-  config.semanticModel.enabled = false;
-  assert.equal(consumptionModelDeployed(config), false, 'it shares the ValueLens connection');
+  config.consumption.azureAccess = true;
+  assert.equal(azureAiOn(config), true);
+  assert.equal(deployedSources(config), config.dataSources);
+  assert.ok(keys().includes('azureAi'));
+  assert.equal(pipelineSignature(config, catalog), 'uploadRouter,azureAi,studioConsumption,vivaConsumption,loadStatus');
+
+  config.dataSources.azureAi = 'skip';
+  assert.equal(azureAiOn(config), false, 'Skip wins over access given before');
+  assert.ok(!keys().includes('azureAi'));
 });
 
 test('Azure AI notebook: subscription, tenant, app and Key Vault secret are filled in', () => {
   const t = setup();
   Object.assign(t.config.consumption, { azureSubscriptionId: SUB, azureAccess: true });
-  const info = /** @type {any} */ (notebooksFor(t.config.modules, { azureAi: true }).find((n) => n.key === 'azureAi'));
-  const nb = prepareNotebook(realSources().notebooks.azureAi, notebookSettings(t.ctx, info));
+  const nb = prepareNotebook(realSources().notebooks.azureAi, notebookSettings(t.ctx, azureAi()));
   const all = nb.cells.map(cellText).join('\n');
   assert.match(all, new RegExp(`^SUBSCRIPTION_ID = '${SUB}'`, 'm'));
   assert.match(all, /^TENANT_ID = 'tenant-1'/m);
   assert.match(all, /^CLIENT_ID = 'app-1'/m);
   assert.match(all, /^KEY_VAULT_URL = 'https:\/\/kv-test\.vault\.azure\.net\/'/m);
-  assert.match(all, /^CLIENT_SECRET_NAME = 'consumption-central-client-secret'/m);
+  assert.match(all, new RegExp(`^CLIENT_SECRET_NAME = '${SECRET_NAME}'`, 'm'));
   assert.equal(nb.metadata.dependencies.lakehouse.default_lakehouse, 'lh-1');
+});
+
+test('plan: Azure AI is asked about, under its heading, only when it isn\'t Skip', async () => {
+  const subs = [{ subscriptionId: SUB, displayName: 'AI' }];
+  const skipped = setup();
+  skipped.config.dataSources.azureAi = 'skip';
+  await planConsumption(skipped.ctx, /** @type {any} */ ({ subscriptions: subs }));
+  assert.equal(skipped.ui.text(), '', 'no heading, nothing said');
+  assert.deepEqual(skipped.ui.asked, []);
+  assert.deepEqual(skipped.arm.calls, []);
+
+  const asked = setup();
+  asked.arm.aiAccounts[SUB] = 1;
+  await planConsumption(asked.ctx, /** @type {any} */ ({ subscriptions: subs }));
+  assert.match(asked.ui.text(), /^\nAzure AI\n {4}Looking for Azure AI resources in your subscriptions\.\n/);
+  assert.equal(asked.ui.asked.length, 1);
+  assert.equal(asked.config.consumption.azureSubscriptionId, SUB);
+
+  const none = setup();
+  await planConsumption(none.ctx, /** @type {any} */ ({ subscriptions: [] }));
+  assert.match(none.ui.text(), /^Azure AI$/m);
+  assert.match(none.ui.text(), /No Azure subscription to read Azure AI costs from, so Azure AI is left out\./);
+  assert.equal(none.config.dataSources.azureAi, 'skip');
+  assert.deepEqual(none.ui.asked, []);
+
+  const chosen = setup();
+  Object.assign(chosen.config.consumption, { azureSubscriptionId: SUB, azureSubscriptionName: 'AI' });
+  await planConsumption(chosen.ctx, /** @type {any} */ ({ subscriptions: [] }));
+  assert.match(chosen.ui.text(), /✓ Azure AI: AI$/m, 'a subscription chosen before stays when none can be listed');
+  assert.equal(chosen.config.dataSources.azureAi, 'api');
 });
 
 test('plan: picks the subscription with AI resources; "leave out" is remembered; a change resets access', async () => {
@@ -354,7 +335,7 @@ test('pay-as-you-go access: Cost Management Reader on each other subscription; o
   assert.deepEqual(t.arm.calls.slice(3), [PAYG, HIDDEN].map((s) => `assignRole /subscriptions/${s} ${ROLES.costManagementReader} sp-1 ServicePrincipal`));
   assert.equal(extra[0].access, true);
   assert.equal(extra[1].access, undefined);
-  assert.match(t.ui.text(), /Gave ValueLens Data Collector Cost Management Reader on Studio billing/);
+  has(t.ui.text(), `Gave ${APP_REGISTRATION} Cost Management Reader on Studio billing`);
   assert.match(t.ui.text(), new RegExp(`can't assign Azure roles in ${HIDDEN}`));
 
   t.arm.calls.length = 0;
@@ -379,7 +360,7 @@ test('pay-as-you-go access: Cost Management Reader on each other subscription; o
 test('Azure AI notebook: the readable pay-as-you-go subscriptions are listed; it is pushed again when they change', async () => {
   const t = setup();
   Object.assign(t.config.consumption, { azureSubscriptionId: SUB, azureAccess: true });
-  const info = /** @type {any} */ (notebooksFor(t.config.modules, { azureAi: true }).find((n) => n.key === 'azureAi'));
+  const info = azureAi();
   const plain = prepareNotebook(realSources().notebooks.azureAi, notebookSettings(t.ctx, info)).cells.map(cellText).join('\n');
   assert.ok(plain.includes(PAYG_FIND), 'left as it ships');
 
@@ -409,7 +390,7 @@ test('Azure AI notebook: the readable pay-as-you-go subscriptions are listed; it
   assert.equal(fresh.config.consumption.deployedPayg, HIDDEN);
 });
 
-test('pay-as-you-go table: added empty-safe to the Consumption model, once', () => {
+test('pay-as-you-go table: added empty-safe to the semantic model, once', () => {
   const model = /** @type {any} */ ({ tables: [{ name: 'Date', columns: [] }], expressions: [{ name: 'GetTable', expression: '' }] });
   addCopilotPaygSpend(model);
   addCopilotPaygSpend(model);
@@ -427,104 +408,79 @@ test('pay-as-you-go table: added empty-safe to the Consumption model, once', () 
   assert.throws(() => addCopilotPaygSpend(/** @type {any} */ ({ tables: [] })), /no "GetTable" function/);
 });
 
-test('landing folders: both made, existing ones left alone, a failure only warns', async () => {
+test('landing folders: one for each deployed notebook that reads files', () => {
   const t = setup();
+  const ds = t.config.dataSources;
+  assert.deepEqual(landingFolders(t.ctx), [STUDIO_DIR, VIVA_DIR], 'the Studio and Cowork exports by default');
+
+  Object.assign(ds, { github: 'csv', orgData: 'csv' });
+  assert.deepEqual(landingFolders(t.ctx), [STUDIO_DIR, VIVA_DIR, GITHUB_DIR, ORG_DIR]);
+
+  Object.assign(ds, { studioCredits: 'api', coworkCredits: 'api', github: 'api', orgData: 'api', commercialTerms: 'api' });
+  Object.assign(t.config.consumption, { azureSubscriptionId: SUB, azureAccess: true });
+  assert.deepEqual(landingFolders(t.ctx), [STUDIO_DIR, VIVA_DIR], 'the Studio flow writes into its folder; the other API loads read none');
+
+  ds.studioCredits = 'skip';
+  assert.deepEqual(landingFolders(t.ctx), [VIVA_DIR], 'the Viva load is always deployed');
+});
+
+test('landing folders: all made, existing ones left alone, a failure only warns', async () => {
+  const t = setup();
+  Object.assign(t.config.dataSources, { github: 'csv', orgData: 'csv' });
   await ensureLandingFolders(t.ctx);
-  assert.deepEqual(t.oneLake.dirs, [STUDIO_LANDING, VIVA_LANDING]);
+  assert.deepEqual(t.oneLake.dirs, [STUDIO_DIR, VIVA_DIR, GITHUB_DIR, ORG_DIR]);
   assert.equal(t.config.consumption.landing, true);
+  has(t.ui.text(), `✓ Landing folders ${STUDIO_DIR}, ${VIVA_DIR}, ${GITHUB_DIR} and ${ORG_DIR} are in ${LAKEHOUSE_NAME}`);
   await ensureLandingFolders(t.ctx);
-  assert.equal(t.oneLake.dirs.length, 2);
+  assert.equal(t.oneLake.dirs.length, 4);
 
   const failed = setup();
   failed.oneLake.failures.push(httpError(403, 'Forbidden'));
   await ensureLandingFolders(failed.ctx);
   assert.equal(failed.config.consumption.landing, undefined);
+  has(failed.ui.text(), `! Couldn't make the landing folders in ${LAKEHOUSE_NAME} (Forbidden).`);
+  has(failed.ui.text(), `Make ${STUDIO_DIR} and ${VIVA_DIR} yourself`);
   assert.match(failed.ui.text(), /New subfolder/);
-});
-
-/** @param {ReturnType<typeof setup>} t */
-async function withConnection(t) {
-  await ensureSemanticModel(t.ctx);
-  await ensureModelConnection(t.ctx);
-  t.fabric.calls.length = 0;
-}
-
-test('Consumption model: built from its template, bound through the ValueLens connection, updated only when needed', async () => {
-  const t = setup();
-  await withConnection(t);
-  await ensureConsumptionModel(t.ctx);
-  const cm = t.config.consumption.model;
-  const item = /** @type {any} */ (t.fabric.items.find((i) => i.displayName === CONSUMPTION_MODEL_NAME));
-  assert.ok(item);
-  assert.equal(cm.id, item.id);
-  const bim = JSON.parse(Buffer.from(item.content.parts.find((/** @type {any} */ p) => p.path === 'model.bim').payload, 'base64').toString('utf8'));
-  assert.ok(bim.model.tables.some((/** @type {any} */ tb) => tb.name === PAYG_TABLE), 'with the pay-as-you-go table');
-  const param = (/** @type {string} */ n) => String(bim.model.expressions.find((/** @type {any} */ e) => e.name === n).expression);
-  assert.ok(param('FabricSQLEndpoint').startsWith('"abc.datawarehouse.fabric.microsoft.com" meta ['));
-  assert.ok(param('LakehouseName').startsWith('"ValueLens" meta ['));
-  const conn = t.config.semanticModel.connectionId;
-  assert.deepEqual(t.fabric.calls, [`createSemanticModel ${CONSUMPTION_MODEL_NAME}`, `bindConnection ${CONSUMPTION_MODEL_NAME} ${conn} abc.datawarehouse.fabric.microsoft.com;ValueLens`]);
-  assert.equal(cm.bound, true);
-
-  t.fabric.calls.length = 0;
-  await ensureConsumptionModel(t.ctx);
-  assert.deepEqual(t.fabric.calls, [], 'nothing to do on a re-run');
-
-  await ensureConsumptionModel(t.ctx, { force: true });
-  assert.deepEqual(t.fabric.calls, [`updateSemanticModel ${CONSUMPTION_MODEL_NAME}`, `bindConnection ${CONSUMPTION_MODEL_NAME} ${conn} abc.datawarehouse.fabric.microsoft.com;ValueLens`]);
-});
-
-test('Consumption model: a new ValueLens connection means binding it again', async () => {
-  const t = setup();
-  await withConnection(t);
-  await ensureConsumptionModel(t.ctx);
-  t.fabric.connections.length = 0;
-  await ensureModelConnection(t.ctx);
-  assert.equal(t.config.consumption.model.bound, false);
-  t.fabric.calls.length = 0;
-  await ensureConsumptionModel(t.ctx);
-  assert.deepEqual(t.fabric.calls, [`bindConnection ${CONSUMPTION_MODEL_NAME} ${t.config.semanticModel.connectionId} abc.datawarehouse.fabric.microsoft.com;ValueLens`]);
-});
-
-test('refresh: both models when the Consumption model is deployed', async () => {
-  const t = setup();
-  Object.assign(t.config.semanticModel, { id: 'model-1', bound: true });
-  await refresh(t.ctx, { wait: false });
-  assert.deepEqual(t.powerBi.calls, ['refresh model-1 full']);
-
-  Object.assign(t.config.consumption.model, { id: 'cc-1', bound: true });
-  t.powerBi.calls.length = 0;
-  const result = await refresh(t.ctx, { wait: true });
-  assert.deepEqual(t.powerBi.calls.filter((c) => c.startsWith('refresh ')), ['refresh model-1 full', 'refresh cc-1 full']);
-  assert.equal(result.ok, true);
 });
 
 test('summary: Azure AI status and the Studio and Cowork upload steps', () => {
   const t = setup();
   Object.assign(t.config.consumption, { azureSubscriptionId: SUB, azureSubscriptionName: 'AI' });
-  Object.assign(t.config.consumption.model, { id: 'cc-1', bound: true });
   Object.assign(t.config.dataSources, { studioCredits: 'csv', coworkCredits: 'csv' });
   consumptionSummary(t.ctx);
   const text = t.ui.text();
-  assert.match(text, /left out until ValueLens Data Collector has Reader, Cost Management Reader, Monitoring Reader on AI/);
-  assert.match(text, /datasets\/cc-1/);
+  assert.match(text, /^Consumption sources$/m);
+  has(text, `Azure AI:   left out until ${APP_REGISTRATION} has Reader, Cost Management Reader, Monitoring Reader on AI`);
   assert.match(text, /Copilot Studio credits {2}\(upload the exports\)/);
-  assert.match(text, new RegExp(`Drop them in .+ > ${UPLOAD_DIR}`));
+  has(text, `Drop them in ${LAKEHOUSE_NAME} > ${UPLOAD_DIR}. Each export counts as the month it is loaded in.`);
   assert.match(text, /Cowork credits {2}\(upload the export\)/);
+  has(text, `Drop it in ${LAKEHOUSE_NAME} > ${UPLOAD_DIR}.`);
   assert.match(text, /choose Connected \(Dataflow\)/);
   assert.doesNotMatch(text, /PAYG:/, 'not while Azure AI is off');
+  assert.doesNotMatch(text, /datasets\//, 'no model of its own to link to');
+
+  const left = setup();
+  left.config.dataSources.azureAi = 'skip';
+  consumptionSummary(left.ctx);
+  assert.match(left.ui.text(), /Azure AI: {3}left out$/m);
 
   const flowing = setup();
-  flowing.config.modules.consumption = true;
   Object.assign(flowing.config.dataSources, { studioCredits: 'api', coworkCredits: 'api' });
-  Object.assign(flowing.config.uploads, { flowIds: { studio: 'flow-1' } });
   flowing.config.consumption.dataflowId = 'df-1';
   consumptionSummary(flowing.ctx);
-  assert.match(flowing.ui.text(), /a daily flow reads the licensing API/);
-  assert.match(flowing.ui.text(), /Sign in to the flow and turn it on/);
-  assert.match(flowing.ui.text(), /Optional: drop the Power Platform admin center exports/);
-  assert.doesNotMatch(flowing.ui.text(), /download the EntitlementConsumption/);
-  assert.match(flowing.ui.text(), /Dataflow ConsumptionCentral_Cowork_Credits, refreshed by the pipeline/);
+  const ft = flowing.ui.text();
+  assert.match(ft, /a daily flow reads the licensing API/);
+  assert.match(ft, /Sign in to the flow and turn it on/);
+  has(ft, `Optional: drop the Power Platform admin center exports in ${UPLOAD_DIR}.`);
+  assert.doesNotMatch(ft, /download the EntitlementConsumption/);
+  has(ft, `Cowork credits  (Dataflow ${COWORK_DATAFLOW_NAME}, refreshed by the pipeline)`);
+  const steps = coworkSignInSteps(flowing.config);
+  steps.forEach((step, i) => has(ft, `  ${i + 1}. ${step}`));
+  has(ft, 'Until then, each scheduled pipeline run notes that the refresh failed.');
+  has(ft, `  ${steps.length + 1}. Keep the Viva Insights query on Auto-refresh.`);
+  has(ft, `Guide: ${DATAFLOW_GUIDE}`);
+  has(ft, STAGING_ITEMS_NOTE);
+  assert.doesNotMatch(ft, /upload the export\)|choose Connected/);
 
   const skipped = setup();
   Object.assign(skipped.config.dataSources, { studioCredits: 'skip', coworkCredits: 'skip' });
@@ -542,19 +498,7 @@ test('summary: Azure AI status and the Studio and Cowork upload steps', () => {
     ],
   });
   consumptionSummary(on.ctx);
+  assert.match(on.ui.text(), /Azure AI: {3}AI, read on every run/);
   assert.match(on.ui.text(), /PAYG: +Copilot Studio and Cowork pay-as-you-go billed to AI and Studio billing/);
-  assert.match(on.ui.text(), new RegExp(`not ${HIDDEN} until ValueLens Data Collector has Cost Management Reader there`));
-});
-
-test('install record: older records gain the consumption defaults', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'vl-cfg-'));
-  try {
-    const file = join(dir, 'consumption-central-setup.json');
-    writeFileSync(file, JSON.stringify({ version: CONFIG_VERSION, modules: { orgData: true } }));
-    const { config } = loadConfig(file);
-    assert.equal(config.modules.consumption, false);
-    assert.equal(config.consumption.model.name, CONSUMPTION_MODEL_NAME);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  has(on.ui.text(), `not ${HIDDEN} until ${APP_REGISTRATION} has Cost Management Reader there`);
 });

@@ -4,12 +4,15 @@
  * the steps the user does, then hand-offs, each with a message to copy and send to the admin who does it.
  * One list, in the order it should be done, so new steps only need adding here.
  */
-import { FEEDBACK_SUBJECT } from '../transform/flows.js';
+import { commandLine } from '../launch.js';
 import { isVivaId } from '../transform/dataflow.js';
-import { COWORK_DATAFLOW_ACTIVITY } from '../transform/pipeline.js';
+import { COWORK_DATAFLOW_ACTIVITY, GITHUB_ACTIVITY } from '../transform/pipeline.js';
+import { myGroupsUrl, shareReportPending, shareReportSteps, VIEWER_GROUP_NAME } from './access.js';
 import { COWORK_DATAFLOW_NAME, coworkSignInSteps, DATAFLOW_GUIDE } from './consumption.js';
 import { coworkDataflowOn } from './fabric.js';
 import { connectionSteps, FLOW_NAMES, flowsWanted } from './flows.js';
+import { GITHUB_TOKEN_SCOPES, NEW_TOKEN_URL, TOKEN_WARN_DAYS, TOKENS_URL } from './github.js';
+import { reportUrl } from './report.js';
 
 /**
  * @typedef {object} NextStep
@@ -25,8 +28,8 @@ import { connectionSteps, FLOW_NAMES, flowsWanted } from './flows.js';
  * @property {boolean} [optional]
  */
 
-export const M365_ADMIN_URL = 'https://admin.microsoft.com/';
 const MAKER = 'https://make.powerautomate.com/';
+const DAY_MS = 86_400_000;
 
 /**
  * A message to someone else: a greeting, the ask, the details, and a sign-off.
@@ -39,18 +42,20 @@ const letter = (body, from) => ['Hi,', '', ...body, '', 'Thanks', ...(from ? [fr
 const numbered = (steps) => steps.map((s, i) => `${i + 1}. ${s}`);
 
 /**
- * The cards, in the order to do them: sign in to the flows and the Cowork Dataflow, then hand-offs to
- * other admins. Empty when nothing is left.
+ * The cards, in the order to do them: share the report, replace an expiring GitHub token, sign in to
+ * the flows and the Cowork Dataflow, then hand-offs to other admins. Empty when nothing is left.
  * @param {import('../config.js').InstallConfig} config
  * @param {{ tenantId?: string, upn?: string }} [user]
+ * @param {{ now?: Date }} [opts]  now: for the token's expiry, so tests can fix the date.
  * @returns {NextStep[]}
  */
-export function nextSteps(config, user = {}) {
+export function nextSteps(config, user = {}, opts = {}) {
   return [
+    shareReportStep(config),
+    githubTokenStep(config, opts.now ?? new Date()),
     flowsStep(config, user),
     coworkStep(config),
     vivaQueryStep(config, user),
-    m365ExportStep(config, user),
   ].filter(/** @returns {s is NextStep} */ (s) => !!s);
 }
 
@@ -63,6 +68,59 @@ export function stepsLeftTitle(steps) {
   const optional = steps.length - needed;
   if (!needed) return `${optional} optional ${optional === 1 ? 'step' : 'steps'}`;
   return `${needed} ${needed === 1 ? 'step' : 'steps'} left${optional ? `, and ${optional} optional` : ''}`;
+}
+
+/**
+ * The report, shared with the viewer group once. The group's Build on the model comes from the API,
+ * but Power BI has no API for sharing the report with it, so it's a few clicks.
+ * @param {import('../config.js').InstallConfig} config
+ * @returns {NextStep | null}
+ */
+function shareReportStep(config) {
+  if (!shareReportPending(config)) return null;
+  const a = config.access;
+  const group = a?.groupName ?? VIEWER_GROUP_NAME;
+  const ws = config.fabric.workspaceId;
+  const id = config.semanticModel.report?.id;
+  return {
+    id: 'share-report',
+    title: `Share the report with ${group}`,
+    why: `Once only. Until it's shared, people in the group get "no access" when they open the report. After that, give people access by adding them to the group${a?.groupId ? ` (${myGroupsUrl(a.groupId)})` : ''}.`,
+    who: 'You',
+    ...(ws && id ? { link: reportUrl(ws, id), linkText: 'Open the report' } : {}),
+    steps: shareReportSteps(config),
+  };
+}
+
+/**
+ * The GitHub token, when it has expired or expires within TOKEN_WARN_DAYS. GitHub doesn't renew a
+ * token: someone makes a new one, and github-token puts it in place.
+ * @param {import('../config.js').InstallConfig} config
+ * @param {Date} now
+ * @returns {NextStep | null}
+ */
+function githubTokenStep(config, now) {
+  const gh = config.github;
+  if (config.dataSources?.github !== 'api' || !gh?.tokenExpires) return null;
+  const left = Date.parse(gh.tokenExpires) - now.getTime();
+  if (!(left <= TOKEN_WARN_DAYS * DAY_MS)) return null;
+  const expired = left <= 0;
+  return {
+    id: 'github-token',
+    title: expired ? 'Replace the expired GitHub token' : 'Replace the GitHub token',
+    why: expired
+      ? "Ingest_GitHub_API reads Copilot billing with it, and GitHub data stops loading until it's replaced."
+      : `It expires ${gh.tokenExpires.slice(0, 10)}, and Ingest_GitHub_API reads Copilot billing with it.`,
+    who: 'You, with a token made by an owner or billing manager of the enterprise',
+    link: NEW_TOKEN_URL,
+    linkText: 'Create a classic token',
+    steps: [
+      `Create a classic token with scope ${GITHUB_TOKEN_SCOPES}.`,
+      `Run "${commandLine('github-token')}" and paste it.`,
+      `Revoke the old one at ${TOKENS_URL}.`,
+    ],
+    ...(expired ? { activity: GITHUB_ACTIVITY } : {}),
+  };
 }
 
 /**
@@ -142,7 +200,7 @@ function coworkStep(config) {
  */
 function vivaQueryStep(config, user) {
   const cc = config.consumption;
-  if (!config.modules.consumption || config.dataSources?.coworkCredits !== 'csv') return null;
+  if (config.dataSources?.coworkCredits !== 'csv') return null;
   if (isVivaId(cc?.vivaPartition) && isVivaId(cc?.vivaQuery)) return null;
   const steps = [
     'In Viva Insights > Create analysis > Create custom query, choose Consumption query and keep the preselected credit metrics.',
@@ -166,39 +224,6 @@ function vivaQueryStep(config, user) {
         '',
         'Then send me the partition ID and the query ID. They look like 00000000-0000-0000-0000-000000000000.',
         `Guide: ${DATAFLOW_GUIDE}`,
-      ],
-      user.upn,
-    ),
-  };
-}
-
-/**
- * The emailed product feedback export the feedback flow saves. Only a Microsoft 365 admin can schedule it.
- * @param {import('../config.js').InstallConfig} config
- * @param {{ upn?: string }} user
- * @returns {NextStep | null}
- */
-function m365ExportStep(config, user) {
-  if (!flowsWanted(config).includes('feedback')) return null;
-  const mailbox = user.upn ?? 'the mailbox the flow reads';
-  const steps = [
-    'In the Microsoft 365 admin center, open Health > Product feedback.',
-    `Choose Export and schedule it to be emailed to ${mailbox}, with the subject "${FEEDBACK_SUBJECT}".`,
-  ];
-  return {
-    id: 'm365-export',
-    title: 'Ask for the product feedback export',
-    why: `The ${FLOW_NAMES.feedback} flow saves the export when it arrives by email. Without it, product feedback has no data. If the flow's Outlook connection signs in as another mailbox, use that one.`,
-    who: 'A Microsoft 365 admin',
-    link: M365_ADMIN_URL,
-    linkText: 'Microsoft 365 admin center',
-    steps,
-    message: letter(
-      [
-        'Could you schedule the Microsoft 365 product feedback export for Consumption Central? A flow saves it when it arrives by email.',
-        '',
-        ...numbered(steps),
-        `The subject must be exactly "${FEEDBACK_SUBJECT}", so the flow picks it up.`,
       ],
       user.upn,
     ),

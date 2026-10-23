@@ -1,23 +1,19 @@
 // @ts-check
 /**
- * Credit consumption, from Consumption Central: Azure AI costs read by the app registration,
- * Lakehouse folders for the Copilot Studio and Cowork exports, and the Consumption model,
- * which reads the Lakehouse through the Consumption Central model's connection.
+ * The consumption sources that need more than a notebook: Azure AI costs read by the app
+ * registration, the Lakehouse folders the loads read, and the Dataflow that reads Cowork credits
+ * from Viva Insights.
  */
-import { STUDIO_LANDING, VIVA_LANDING } from '../catalog.js';
+import { notebooksFor } from '../catalog.js';
 import { ROLES } from '../clients/azure.js';
-import { semanticModelDefinition } from '../clients/fabric.js';
 import { HttpError } from '../http.js';
 import { commandLine } from '../launch.js';
 import { INSTALLER_DIR, ITEM_PREFIX } from '../product.js';
 import { COWORK_DATAFLOW_TABLE, coworkDataflowDefinition, isVivaId } from '../transform/dataflow.js';
 import { COWORK_DATAFLOW_ACTIVITY } from '../transform/pipeline.js';
-import { rlsSettings } from '../transform/access.js';
-import { buildConsumptionModel, loadTemplateModel, PBISM } from '../transform/model.js';
 import { c } from '../ui.js';
 import { UPLOAD_DIR, modeLabel } from '../uploads.js';
-import { azureAiOn, coworkDataflowOn, createItem } from './fabric.js';
-import { bindModel, deployModel, modelUrl, waitForSqlEndpoint } from './model.js';
+import { azureAiOn, coworkDataflowOn, createItem, deployedSources } from './fabric.js';
 
 /** @typedef {import('../install.js').Ctx} Ctx */
 
@@ -61,7 +57,7 @@ export function coworkSignInSteps(config) {
     `It shows "Configure connection" twice, once for each thing it connects to: the Viva Insights source (the VivaInsights query) and the Lakehouse destination (${config.fabric.lakehouseName ?? 'the Lakehouse'}).`,
     'On each one, choose Configure connection, sign in, then Connect.',
     'Choose Save, then wait until the Dataflow shows it has finished publishing before you run anything.',
-    `Then choose Load Cowork now, or run "${commandLine('load-cowork')}". It refreshes the Dataflow, loads the Viva credits and refreshes the consumption model.`,
+    `Then choose Load Cowork now, or run "${commandLine('load-cowork')}". It refreshes the Dataflow, loads the Viva credits and refreshes the semantic model.`,
   ];
 }
 
@@ -226,27 +222,13 @@ export async function ensureCoworkDataflow(ctx) {
 }
 
 /**
- * The Consumption model is deployed: credit consumption is on, the Consumption Central model (whose
- * connection it shares) is on, and this checkout has the template.
- * @param {Ctx} ctx
- */
-export const consumptionModelWanted = (ctx) => !!(ctx.config.modules.consumption && ctx.config.semanticModel.enabled && ctx.sources.consumptionModelFile);
-
-/**
  * Asks which subscription the Azure AI notebook reads.
  * @param {Ctx} ctx
  * @param {import('./plan.js').Preflight} pre
  */
 export async function planConsumption(ctx, pre) {
-  const { ui, config, api, sources } = ctx;
+  const { ui, config, api } = ctx;
   const cc = config.consumption;
-  ui.heading('Credit consumption');
-  if (!config.semanticModel.enabled) {
-    ui.note('The credit consumption model shares the main semantic model\'s connection, so it is only deployed with it.');
-    ui.note('The notebooks still load the data; publish the credit consumption report ("Consumption Central - Fabric.pbit") yourself.');
-  } else if (!sources.consumptionModelFile) {
-    ui.note('This checkout has no credit consumption report ("Consumption Central - Fabric.pbit"), so only the notebooks are deployed.');
-  }
 
   const subs = pre.subscriptions;
   if (config.dataSources.azureAi === 'skip') {
@@ -256,6 +238,7 @@ export async function planConsumption(ctx, pre) {
     cc.paygSubscriptions = [];
     return;
   }
+  ui.heading('Azure AI');
   if (!subs.length) {
     if (cc.azureSubscriptionId) ui.ok(`Azure AI: ${cc.azureSubscriptionName ?? cc.azureSubscriptionId}`);
     else {
@@ -468,45 +451,36 @@ async function ensurePaygAccess(ctx, who) {
 }
 
 /**
- * Makes the folders the Copilot Studio and Cowork exports are uploaded to.
+ * The folders the deployed notebooks read, from their `landing` in installer-assets.json. The
+ * Copilot Studio flow writes into one of them, so they're made even when nothing is uploaded.
+ * @param {Ctx} ctx
+ * @returns {string[]}
+ */
+export const landingFolders = (ctx) => [
+  ...new Set(notebooksFor(ctx.sources.catalog, deployedSources(ctx.config)).flatMap((nb) => (nb.landing ? [nb.landing] : []))),
+];
+
+/**
+ * Makes the folders the deployed notebooks read.
  * @param {Ctx} ctx
  */
 export async function ensureLandingFolders(ctx) {
   const { ui, config, api } = ctx;
   const f = config.fabric;
+  const paths = landingFolders(ctx);
+  if (!paths.length) return;
   try {
-    for (const path of [STUDIO_LANDING, VIVA_LANDING]) {
+    for (const path of paths) {
       await api.oneLake.createDirectory(/** @type {string} */ (f.workspaceId), /** @type {string} */ (f.lakehouseId), path);
     }
   } catch (err) {
-    ui.warn(`Couldn't make the upload folders in ${f.lakehouseName} (${/** @type {Error} */ (err).message}).`);
-    ui.info(`Make ${STUDIO_LANDING} and ${VIVA_LANDING} yourself: in the Lakehouse, choose the ... next to Files, then New subfolder.`);
+    ui.warn(`Couldn't make the landing folders in ${f.lakehouseName} (${/** @type {Error} */ (err).message}).`);
+    ui.info(`Make ${joinList(paths)} yourself: in the Lakehouse, choose the ... next to Files, then New subfolder. The pipeline makes them on its first run too.`);
     return;
   }
   config.consumption.landing = true;
   ctx.save();
-  ui.ok(`Upload folders ${STUDIO_LANDING} and ${VIVA_LANDING} are in ${f.lakehouseName}`);
-}
-
-/**
- * Creates the Consumption model, or updates it when the Lakehouse changed or `force` is set,
- * and connects it through the Consumption Central model's connection.
- * @param {Ctx} ctx
- * @param {{ force?: boolean }} [opts]
- */
-export async function ensureConsumptionModel(ctx, opts = {}) {
-  const { config, sources } = ctx;
-  const m = config.consumption.model;
-  const file = sources.consumptionModelFile;
-  if (!file) throw new Error('This checkout has no "Consumption Central - Fabric.pbit" to build the credit consumption model from.');
-  const { server, database } = await waitForSqlEndpoint(ctx);
-  await deployModel(ctx, m, {
-    signature: `${server.toLowerCase()};${database}`,
-    definition: () =>
-      semanticModelDefinition(buildConsumptionModel(loadTemplateModel(file), { server, database, access: rlsSettings(config) }), PBISM),
-    force: opts.force,
-  });
-  if (!m.bound && config.semanticModel.connectionId) await bindModel(ctx, m);
+  ui.ok(`Landing folders ${joinList(paths)} are in ${f.lakehouseName}`);
 }
 
 /**
@@ -519,7 +493,7 @@ export function consumptionSummary(ctx) {
   const ws = /** @type {string} */ (config.fabric.workspaceId);
   const lakehouse = config.fabric.lakehouseName;
 
-  ui.heading('Credit consumption');
+  ui.heading('Consumption sources');
   if (azureAiOn(config)) ui.info(`Azure AI:   ${cc.azureSubscriptionName ?? cc.azureSubscriptionId}, read on every run`);
   else if (cc.azureSubscriptionId) ui.info(`Azure AI:   ${c.dim(`left out until ${config.app.displayName ?? 'the app'} has ${AZURE_AI_ROLES.map((r) => r.name).join(', ')} on ${cc.azureSubscriptionName ?? cc.azureSubscriptionId}`)}`);
   else ui.info(`Azure AI:   ${c.dim('left out')}`);
@@ -530,7 +504,6 @@ export function consumptionSummary(ctx) {
     const missing = payg.filter((p) => !p.access);
     if (missing.length) ui.info(`            ${c.dim(`not ${joinList(missing.map(paygName))} until ${config.app.displayName ?? 'the app'} has Cost Management Reader there`)}`);
   }
-  if (cc.model.id) ui.info(`Model:      ${cc.model.name}  ${c.dim(modelUrl(ws, cc.model.id))}`);
 
   const ds = config.dataSources;
   if (ds.studioCredits !== 'skip') {

@@ -14,12 +14,12 @@ import { loadSources } from './sources.js';
 import { PRODUCT_ID, UPLOAD_DIR } from './product.js';
 import { recordWorkspaceGone, staleRecordMessage } from './steps/fabric.js';
 import { isResumeLater, MAX_SECRET_DAYS, NOTEBOOK_SECRET_DAYS } from './steps/identity.js';
+import { billingScopeFrom, validateBillingScope, validateEnterprise } from './steps/plan.js';
 import { isVivaId } from './transform/dataflow.js';
 import { c, createUi } from './ui.js';
-import { CURRENCIES, DEFAULT_CURRENCY, parseRate, toCurrencyCode } from './currency.js';
-import { DATA_SOURCE_IDS, modulesFromSources, parseDataFlags } from './uploads.js';
+import { DATA_SOURCE_IDS, parseDataFlags } from './uploads.js';
 
-const COMMANDS = ['install', 'update', 'run', 'rerun-failed', 'load-cowork', 'check', 'refresh', 'status', 'rotate-secret', 'access', 'upload', 'uninstall', 'prereqs', 'preview'];
+const COMMANDS = ['install', 'update', 'run', 'rerun-failed', 'load-cowork', 'check', 'refresh', 'status', 'rotate-secret', 'github-token', 'access', 'upload', 'uninstall', 'prereqs', 'preview'];
 
 /** The `--help` text, naming the command the way it was started. */
 export const help = () => `Sets up Consumption Central in Microsoft Fabric: the data pipeline and the semantic model.
@@ -33,12 +33,15 @@ Commands:
   run              Run the pipeline now, then the data check
   rerun-failed     Run again only the loads that failed in the latest pipeline run
   load-cowork      Once the Cowork Dataflow is signed in: refresh it, load the Viva credits
-                   and refresh the consumption model
+                   and refresh the semantic model
   check            Run the data check again, without the pipeline
   refresh          Refresh the semantic model now
   status           Show recent runs and refreshes, the last data check and when secrets expire
   rotate-secret    Create new client secrets for Key Vault and the model's connection
-  access           Who can view: the viewer group, its members and owners, and its Build on the models
+  github-token     Replace the GitHub token the GitHub billing notebook reads, e.g. when
+                   it expires
+  access           Who can view: the viewer group, its members and owners, its Build on the
+                   model and the report share
   upload [files]   Upload CSV exports to the drop folder (${UPLOAD_DIR})
   uninstall        Delete the workspace's managed private endpoints, then the workspace
   prereqs          Check the roles, licences, capacities and Azure access you have and lack.
@@ -57,15 +60,12 @@ Options:
                        in Azure Cloud Shell
   --use-az             Use the account you are signed in to with the Azure CLI. In Azure Cloud
                        Shell, run ${AZ_LOGIN} first
-  --backfill-days <n>  With run: reload n days of audit history and rebuild the curated table
   --out <dir>          With preview: where to write (default ./${PRODUCT_ID}-preview)
   --data <id=mode>     With install: how a source arrives, api, csv or skip. Repeat it or use
-                       commas, e.g. --data productFeedback=flow,agent365=api. flow is the
-                       Power Automate flow, the api mode of productFeedback and studioCredits.
+                       commas, e.g. --data studioCredits=flow,github=api. flow is the Power
+                       Automate flow, the api mode of studioCredits.
                        Sources: ${DATA_SOURCE_IDS.join(', ')}
   --csv <file>         With install: an export to upload during the install. Repeat for more.
-  --feedback-flow      With install: same as --data productFeedback=flow, the flow that saves
-                       product feedback exports emailed to you (needs Power Automate Premium)
   --studio-flow        With install: same as --data studioCredits=api, the daily flow that reads
                        Copilot Studio credits from the licensing API
   --flow-environment <url>
@@ -78,9 +78,12 @@ Options:
   --viva-partition <id>
   --viva-query <id>    With install: the Viva Insights partition and query the Cowork credits
                        Dataflow reads (needs coworkCredits=api)
-  --currency <code>    With install: the currency the Value page reports in, e.g. GBP. Default USD.
-                       ${CURRENCIES.map((cur) => cur.code).join(', ')}
-  --exchange-rate <n>  With --currency: how many of it to 1 US dollar, e.g. 0.79
+  --github-enterprise <slug>
+                       With install: the enterprise, as in github.com/enterprises/<slug>, whose
+                       Copilot billing Ingest_GitHub_API reads (needs github=api)
+  --billing-scope <id> With install: the subscription (/subscriptions/<id>), billing account or
+                       billing profile Ingest_CommercialTerms reads the credit rate from (needs
+                       commercialTerms=api)
   --run                 With upload: run the pipeline straight after, to load the files now
   --no-key-vault       With install: no Key Vault, the default for a new Fabric install. The client
                        secret goes in the notebooks, where anyone with a role in the workspace can
@@ -116,7 +119,6 @@ export function parseCli(argv, env = process.env) {
       target: { type: 'string' },
       'device-code': { type: 'boolean' },
       'use-az': { type: 'boolean' },
-      'backfill-days': { type: 'string' },
       out: { type: 'string' },
       yes: { type: 'boolean', short: 'y' },
       'no-wait': { type: 'boolean' },
@@ -126,14 +128,13 @@ export function parseCli(argv, env = process.env) {
       verbose: { type: 'boolean' },
       data: { type: 'string', multiple: true },
       csv: { type: 'string', multiple: true },
-      'feedback-flow': { type: 'boolean' },
       'studio-flow': { type: 'boolean' },
       'flow-environment': { type: 'string' },
       'flow-identity': { type: 'string' },
       'viva-partition': { type: 'string' },
       'viva-query': { type: 'string' },
-      currency: { type: 'string' },
-      'exchange-rate': { type: 'string' },
+      'github-enterprise': { type: 'string' },
+      'billing-scope': { type: 'string' },
       run: { type: 'boolean' },
       'secret-in-notebook': { type: 'boolean' },
       'no-key-vault': { type: 'boolean' },
@@ -160,7 +161,7 @@ export function parseCli(argv, env = process.env) {
     secretDays = Number(values['secret-days']);
     if (!Number.isInteger(secretDays) || secretDays < 1 || secretDays > MAX_SECRET_DAYS) throw new Error(`--secret-days must be a whole number from 1 to ${MAX_SECRET_DAYS}.`);
   }
-  const installOnly = ['feedback-flow', 'studio-flow', 'flow-environment', 'flow-identity', 'viva-partition', 'viva-query', 'currency', 'exchange-rate'].filter((k) => values[/** @type {'feedback-flow'} */ (k)] !== undefined);
+  const installOnly = ['studio-flow', 'flow-environment', 'flow-identity', 'viva-partition', 'viva-query', 'github-enterprise', 'billing-scope'].filter((k) => values[/** @type {'studio-flow'} */ (k)] !== undefined);
   if ((values.data?.length || values.csv?.length || installOnly.length) && !['install', 'preview'].includes(command)) {
     throw new Error(`--data, --csv${installOnly.map((k) => ` and --${k}`).join('')} go with install. To add exports later, use upload.`);
   }
@@ -171,16 +172,14 @@ export function parseCli(argv, env = process.env) {
   for (const k of /** @type {const} */ (['viva-partition', 'viva-query'])) {
     if (values[k] !== undefined && !isVivaId(values[k])) throw new Error(`--${k} should be a GUID, as Viva Insights shows it.`);
   }
-  const currency = values.currency === undefined ? undefined : toCurrencyCode(values.currency);
-  if (values.currency !== undefined && !currency) throw new Error(`--currency should be one of ${CURRENCIES.map((cur) => cur.code).join(', ')}.`);
-  /** @type {number | undefined} */
-  let exchangeRate;
-  if (values['exchange-rate'] !== undefined) {
-    if (!currency) throw new Error('--exchange-rate goes with --currency, e.g. --currency GBP --exchange-rate 0.79.');
-    if (currency === DEFAULT_CURRENCY) throw new Error('Licences and credits are billed in US dollars, so USD needs no --exchange-rate.');
-    const rate = parseRate(values['exchange-rate']);
-    if (typeof rate !== 'number') throw new Error(`--exchange-rate: ${typeof rate === 'string' ? rate : 'Type a number above 0.'}`);
-    exchangeRate = rate;
+  const githubEnterprise = values['github-enterprise']?.trim();
+  const billingScope = values['billing-scope'] === undefined ? undefined : billingScopeFrom(values['billing-scope']);
+  for (const [flag, value, check] of /** @type {const} */ ([
+    ['--github-enterprise', githubEnterprise, validateEnterprise],
+    ['--billing-scope', billingScope, validateBillingScope],
+  ])) {
+    const ok = value === undefined ? true : check(value);
+    if (ok !== true) throw new Error(`${flag} should be ${ok[0].toLowerCase()}${ok.slice(1)}`);
   }
   /** @type {string | undefined} */
   let flowEnvironment;
@@ -197,16 +196,9 @@ export function parseCli(argv, env = process.env) {
   if (values.target !== undefined && values.target !== 'fabric') throw new Error('--target must be "fabric".');
   if (values.ui && (positionals.length || values['dry-run'])) throw new Error('--ui opens a home page where you choose what to do. Leave out the command.');
   if (values.ui && values.yes) throw new Error('Choose one of --ui and --yes.');
-  if (values.ui && (values.currency !== undefined || values['exchange-rate'] !== undefined)) throw new Error('With --ui, choose the currency under Advanced settings.');
   if (values.ui && (values.data?.length || values.csv?.length || installOnly.length)) throw new Error('With --ui, choose data sources and exports on the Data sources page.');
   if (values['allow-model-reset'] && !['install', 'update', 'access'].includes(command)) throw new Error('--allow-model-reset goes with install, update or access.');
   if (values.ui && values['allow-model-reset']) throw new Error('With --ui, the page asks before a model\'s data is cleared. Leave out --allow-model-reset.');
-  /** @type {number | undefined} */
-  let backfillDays;
-  if (values['backfill-days'] !== undefined) {
-    backfillDays = Number(values['backfill-days']);
-    if (!Number.isInteger(backfillDays) || backfillDays < 1 || backfillDays > 180) throw new Error('--backfill-days must be a whole number from 1 to 180.');
-  }
   return {
     command,
     configFile: resolve(values.config ?? DEFAULT_CONFIG_FILE),
@@ -216,7 +208,6 @@ export function parseCli(argv, env = process.env) {
     // Cloud Shell has no browser to sign in with.
     method: /** @type {'browser' | 'device-code' | 'azure-cli'} */ (values['use-az'] ? 'azure-cli' : values['device-code'] || cloudShell ? 'device-code' : 'browser'),
     cloudShell,
-    backfillDays,
     outDir: values.out ?? `${PRODUCT_ID}-preview`,
     yes: !!values.yes,
     wait: !values['no-wait'],
@@ -225,14 +216,13 @@ export function parseCli(argv, env = process.env) {
     verbose: !!values.verbose,
     dataSources,
     csvFiles: values.csv ?? [],
-    feedbackFlow: values['feedback-flow'],
     studioFlow: values['studio-flow'],
     flowEnvironment,
     flowIdentity: /** @type {import('./config.js').FlowIdentity | undefined} */ (identity),
     vivaPartition: values['viva-partition']?.trim(),
     vivaQuery: values['viva-query']?.trim(),
-    currency,
-    exchangeRate,
+    githubEnterprise,
+    billingScope,
     files,
     run: values.run,
     secretInNotebook: !!noVaultFlag,
@@ -250,28 +240,39 @@ export function version() {
 }
 
 /**
- * Applies --data, the flow flags, the Viva IDs and the currency to the install record's answers. The
- * Data sources screen then opens with them, and --yes takes them as they are.
+ * Applies --data, the flow flags, the Viva IDs, the GitHub enterprise and the billing scope to the
+ * install record's answers. The Data sources screen then opens with them, and --yes takes them as
+ * they are.
  * @param {import('./config.js').InstallConfig} config
- * @param {{ dataSources: Partial<import('./uploads.js').DataSourceModes>, feedbackFlow?: boolean, studioFlow?: boolean, flowEnvironment?: string, flowIdentity?: import('./config.js').FlowIdentity, vivaPartition?: string, vivaQuery?: string, currency?: string, exchangeRate?: number }} args
+ * @param {{ dataSources: Partial<import('./uploads.js').DataSourceModes>, studioFlow?: boolean, flowEnvironment?: string, flowIdentity?: import('./config.js').FlowIdentity, vivaPartition?: string, vivaQuery?: string, githubEnterprise?: string, billingScope?: string }} args
  */
 export function applyDataFlags(config, args) {
-  // --studio-flow and --feedback-flow are from before each flow was its source's api mode: with csv (as the old docs had it) or alone, they mean api.
+  // --studio-flow is the same as studioCredits=api; with csv or alone, it means api.
   const studio = args.studioFlow && args.dataSources.studioCredits !== 'skip' ? { studioCredits: /** @type {const} */ ('api') } : {};
-  const feedback = args.feedbackFlow && args.dataSources.productFeedback !== 'skip' ? { productFeedback: /** @type {const} */ ('api') } : {};
-  const sources = { ...args.dataSources, ...studio, ...feedback };
-  if (Object.keys(sources).length) {
-    config.dataSources = { ...config.dataSources, ...sources };
-    config.modules = modulesFromSources(config.dataSources);
-  }
+  const sources = { ...args.dataSources, ...studio };
+  if (Object.keys(sources).length) config.dataSources = { ...config.dataSources, ...sources };
   if (args.flowEnvironment && args.flowEnvironment !== config.uploads.flowEnvironment?.url) config.uploads.flowEnvironment = { url: args.flowEnvironment };
   if (args.flowIdentity) config.uploads.flowIdentity = args.flowIdentity;
   if (args.vivaPartition) config.consumption.vivaPartition = args.vivaPartition;
   if (args.vivaQuery) config.consumption.vivaQuery = args.vivaQuery;
-  if (args.currency) {
-    // A saved rate for the same currency stays unless a new one is given.
-    const rate = args.exchangeRate ?? (config.reporting?.currency === args.currency ? config.reporting.exchangeRate : undefined);
-    config.reporting = args.currency !== DEFAULT_CURRENCY && rate ? { currency: args.currency, exchangeRate: rate } : { currency: args.currency };
+  if (args.githubEnterprise) {
+    const gh = (config.github ??= {});
+    if (gh.enterprise && gh.enterprise.toLowerCase() !== args.githubEnterprise.toLowerCase()) {
+      // As in the plan: the token's owner may not manage the new enterprise's billing.
+      delete gh.tokenSetAt;
+      delete gh.tokenExpires;
+    }
+    gh.enterprise = args.githubEnterprise;
+  }
+  if (args.billingScope) {
+    const ct = (config.commercialTerms ??= {});
+    if (!ct.scope || billingScopeFrom(ct.scope).toLowerCase() !== args.billingScope.toLowerCase()) {
+      // A new scope is read again after setup, and the plan names it again.
+      delete ct.ranAt;
+      delete ct.status;
+      delete ct.scopeName;
+    }
+    ct.scope = args.billingScope;
   }
 }
 
@@ -356,7 +357,7 @@ export async function main(argv) {
     if (args.allowModelReset) ctx.allowModelReset = true;
     if (args.secretDays) config.app.secretDays = args.secretDays;
     try {
-      const ok = await runCommand(ctx, args.command, { wait: args.wait, backfillDays: args.backfillDays, files: args.files, run: args.run });
+      const ok = await runCommand(ctx, args.command, { wait: args.wait, files: args.files, run: args.run });
       return ok ? 0 : 1;
     } finally {
       // Also after a failure part way: the record is what lets the next run carry on.

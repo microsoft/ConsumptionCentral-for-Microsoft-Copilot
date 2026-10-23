@@ -1,15 +1,17 @@
 // @ts-check
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { deflateRawSync } from 'node:zlib';
 import { notebooksFor } from '../src/catalog.js';
 import { emptyConfig } from '../src/config.js';
-import { modelDeployed, notebookSettings, pipelineSignature } from '../src/steps/fabric.js';
+import { modelDeployed, pipelineSignature } from '../src/steps/fabric.js';
+import { notebookSettings } from '../src/steps/notebook-settings.js';
+import { buildModel, datasourcePath, decodeText, loadTemplateModel, mNumber, mNumberParameter, mParameter, mString, readTemplateModel, setMNumberParameter, setMParameter } from '../src/transform/model.js';
 import { prepareNotebook } from '../src/transform/notebook.js';
-import { AUDIT_TABLE, buildModel, datasourcePath, decodeText, loadTemplateModel, mParameter, mString, readTemplateModel, setMParameter } from '../src/transform/model.js';
-import { buildPipeline, findActivity, REFRESH_ACTIVITY } from '../src/transform/pipeline.js';
+import { PAYG_TABLE } from '../src/transform/payg.js';
+import { buildPipeline, findActivity, REFRESH_ACTIVITY, REFRESH_TIMING, STATUS_ACTIVITY } from '../src/transform/pipeline.js';
 import { listZip, readZipEntry } from '../src/transform/zip.js';
+import { defaultDataSources } from '../src/uploads.js';
 import { fakeCtx, realSources } from './fakes.js';
 
 /**
@@ -54,7 +56,7 @@ function makeZip(files) {
 
 const MODEL_FILE = /** @type {string} */ (realSources().modelFile);
 const template = loadTemplateModel(MODEL_FILE);
-const settings = { server: 'abc.datawarehouse.fabric.microsoft.com', database: 'ValueLens', modules: { orgData: true, agent365: false, productFeedback: true, consumption: false } };
+const settings = { server: 'abc.datawarehouse.fabric.microsoft.com', database: 'ConsumptionCentral' };
 
 test('zip: stored and deflated entries read back; a missing entry or non-zip fails', () => {
   const text = Buffer.from('hello '.repeat(200));
@@ -82,31 +84,21 @@ test('readTemplateModel takes the model from DataModelSchema and drops its name'
   assert.throws(() => readTemplateModel(makeZip({ DataModelSchema: { data: Buffer.from('{"model":{}}') } })), /no data model/);
 });
 
-test('the real template: source parameters filled, optional pages switched, template untouched', () => {
+test('the real template: source parameters filled in, the pay-as-you-go table added, prices left as they are, the template untouched', () => {
   const before = JSON.stringify(template);
   const bim = buildModel(template, settings);
   assert.equal(JSON.stringify(template), before);
-  assert.equal(mParameter(bim.model, 'Fabric SQL Endpoint'), settings.server);
-  assert.equal(mParameter(bim.model, 'Lakehouse Name'), 'ValueLens');
-  assert.equal(mParameter(bim.model, 'Enable_ProductFeedback'), 'Include');
-  assert.equal(mParameter(bim.model, 'Enable_Agent365'), 'Exclude');
-  const endpoint = bim.model.expressions?.find((e) => e.name === 'Fabric SQL Endpoint');
+  assert.equal(mParameter(bim.model, 'FabricSQLEndpoint'), settings.server);
+  assert.equal(mParameter(bim.model, 'LakehouseName'), 'ConsumptionCentral');
+  const endpoint = bim.model.expressions?.find((e) => e.name === 'FabricSQLEndpoint');
   assert.match(String(endpoint?.expression), /^"abc\.datawarehouse\.fabric\.microsoft\.com" meta \[IsParameterQuery=true/);
   assert.equal(/** @type {any} */ (bim).name, undefined);
   assert.ok(bim.compatibilityLevel >= 1600);
-  assert.ok(bim.model.tables.find((t) => t.name === AUDIT_TABLE)?.refreshPolicy, 'the audit table keeps its incremental refresh policy');
-});
-
-test('the Fabric model renames Department to Organization only when Organization is missing', () => {
-  const guard = 'if colDepartment <> null and not Table.HasColumns(RenamedPersonId, "Organization") then';
-  const models = {
-    fabric: buildModel(template, settings),
-  };
-  for (const [name, bim] of Object.entries(models)) {
-    const org = bim.model.tables.find((t) => t.name === 'Chat + Agent Org Data');
-    const query = [].concat(org?.partitions?.[0]?.source?.expression ?? []).join('\n');
-    assert.ok(query.includes(guard), `${name}: the rename checks for an Organization column`);
-    assert.doesNotMatch(query, /if colDepartment <> null then/, name);
+  assert.ok(bim.model.tables.some((t) => t.name === PAYG_TABLE));
+  assert.ok(!template.model.tables.some((t) => t.name === PAYG_TABLE), 'the installer adds it; the template has no such table');
+  for (const name of ['CreditRate', 'BillingPeriodWeeks']) {
+    assert.equal(typeof mNumberParameter(template.model, name), 'number', name);
+    assert.equal(mNumberParameter(bim.model, name), mNumberParameter(template.model, name), name);
   }
 });
 
@@ -120,56 +112,89 @@ test('M parameters: quotes are escaped; a missing or non-parameter query fails',
   assert.equal(datasourcePath('s.example', 'db'), 's.example;db');
 });
 
-const WS = 'f0000000-0000-0000-0000-000000000000';
-const pipelineTemplate = realSources().pipeline;
-const ids = {
-  auditIngester: 'nb-a',
-  licensedUsers: 'nb-b',
-  processor: 'nb-c',
-  orgData: 'nb-d',
-  productFeedback: 'nb-e',
-  refreshModel: 'nb-r',
-};
+test('M number parameters keep their meta record; a text, missing or non-parameter query, or a value Power Query cannot read, fails', () => {
+  const meta = ' meta [IsParameterQuery=true, Type="Number", IsParameterQueryRequired=true]';
+  const model = {
+    tables: [],
+    expressions: [
+      { name: 'N', expression: `0.01${meta}` },
+      { name: 'T', expression: '"x" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]' },
+      { name: 'Q', expression: 'let x = 1 in x' },
+    ],
+  };
+  setMNumberParameter(model, 'N', 0.025);
+  assert.equal(model.expressions[0].expression, `0.025${meta}`);
+  assert.equal(mNumberParameter(model, 'N'), 0.025);
+  assert.equal(mNumberParameter(model, 'T'), undefined);
+  assert.equal(mNumberParameter(model, 'Missing'), undefined);
+  assert.throws(() => setMNumberParameter(model, 'Missing', 1), /no "Missing" parameter/);
+  assert.throws(() => setMNumberParameter(model, 'Q', 1), /"Q" is not a parameter/);
+  assert.throws(() => setMNumberParameter(model, 'T', 1), /"T" is not a Number parameter/);
+  assert.throws(() => setMNumberParameter(model, 'N', Number.NaN), /NaN is not a number Power Query can read/);
+  assert.throws(() => mNumber(Number.POSITIVE_INFINITY), /Infinity is not a number Power Query can read/);
+  assert.equal(mNumberParameter(model, 'N'), 0.025, 'a failed set leaves the value');
 
-test('pipeline: with a model, the refresh runs last, after the processor and the optional loads', () => {
-  const doc = buildPipeline(pipelineTemplate, { workspaceId: WS, notebookIds: ids, modules: settings.modules, semanticModelId: 'model-1' });
-  const acts = doc.properties.activities;
-  assert.equal(acts.at(-1).name, REFRESH_ACTIVITY);
-  const refresh = findActivity(acts, REFRESH_ACTIVITY);
-  assert.deepEqual(refresh.dependsOn, [
-    { activity: 'Run_Audit_Log_Processor', dependencyConditions: ['Succeeded'] },
-    { activity: 'Conditionally_Run_Org_Data', dependencyConditions: ['Completed'] },
-    { activity: 'Conditionally_Run_Product_Feedback', dependencyConditions: ['Completed'] },
-  ]);
-  assert.equal(refresh.typeProperties.notebookId, 'nb-r');
-  assert.equal(refresh.typeProperties.parameters.SEMANTIC_MODEL_ID.value, 'model-1');
-  assert.equal(refresh.typeProperties.parameters.WORKSPACE_ID.value, WS);
-  assert.equal(refresh.typeProperties.parameters.WRITE_MODE.value.value, '@pipeline().parameters.ProcessorWriteMode');
-  assert.match(doc.properties.description, /then refreshes the semantic model/);
+  const priced = buildModel(template, { ...settings, prices: { CreditRate: 0.02 } });
+  assert.equal(mNumberParameter(priced.model, 'CreditRate'), 0.02);
+  assert.equal(mNumberParameter(priced.model, 'PrepaidCreditRate'), mNumberParameter(template.model, 'PrepaidCreditRate'), 'the rest keep the template values');
+  assert.throws(() => buildModel(template, { ...settings, prices: { NoSuchRate: 1 } }), /no "NoSuchRate" parameter/);
 });
 
-test('pipeline: no model, no refresh; a model without the notebook is an error', () => {
-  const doc = buildPipeline(pipelineTemplate, { workspaceId: WS, notebookIds: ids, modules: settings.modules });
+const WS = 'f0000000-0000-0000-0000-000000000000';
+const { catalog } = realSources();
+/** @type {import('../src/uploads.js').DataSourceModes} */
+const sources = { ...defaultDataSources(), github: 'csv', orgData: 'csv' };
+const ids = Object.fromEntries(catalog.map((nb) => [nb.key, `nb-${nb.key}`]));
+/** @param {{ source: string | string[] }} cell */
+const cellText = (cell) => (Array.isArray(cell.source) ? cell.source.join('') : cell.source);
+
+test('pipeline: with a model, the refresh waits for the usage loads to succeed and for org data, and the status step runs after it', () => {
+  const doc = buildPipeline(catalog, { workspaceId: WS, notebookIds: ids, dataSources: sources, modelId: 'model-1' });
+  const acts = doc.properties.activities;
+  assert.deepEqual(acts.slice(-2).map((a) => a.name), [REFRESH_ACTIVITY, STATUS_ACTIVITY]);
+  const refresh = findActivity(acts, REFRESH_ACTIVITY);
+  assert.deepEqual(refresh.dependsOn, [
+    { activity: 'Run_Consumption_Studio', dependencyConditions: ['Succeeded'] },
+    { activity: 'Run_Consumption_Viva', dependencyConditions: ['Succeeded'] },
+    { activity: 'Run_Consumption_GitHub', dependencyConditions: ['Succeeded'] },
+    { activity: 'Run_Org_Data', dependencyConditions: ['Completed'] },
+  ]);
+  assert.equal(refresh.typeProperties.notebookId, 'nb-refreshModel');
+  assert.deepEqual(refresh.typeProperties.parameters, {
+    WORKSPACE_ID: { value: WS, type: 'string' },
+    SEMANTIC_MODEL_ID: { value: 'model-1', type: 'string' },
+    TIMEOUT_MINUTES: { value: 170, type: 'int' },
+  });
+  const [days, hms] = String(refresh.policy.timeout).split('.');
+  const [hours, minutes] = hms.split(':').map(Number);
+  assert.ok(REFRESH_TIMING.minutes < (Number(days) * 24 + hours) * 60 + minutes, 'the notebook gives up before the step times out');
+  assert.deepEqual(findActivity(acts, STATUS_ACTIVITY).dependsOn, [{ activity: REFRESH_ACTIVITY, dependencyConditions: ['Completed', 'Skipped'] }]);
+  assert.match(doc.properties.description, /The semantic model refreshes once every usage load has succeeded\./);
+});
+
+test('pipeline: no model, no refresh; a model without the refresh notebook is an error', () => {
+  const doc = buildPipeline(catalog, { workspaceId: WS, notebookIds: ids, dataSources: sources });
   assert.equal(findActivity(doc.properties.activities, REFRESH_ACTIVITY), undefined);
   assert.doesNotMatch(doc.properties.description, /semantic model/);
+  assert.deepEqual(findActivity(doc.properties.activities, STATUS_ACTIVITY).dependsOn, [{ activity: 'Run_Org_Data', dependencyConditions: ['Completed', 'Skipped'] }]);
   const { refreshModel, ...rest } = ids;
-  assert.throws(() => buildPipeline(pipelineTemplate, { workspaceId: WS, notebookIds: rest, modules: settings.modules, semanticModelId: 'm' }), /refresh notebook/);
+  assert.throws(() => buildPipeline(catalog, { workspaceId: WS, notebookIds: rest, dataSources: sources, modelId: 'm' }), /semantic model refresh notebook has not been deployed/);
 });
 
 test('the refresh notebook is deployed only with a connected model, with its IDs filled in', () => {
-  const modules = { orgData: true, agent365: false, productFeedback: false, consumption: false };
-  assert.ok(!notebooksFor(modules).some((nb) => nb.key === 'refreshModel'));
-  const nb = notebooksFor(modules, { semanticModel: true }).find((n) => n.key === 'refreshModel');
+  assert.ok(!notebooksFor(catalog, sources).some((nb) => nb.key === 'refreshModel'));
+  const nb = notebooksFor(catalog, sources, { semanticModel: true }).find((n) => n.key === 'refreshModel');
   assert.ok(nb);
 
   const config = emptyConfig();
   Object.assign(config.semanticModel, { enabled: true, id: 'model-9' });
   assert.equal(modelDeployed(config), false, 'not connected yet');
-  const unbound = pipelineSignature(config);
+  const unbound = pipelineSignature(config, catalog);
+  assert.doesNotMatch(unbound, /refreshModel|model=/);
   config.semanticModel.bound = true;
   assert.equal(modelDeployed(config), true);
-  assert.notEqual(pipelineSignature(config), unbound, 'connecting the model changes the pipeline');
-  assert.match(pipelineSignature(config), /;model=model-9$/);
+  assert.notEqual(pipelineSignature(config, catalog), unbound, 'connecting the model changes the pipeline');
+  assert.match(pipelineSignature(config, catalog), /refreshModel.*;model=model-9$/);
 
   const { ctx } = fakeCtx({ config });
   const text = JSON.stringify(prepareNotebook(realSources().notebooks.refreshModel, notebookSettings(ctx, nb)));
@@ -177,10 +202,20 @@ test('the refresh notebook is deployed only with a connected model, with its IDs
   assert.match(text, /SEMANTIC_MODEL_ID = 'model-9'/);
 });
 
-test('the refresh notebook reloads the audit table in full after a rebuild', () => {
-  const nb = JSON.parse(readFileSync(new URL('../../fabric/notebooks/ValueLens_Refresh_Model.ipynb', import.meta.url), 'utf8'));
-  const code = nb.cells.map((/** @type {any} */ c) => [].concat(c.source).join('')).join('\n');
-  assert.match(code, /applyRefreshPolicy/);
-  assert.match(code, /overwrite/);
-  assert.match(code, /notebookutils/);
+test('the refresh notebook takes every parameter the pipeline passes in its parameters cell, and refreshes the whole model', () => {
+  const nb = catalog.find((n) => n.key === 'refreshModel');
+  assert.ok(nb);
+  const doc = buildPipeline(catalog, { workspaceId: WS, notebookIds: ids, dataSources: sources, modelId: 'model-1' });
+  const passed = Object.keys(findActivity(doc.properties.activities, REFRESH_ACTIVITY).typeProperties.parameters);
+  assert.deepEqual(passed, nb.parameters);
+
+  const config = emptyConfig();
+  Object.assign(config.semanticModel, { enabled: true, id: 'model-1', bound: true });
+  const { ctx } = fakeCtx({ config });
+  const prepared = prepareNotebook(realSources().notebooks.refreshModel, notebookSettings(ctx, nb));
+  const tagged = prepared.cells.filter((c) => c.metadata?.tags?.includes('parameters'));
+  assert.equal(tagged.length, 1);
+  for (const name of passed) assert.match(cellText(tagged[0]), new RegExp(`^${name} = `, 'm'), name);
+  assert.match(prepared.cells.map(cellText).join('\n'), /'type': 'full'/);
+  assert.ok(!template.model.tables.some((t) => /** @type {any} */ (t).refreshPolicy), 'no table has an incremental refresh policy, so a full refresh reloads every table');
 });

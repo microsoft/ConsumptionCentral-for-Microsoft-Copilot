@@ -1,54 +1,53 @@
 // @ts-check
-/** Loads the notebooks and pipeline template from a ValueLens checkout. */
+/**
+ * Loads what the installer deploys from a Consumption Central checkout: installer-assets.json, the
+ * notebooks it lists, and the Fabric template. The helper notebooks ship with the installer itself.
+ */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { NOTEBOOKS, NOTEBOOKS_DIR, SETUP_DIR } from './catalog.js';
-import { CONSUMPTION_TEMPLATE, MODEL_TEMPLATE } from './transform/model.js';
+import { MANIFEST_FILE, resolveNotebooks } from './catalog.js';
 
+/** The installer folder, which holds the helper notebooks (`assets/notebooks`). */
+export const INSTALLER_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /** The source folder: the repo root when the installer runs from a checkout, `f` in the exe. */
-export const DEFAULT_SOURCE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const PIPELINE_TEMPLATE = join(SETUP_DIR, 'pipelines', 'CopilotAdoptionPipeline.DataPipeline', 'pipeline-content.json');
+export const DEFAULT_SOURCE_DIR = resolve(INSTALLER_ROOT, '..');
 
 /**
  * @typedef {object} Sources
  * @property {string} dir
+ * @property {any} manifest  installer-assets.json.
+ * @property {import('./catalog.js').NotebookInfo[]} catalog  Every notebook the installer can deploy, in pipeline order.
  * @property {Record<import('./catalog.js').NotebookKey, import('./transform/notebook.js').Notebook>} notebooks
- * @property {any} pipeline
- * @property {string} [modelFile]  `ValueLens - Fabric.pbit`, read only when the semantic model is deployed.
- * @property {string} [consumptionModelFile]  `Consumption Central - Fabric.pbit`, for the credit consumption model.
+ * @property {string} modelFile  `Consumption Central - Fabric.pbit`.
  */
 
 /**
- * @param {string} [dir]  The root of an Consumption Central checkout.
+ * @param {string} [dir]  The root of a Consumption Central checkout.
  * @returns {Sources}
  */
 export function loadSources(dir = DEFAULT_SOURCE_DIR) {
   const root = resolve(dir);
-  const pipelineFile = join(root, PIPELINE_TEMPLATE);
-  if (!existsSync(pipelineFile)) {
-    throw new Error(`No pipeline template at ${pipelineFile}. Point --source at the root of the repo.`);
-  }
+  const manifestFile = join(root, MANIFEST_FILE);
+  if (!existsSync(manifestFile)) throw new Error(`No ${MANIFEST_FILE} at ${root}. Point --source at the root of the repo.`);
+  const manifest = readJson(manifestFile);
+  const catalog = resolveNotebooks(manifest);
   /** @type {any} */
   const notebooks = {};
-  for (const nb of NOTEBOOKS) {
-    const file = join(root, nb.dir ?? NOTEBOOKS_DIR, nb.file);
+  for (const nb of catalog) {
+    const file = join(nb.asset ? INSTALLER_ROOT : root, nb.path);
     if (!existsSync(file)) throw new Error(`Missing notebook ${file}.`);
     notebooks[nb.key] = readJson(file);
   }
-  const modelFile = join(root, MODEL_TEMPLATE);
-  const consumptionModelFile = join(root, CONSUMPTION_TEMPLATE);
-  return {
-    dir: root,
-    notebooks,
-    pipeline: readJson(pipelineFile),
-    modelFile: existsSync(modelFile) ? modelFile : undefined,
-    consumptionModelFile: existsSync(consumptionModelFile) ? consumptionModelFile : undefined,
-  };
+  const template = manifest.templates?.fabric?.path;
+  if (!template) throw new Error(`${manifestFile} has no templates.fabric.`);
+  const modelFile = join(root, template);
+  if (!existsSync(modelFile)) throw new Error(`Missing template ${modelFile}.`);
+  return { dir: root, manifest, catalog, notebooks, modelFile };
 }
 
 /** @param {string} file */
-function readJson(file) {
+export function readJson(file) {
   try {
     return JSON.parse(readFileSync(file, 'utf8'));
   } catch (err) {

@@ -3,18 +3,24 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { DEFAULT_SOURCE_DIR } from '../src/sources.js';
+import { MANIFEST_FILE } from '../src/catalog.js';
+import { DEFAULT_SOURCE_DIR, readJson } from '../src/sources.js';
 import {
   MAX_NATIVE_PATH, MAX_PAYLOAD_PATH, MIRROR_REGISTRY, PUBLIC_REGISTRY, fileVersion, installerFile, leakedIds,
   localIds, payloadId, prunable, publicRegistry, sourceFiles, tooLong,
 } from '../packaging/payload.js';
 
 test('packaging: ships every template the installer reads, and they exist', () => {
-  const files = sourceFiles();
-  assert.ok(files.includes('fabric/pipelines/CopilotAdoptionPipeline.DataPipeline/pipeline-content.json'));
-  assert.ok(files.includes('fabric/ValueLens - Fabric.pbit'));
-  assert.ok(files.includes('fabric/notebooks/Copilot_Audit_Log_Processor.ipynb'));
-  assert.ok(files.some((f) => f.startsWith('fabric/notebooks/credit-consumption/')));
+  const files = sourceFiles(readJson(join(DEFAULT_SOURCE_DIR, MANIFEST_FILE)));
+  assert.ok(files.includes('installer-assets.json'));
+  assert.ok(files.includes('2. Fabric/Consumption Central - Fabric.pbit'));
+  assert.ok(files.includes('2. Fabric/notebooks/Ingest_Viva_Consumption.ipynb'));
+  assert.ok(files.includes('2. Fabric/notebooks/Ingest_CommercialTerms.ipynb'));
+  // Never deployed, so never shipped.
+  assert.ok(!files.some((f) => f.endsWith('/Ingest_Studio_Consumption.ipynb')));
+  // The helper notebooks ship with the installer code, not the source folder.
+  assert.ok(!files.some((f) => f.includes('ConsumptionCentral_')));
+  assert.ok(installerFile('assets/notebooks/ConsumptionCentral_Refresh_Model.ipynb'));
   assert.ok(files.every((f) => !f.includes('\\')));
   for (const f of files) assert.ok(existsSync(join(DEFAULT_SOURCE_DIR, f)), `${f} is missing`);
 });

@@ -145,7 +145,9 @@ test('script: generated Windows commands run and report missing files with speci
         '$NodeDir = Split-Path $env:SHIM_TEST_NODE',
         TEMPLATE.slice(start, end),
       ].join('\r\n'), 'ascii');
-      const generated = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-File', generate], {
+      // Process scope only: Windows PowerShell's client default (Restricted) refuses any -File script.
+      // install.ps1 itself runs through `irm | iex`, which the policy doesn't apply to.
+      const generated = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', generate], {
         encoding: 'utf8', windowsHide: true, timeout: 30_000,
         env: { ...process.env, SHIM_TEST_INSTALLED: installed ? '1' : '0', SHIM_TEST_NODE: node },
       });

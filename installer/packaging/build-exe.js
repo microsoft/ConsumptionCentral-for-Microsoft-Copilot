@@ -35,6 +35,7 @@ import { SCRIPT_NAME, ZIP_NAME, installScript } from './script.js';
 import { sha256File, sha256Line } from './signing.js';
 import { REPO as GITHUB_REPO } from '../src/update-check.js';
 import { INSTALLER_TITLE, PRODUCT_ID, PRODUCT_NAME } from '../src/product.js';
+import { MANIFEST_FILE } from '../src/catalog.js';
 
 const INSTALLER = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE = resolve(INSTALLER, '..');
@@ -140,8 +141,8 @@ try {
   for (const f of tracked(INSTALLER)) if (installerFile(f.rel)) put(join(stagedInstaller, f.rel), f.read());
   run('npm ci --omit=dev --no-audit --no-fund', [], { cwd: stagedInstaller, shell: true });
 
-  step('Staging the notebooks, pipeline and templates');
-  for (const rel of sourceFiles()) {
+  step('Staging installer-assets.json and the notebooks and template it lists');
+  for (const rel of sourceFiles(readJson(join(SOURCE, MANIFEST_FILE)))) {
     const from = join(SOURCE, rel);
     if (!existsSync(from)) throw new Error(`Missing ${from}.`);
     put(join(stage, SOURCE_ROOT, rel), readFileSync(from));
@@ -149,9 +150,6 @@ try {
   const { loadSources } = await import(pathToFileURL(join(stagedInstaller, 'src', 'sources.js')).href);
   const sources = loadSources();
   if (resolve(sources.dir) !== resolve(stage, SOURCE_ROOT)) throw new Error(`The staged installer reads its templates from ${sources.dir}.`);
-  for (const key of ['modelFile', 'consumptionModelFile']) {
-    if (!sources[key]) throw new Error(`The staged installer can't find its ${key}.`);
-  }
 
   step('Adding Node.js and the licences');
   put(join(stage, 'node', 'node.exe'), readFileSync(process.execPath));

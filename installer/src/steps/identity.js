@@ -1,20 +1,23 @@
 // @ts-check
 /**
- * Key Vault, the app registration and its secret, and admin consent.
- * Each step checks what is already there, so a re-run only does what is missing.
+ * Key Vault, the app registration and its secret, admin consent, and the GitHub token: whichever the
+ * chosen sources need. Each step checks what is already there, so a re-run only does what is missing.
  */
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { GRAPH_APP_ID, permissionsFor } from '../catalog.js';
+import { appNeeded, appWanted, GRAPH_APP_ID, permissionsFor, secretWanted } from '../catalog.js';
 import { allowsAction, isPrivateVault, networkBlocked, ROLES } from '../clients/azure.js';
 import { adminConsentUrl, apiPermissionsUrl, resolveAppRoles } from '../clients/graph.js';
 import { secretMode } from '../config.js';
 import { HttpError } from '../http.js';
 import { commandLine } from '../launch.js';
-import { INSTALLER_TITLE, PRODUCT_ID, PRODUCT_NAME } from '../product.js';
-import { c } from '../ui.js';
+import { ADMIN_PACK_FILE, ENV, INSTALLER_TITLE, PRODUCT_NAME } from '../product.js';
+import { c, listJoin } from '../ui.js';
+import { askGithubToken, githubContentType, githubSecretName, GITHUB_TOKEN_SCOPES, TOKENS_URL } from './github.js';
 import { APP_NAME } from './plan.js';
 import { addTrackedSecret, adoptAttempts, promoteSecret, settleFailedSecret } from './secrets.js';
+
+export { ADMIN_PACK_FILE };
 
 /** @typedef {import('../install.js').Ctx} Ctx */
 
@@ -48,10 +51,13 @@ export class ResumeLater extends Error {
 /** @param {unknown} err */
 export const isResumeLater = (err) => /** @type {Error | undefined} */ (err)?.name === 'ResumeLater';
 
-/** Permissions some tenants don't have yet, and what happens without them. Their module falls back gracefully. */
-export const OPTIONAL_PERMISSION_EFFECTS = {
-  'CopilotPackages.Read.All': 'The Agent 365 registry will fall back to its CSV export.',
-};
+/**
+ * Permissions some tenants don't have yet, and what happens without them. None of Consumption
+ * Central's: User.Read.All is in every tenant.
+ * @type {Record<string, string>}
+ */
+export const OPTIONAL_PERMISSION_EFFECTS = {};
+
 export const OPTIONAL_PERMISSIONS = Object.keys(OPTIONAL_PERMISSION_EFFECTS);
 
 /** @param {unknown} err @param {number} status */
@@ -81,19 +87,31 @@ export function addDays(from, days) {
 }
 
 /**
- * Graph's service principal and the app roles the installer needs, looked up once per run.
+ * Graph's service principal and the app roles the chosen sources need, looked up once per run.
  * @param {Ctx} ctx
  */
 export async function graphRoles(ctx) {
   if (!ctx.graphRoles) {
     const sp = await ctx.api.graph.graphServicePrincipal();
-    const { roles, missing } = resolveAppRoles(sp, permissionsFor(ctx.config.modules, ctx.config.dataSources), OPTIONAL_PERMISSIONS);
+    const { roles, missing } = resolveAppRoles(sp, permissionsFor(ctx.config.dataSources), OPTIONAL_PERMISSIONS);
     for (const m of missing) {
-      ctx.ui.warn(`Microsoft Graph in this tenant has no ${m} permission yet. ${OPTIONAL_PERMISSION_EFFECTS[/** @type {keyof typeof OPTIONAL_PERMISSION_EFFECTS} */ (m)] ?? ''}`.trim());
+      ctx.ui.warn(`Microsoft Graph in this tenant has no ${m} permission yet. ${OPTIONAL_PERMISSION_EFFECTS[m] ?? ''}`.trim());
     }
     ctx.graphRoles = { sp, roles };
   }
   return ctx.graphRoles;
+}
+
+/**
+ * The secrets this install keeps, for messages: the app's client secret, the GitHub token, or both.
+ * @param {import('../config.js').InstallConfig} config
+ * @returns {string[]}
+ */
+export function keptSecrets(config) {
+  const kept = [];
+  if (appWanted(config.dataSources)) kept.push('the client secret');
+  if (config.dataSources.github === 'api') kept.push('the GitHub token');
+  return kept;
 }
 
 /**
@@ -104,7 +122,9 @@ export async function ensureKeyVault(ctx) {
   const { ui, config, api, user } = ctx;
   const kv = config.keyVault;
   if (secretMode(config) === 'notebook') {
-    ui.info('No Key Vault: the client secret is written into the notebooks, where anyone with a role in the workspace can read it.');
+    const kept = keptSecrets(config);
+    const many = kept.length > 1;
+    ui.info(`No Key Vault: ${listJoin(kept)} ${many ? 'are' : 'is'} written into the notebooks, where anyone with a role in the workspace can read ${many ? 'them' : 'it'}.`);
     return;
   }
   if (kv.uri && kv.id) {
@@ -295,10 +315,26 @@ async function grantReadAccess(ctx, vault) {
 }
 
 /**
- * The Cloud Shell (bash) commands a vault admin runs to add the app's secret. They create the
- * secret on the app and store it in the vault in one go, so its value is never shown to anyone.
+ * The Cloud Shell (bash) command a vault admin runs to store the GitHub token. It reads the token
+ * without echoing it, so it isn't on screen or in the shell's history.
  * @param {import('../config.js').InstallConfig} config
- * @param {{ userId?: string }} [o]  Also gives this user read access, when the handoff needs it.
+ */
+export function githubHandoffCommand(config) {
+  const kv = config.keyVault;
+  return (
+    `read -rs -p "GitHub token: " T && echo && az keyvault secret set --vault-name ${kv.name} --name ${githubSecretName(config)} ` +
+    `--content-type "${githubContentType(config)}" --value "$T" --query id -o tsv; unset T`
+  );
+}
+
+/**
+ * The Cloud Shell (bash) commands a vault admin runs. The client secret is created on the app and
+ * stored in the vault in one go, so its value is never shown to anyone; the GitHub token is pasted
+ * straight into the command that stores it.
+ * @param {import('../config.js').InstallConfig} config
+ * @param {{ userId?: string, secret?: boolean, githubToken?: boolean }} [o]
+ *   userId: also gives this user read access, when the handoff needs it. secret: the client secret
+ *   (the default). githubToken: the GitHub token.
  * @returns {string[]}
  */
 export function handoffCommands(config, o = {}) {
@@ -312,27 +348,34 @@ export function handoffCommands(config, o = {}) {
         : `az keyvault set-policy --name ${kv.name} --object-id ${o.userId} --secret-permissions get list`,
     );
   }
-  lines.push(
-    `az keyvault secret set --vault-name ${kv.name} --name ${kv.secretName} --content-type "Client secret for ${appId}" ` +
-      `--value "$(az ad app credential reset --id ${appId} --append --display-name "${PRODUCT_NAME}" --years 1 --query password -o tsv)" --query id -o tsv`,
-  );
+  if (o.secret ?? true) {
+    lines.push(
+      `az keyvault secret set --vault-name ${kv.name} --name ${kv.secretName} --content-type "Client secret for ${appId}" ` +
+        `--value "$(az ad app credential reset --id ${appId} --append --display-name "${PRODUCT_NAME}" --years 1 --query password -o tsv)" --query id -o tsv`,
+    );
+  }
+  if (o.githubToken) lines.push(githubHandoffCommand(config));
   return lines;
 }
 
 /**
- * Hands the secret over to a vault admin: shows what to run, optionally makes them an owner of
- * the app so they can create its secret, then waits for the user to say it's done. The value
- * never reaches the installer.
+ * Hands secrets over to a vault admin: the app's client secret, the GitHub token, or both at once.
+ * Shows what to run, optionally makes the admin an owner of the app so they can create its secret,
+ * then waits for the user to say it's done. The values never reach the installer. Returns false
+ * when the run carries on without them (--yes).
  * @param {Ctx} ctx
- * @param {{ rotate?: boolean }} [o]
+ * @param {{ rotate?: boolean, secret?: boolean, githubToken?: boolean }} [o]
+ *   secret: the client secret (the default). githubToken: the GitHub token, as well or instead.
  */
 export async function secretHandoff(ctx, o = {}) {
   const { ui, config, user } = ctx;
   const { app, keyVault: kv } = config;
+  const secret = o.secret ?? true;
+  const token = !!o.githubToken;
   kv.handoff ??= {};
   const h = kv.handoff;
   // As when the installer writes it: a shared vault may already hold another install's secret under this name.
-  if (!o.rotate && claimsName(ctx)) {
+  if (!o.rotate && secret && claimsName(ctx)) {
     try {
       await claimSecretName(ctx);
     } catch (err) {
@@ -343,46 +386,88 @@ export async function secretHandoff(ctx, o = {}) {
       );
     }
   }
-  ui.warn(`A vault admin needs to ${o.rotate ? 'replace' : 'add'} the client secret in ${kv.name}. The installer never sees its value.`);
-  ui.info(`Vault:   ${kv.name}${kv.id ? c.dim(`  https://portal.azure.com/#@${user.tenantId}/resource${kv.id}/secrets`) : ''}`);
-  ui.info(`Secret:  ${kv.secretName}`);
-  ui.info(`App:     ${app.displayName ?? APP_NAME} (${app.appId})`);
-  if (h.grantRead) ui.info(`Reader:  ${user.upn}, who needs ${kv.rbac ? 'Key Vault Secrets User' : 'an access policy with secret get and list'} so scheduled runs can read it`);
-  ui.info('They can run this in Azure Cloud Shell (Bash):');
-  for (const line of handoffCommands(config, { userId: user.id })) ui.info(`  ${line}`);
-  if (kv.private) ui.note(`${kv.name} blocks public network access, so run it from a network that can reach the vault, or use the portal steps below.`);
-  ui.note(
-    `Or in the Azure portal: App registrations > ${app.displayName ?? app.appId} > Certificates & secrets > New client secret, then copy its Value into ` +
-      `${kv.name} > Secrets > Generate/Import with the name ${kv.secretName}.`,
-  );
-  if (o.rotate) ui.note('Once a run has succeeded with the new secret, delete the old one from the app\'s Certificates & secrets page.');
+  if (token) {
+    try {
+      await claimGithubSecretName(ctx);
+    } catch (err) {
+      if (/no free secret name/.test(/** @type {Error} */ (err).message)) throw err;
+      ui.note(
+        `Couldn't check whether ${kv.name} already has a secret called ${githubSecretName(config)}. If it holds another install's token, ` +
+          'the admin shouldn\'t replace it: ask them to give you read access first, then run the installer again, and it picks a free name.',
+      );
+    }
+  }
+  const ghName = githubSecretName(config);
+  const both = secret && token;
+  const verb = o.rotate ? 'replaced' : 'added';
+  /** @param {string} a @param {string} b */
+  const which = (a, b) => listJoin([secret ? a : '', token ? b : ''].filter(Boolean));
 
-  if (!ui.yes && !app.existing && app.objectId) {
+  ui.warn(`A vault admin needs to ${o.rotate ? 'replace' : 'add'} ${which('the client secret', 'the GitHub token')} in ${kv.name}. The installer never sees ${both ? 'their values' : 'its value'}.`);
+  ui.info(`Vault:   ${kv.name}${kv.id ? c.dim(`  https://portal.azure.com/#@${user.tenantId}/resource${kv.id}/secrets`) : ''}`);
+  if (secret) {
+    ui.info(`Secret:  ${kv.secretName}`);
+    ui.info(`App:     ${app.displayName ?? APP_NAME} (${app.appId})`);
+  }
+  if (token) ui.info(`Token:   ${ghName}, a classic GitHub token with scope ${GITHUB_TOKEN_SCOPES}, made by an owner or billing manager of ${config.github?.enterprise}`);
+  if (h.grantRead) ui.info(`Reader:  ${user.upn}, who needs ${kv.rbac ? 'Key Vault Secrets User' : 'an access policy with secret get and list'} so scheduled runs can read ${both ? 'them' : 'it'}`);
+  ui.info(`They can run this in Azure Cloud Shell (Bash)${token ? ', and paste the token when asked' : ''}:`);
+  for (const line of handoffCommands(config, { userId: user.id, secret, githubToken: token })) ui.info(`  ${line}`);
+  if (kv.private) ui.note(`${kv.name} blocks public network access, so run it from a network that can reach the vault, or use the portal steps below.`);
+  if (secret) {
+    ui.note(
+      `Or in the Azure portal: App registrations > ${app.displayName ?? app.appId} > Certificates & secrets > New client secret, then copy its Value into ` +
+        `${kv.name} > Secrets > Generate/Import with the name ${kv.secretName}.`,
+    );
+  }
+  if (token) {
+    ui.note(`${secret ? 'For the token' : 'Or in the Azure portal'}: ${kv.name} > Secrets > Generate/Import with the name ${ghName}, and the token as its value.`);
+    ui.note('The installer never sees the token, so it can\'t check it or tell you before it expires.');
+  }
+  if (o.rotate && secret) ui.note('Once a run has succeeded with the new secret, delete the old one from the app\'s Certificates & secrets page.');
+  if (o.rotate && token) ui.note(`Once GitHub data has loaded with the new token, revoke the old one at ${TOKENS_URL}.`);
+
+  if (secret && !ui.yes && !app.existing && app.objectId) {
     const email = (await ui.input('Vault admin\'s email, to make them an owner of the app so they can create its secret (leave blank to skip)', { default: h.adminEmail ?? '' })).trim();
     if (email) await addAdminOwner(ctx, email);
   }
-  if (!h.adminEmail) ui.note('Creating the secret needs an owner of the app, or an Application Administrator or Cloud Application Administrator.');
+  if (secret && !h.adminEmail) ui.note('Creating the secret needs an owner of the app, or an Application Administrator or Cloud Application Administrator.');
   h.shownAt = ctx.now().toISOString();
+  ctx.handoffShown ??= new Set();
+  if (secret) ctx.handoffShown.add('secret');
+  if (token) ctx.handoffShown.add('githubToken');
   ctx.save();
 
   if (ui.yes) {
-    ui.warn(`Carrying on. Data loads fail until the secret is in ${kv.name}. Run "${commandLine('rotate-secret')}" to see these steps again.`);
+    const until = [
+      secret ? `Data loads fail until the secret is in ${kv.name}.` : '',
+      token ? `GitHub data doesn't load until the token is in ${kv.name}.` : '',
+    ].filter(Boolean);
+    ui.warn(`Carrying on. ${until.join(' ')} Run ${which(`"${commandLine('rotate-secret')}"`, `"${commandLine('github-token')}"`)} to see these steps again.`);
     return false;
   }
   const next = await ui.select(
-    `Has the admin ${o.rotate ? 'replaced' : 'added'} the secret?`,
+    `Has the admin ${verb} ${which('the secret', 'the GitHub token')}?`,
     [
       { name: 'Yes, carry on', value: 'go' },
-      { name: 'Stop and resume later', value: 'stop', description: 'Your answers are saved. Run the installer again once it\'s there.' },
+      { name: 'Stop and resume later', value: 'stop', description: `Your answers are saved. Run the installer again once ${both ? 'they\'re' : 'it\'s'} there.` },
     ],
     'go',
   );
-  if (next === 'stop') throw new ResumeLater(`Stopped until the vault admin has ${o.rotate ? 'replaced' : 'added'} the secret. Run the installer again to carry on from here.`);
+  if (next === 'stop') throw new ResumeLater(`Stopped until the vault admin has ${verb} ${which('the secret', 'the GitHub token')}. Run the installer again to carry on from here.`);
   h.confirmedAt = ctx.now().toISOString();
-  kv.secretSetAt = h.confirmedAt;
-  if (o.rotate) delete app.secretExpires;
+  if (secret) {
+    kv.secretSetAt = h.confirmedAt;
+    if (o.rotate) delete app.secretExpires;
+  }
+  const gh = config.github;
+  if (token && gh) {
+    gh.secretName ??= ghName;
+    gh.tokenSetAt = h.confirmedAt;
+    delete gh.tokenExpires;
+  }
   ctx.save();
-  ui.ok(`The vault admin has ${o.rotate ? 'replaced' : 'added'} the secret ${kv.secretName}`);
+  ui.ok(`The vault admin has ${verb} ${which(`the secret ${kv.secretName}`, `the GitHub token ${ghName}`)}`);
   return true;
 }
 
@@ -414,10 +499,13 @@ async function addAdminOwner(ctx, email) {
 }
 
 /**
- * Creates or adopts the app registration and its service principal, and puts a client secret in Key Vault.
+ * Creates or adopts the app registration and its service principal, and puts a client secret in Key Vault
+ * when the sources need one.
  * @param {Ctx} ctx
+ * @param {{ secret?: boolean }} [o]  secret: false when only the semantic model's connection signs in as
+ *   the app. That connection gets its own secret (ensureModelConnection), so none is kept here.
  */
-export async function ensureApp(ctx) {
+export async function ensureApp(ctx, o = {}) {
   const { ui, config, api } = ctx;
   const app = config.app;
   const { roles } = await graphRoles(ctx);
@@ -434,7 +522,7 @@ export async function ensureApp(ctx) {
     app.objectId = application.id;
     app.displayName = application.displayName;
     try {
-      if (await api.graph.ensureRequiredAccess(application, roles)) ui.ok('Added the Consumption Central permissions to its API permissions');
+      if (await api.graph.ensureRequiredAccess(application, roles)) ui.ok(`Added the ${PRODUCT_NAME} permissions to its API permissions`);
     } catch (err) {
       if (!isStatus(err, 403)) throw err;
       ui.warn(`You can't edit ${application.displayName}'s API permissions. An admin must add these Graph application permissions: ${roles.map((r) => r.value).join(', ')}.`);
@@ -447,8 +535,9 @@ export async function ensureApp(ctx) {
       application = await api.graph.createApplication(APP_NAME, roles);
     } catch (err) {
       if (!isStatus(err, 403)) throw err;
+      const perms = roles.map((r) => r.value);
       throw new Error(
-        'You can\'t create app registrations in this tenant. Ask an admin to create one with the permissions in docs/PERMISSIONS.md, ' +
+        `You can't create app registrations in this tenant. Ask an admin to create one${perms.length ? ` with admin consent for these Microsoft Graph application permissions: ${perms.join(', ')}` : ''}, ` +
           'then run the installer again and choose "Use an app registration I already have".',
       );
     }
@@ -471,7 +560,7 @@ export async function ensureApp(ctx) {
   }
   ctx.save();
 
-  await ensureSecret(ctx);
+  if (o.secret !== false) await ensureSecret(ctx);
 }
 
 /** @param {Ctx} ctx */
@@ -494,7 +583,8 @@ export async function ensureSecret(ctx) {
       }
       return;
     }
-    await secretHandoff(ctx);
+    // One handoff for both, when the GitHub token is wanted too.
+    await secretHandoff(ctx, { githubToken: config.dataSources?.github === 'api' && !!config.github?.enterprise && !config.github.tokenSetAt });
     return;
   }
 
@@ -558,12 +648,12 @@ async function onVault(ctx, direct, viaArm) {
   return viaArm(kv.id);
 }
 
-/** @param {Ctx} ctx */
-const secretExists = (ctx) =>
+/** @param {Ctx} ctx @param {string} [name] */
+const secretExists = (ctx, name = ctx.config.keyVault.secretName) =>
   onVault(
     ctx,
-    (uri) => ctx.api.keyVault.secretExists(uri, ctx.config.keyVault.secretName),
-    (id) => ctx.api.arm.secretExists(id, ctx.config.keyVault.secretName),
+    (uri) => ctx.api.keyVault.secretExists(uri, name),
+    (id) => ctx.api.arm.secretExists(id, name),
   );
 
 /** @param {Ctx} ctx @param {string} name */
@@ -606,33 +696,56 @@ async function claimSecretName(ctx) {
 }
 
 /**
+ * Picks the GitHub token's secret name in a vault this install didn't make. Another install's token
+ * looks just like this one's, so a secret already there is never taken over: the next free name is used.
+ * @param {Ctx} ctx
+ */
+async function claimGithubSecretName(ctx) {
+  const { ui, config } = ctx;
+  const kv = config.keyVault;
+  const gh = config.github;
+  if (!gh || gh.secretName || !kv.existing) return;
+  const base = githubSecretName(config);
+  for (let i = 1; i <= 50; i++) {
+    const name = i === 1 ? base : `${base.slice(0, 120)}-${i}`;
+    if (await secretInfo(ctx, name)) continue;
+    gh.secretName = name;
+    ctx.save();
+    if (name !== base) ui.warn(`${kv.name} already has a secret called ${base}, so it stays as it is. This install keeps the GitHub token as ${name}.`);
+    return;
+  }
+  throw new Error(`${kv.name} has no free secret name starting ${base}. Delete the ones no install uses, then run the installer again.`);
+}
+
+/**
  * @param {Ctx} ctx
  * @param {string} value
- * @param {{ expires?: Date, contentType?: string }} o
+ * @param {{ name?: string, expires?: Date, contentType?: string }} o  name: the client secret's, unless given.
  */
-const writeSecret = (ctx, value, o) =>
+const writeSecret = (ctx, value, { name = ctx.config.keyVault.secretName, ...o }) =>
   onVault(
     ctx,
-    (uri) => ctx.api.keyVault.setSecret(uri, ctx.config.keyVault.secretName, value, o),
-    (id) => ctx.api.arm.setSecret(id, ctx.config.keyVault.secretName, value, o),
+    (uri) => ctx.api.keyVault.setSecret(uri, name, value, o),
+    (id) => ctx.api.arm.setSecret(id, name, value, o),
   );
 
 /**
  * Makes sure a new secret will have somewhere to go before it is created. Waits out a
  * new role assignment; a private vault needs write access through Resource Manager.
  * @param {Ctx} ctx
+ * @param {string} [name]  The secret about to be written: the client secret's, unless given.
  */
-async function checkSecretAccess(ctx) {
+async function checkSecretAccess(ctx, name = ctx.config.keyVault.secretName) {
   const { api, config } = ctx;
   const kv = config.keyVault;
   await onVault(
     ctx,
-    (uri) => api.keyVault.waitForAccess(uri, kv.secretName),
+    (uri) => api.keyVault.waitForAccess(uri, name),
     async (id) => {
       const perms = await api.arm.permissions(id).catch(() => null);
       if (perms && !allowsAction(perms, 'Microsoft.KeyVault/vaults/secrets/write')) {
         throw new Error(
-          `${kv.name} blocks public network access, so the installer saves the secret through Azure Resource Manager. ` +
+          `${kv.name} blocks public network access, so the installer saves secrets through Azure Resource Manager. ` +
             'That needs Contributor or Key Vault Contributor on the vault. Ask its owner, then run the installer again.',
         );
       }
@@ -761,6 +874,78 @@ export async function ensureConsent(ctx, who) {
  */
 
 /**
+ * Puts the GitHub token where Ingest_GitHub_API reads it, when GitHub is read from the API and the
+ * install keeps its secrets in Key Vault. With no Key Vault, ensureNotebooks writes it into the
+ * notebook instead. Returns false while it isn't in place.
+ * @param {Ctx} ctx
+ * @param {{ replace?: boolean }} [o]  replace: put a new token in place ("github-token").
+ */
+export async function ensureGithubToken(ctx, o = {}) {
+  const { ui, config } = ctx;
+  const gh = config.github;
+  if (config.dataSources.github !== 'api' || !gh?.enterprise) return true;
+  const mode = secretMode(config);
+  if (mode === 'notebook') return true;
+  const kv = config.keyVault;
+
+  if (mode === 'keyvault-admin') {
+    delete ctx.pendingGithubToken;
+    // ensureSecret's handoff may have covered it already this run.
+    const shown = !!ctx.handoffShown?.has('githubToken');
+    if (gh.tokenSetAt && !o.replace) {
+      if (!shown) {
+        ui.ok(`The vault admin added the GitHub token to ${kv.name} as ${githubSecretName(config)}`);
+        if (kv.handoff?.grantRead && !appWanted(config.dataSources)) {
+          ui.warn(`You still need read access to ${kv.name} so scheduled runs can read it. Ask the vault admin to run:`);
+          ui.info(`  ${handoffCommands(config, { userId: ctx.user.id, secret: false })[0]}`);
+        }
+      }
+      return true;
+    }
+    if (shown) return false;
+    return secretHandoff(ctx, { secret: false, githubToken: true, rotate: !!o.replace && !!gh.tokenSetAt });
+  }
+
+  if (!o.replace && !ctx.pendingGithubToken && gh.tokenSetAt) {
+    const name = githubSecretName(config);
+    if (await secretExists(ctx, name)) {
+      ui.ok(`The GitHub token is in Key Vault as ${name}${gh.tokenExpires ? ` (expires ${gh.tokenExpires.slice(0, 10)})` : ''}`);
+      return true;
+    }
+    ui.warn(`Key Vault has no secret called ${name} any more.`);
+    delete gh.tokenSetAt;
+    delete gh.tokenExpires;
+    ctx.save();
+  }
+
+  /** @type {import('./github.js').PendingToken | undefined} */
+  let token;
+  try {
+    token = await askGithubToken(ctx);
+  } catch (err) {
+    ui.fail(/** @type {Error} */ (err).message);
+  }
+  if (!token) {
+    ui.warn(`No GitHub token yet, so GitHub data won't load. Run "${commandLine('github-token')}" to add one${ui.yes ? `, or set ${ENV.GITHUB_TOKEN} and run the installer again` : ''}.`);
+    return false;
+  }
+  await checkSecretAccess(ctx, githubSecretName(config));
+  await claimGithubSecretName(ctx);
+  const name = githubSecretName(config);
+  gh.secretName ??= name;
+  ctx.save();
+  // No expiry on the secret: GitHub ends the token itself, and the Done page warns before it does.
+  await writeSecret(ctx, token.value, { name, contentType: githubContentType(config) });
+  delete ctx.pendingGithubToken;
+  gh.tokenSetAt = ctx.now().toISOString();
+  if (token.expires) gh.tokenExpires = token.expires;
+  else delete gh.tokenExpires;
+  ctx.save();
+  ui.ok(`Saved the GitHub token to Key Vault as ${name}${token.expires ? ` (expires ${token.expires.slice(0, 10)})` : ''}`);
+  return true;
+}
+
+/**
  * Checks an app registration the user brought, before anything is created: that it and its
  * service principal exist, and that every Graph application permission the chosen modules
  * need is on it with admin consent.
@@ -810,47 +995,60 @@ export function reportAppCheck(ctx, check, who = {}) {
   if (!check.servicePrincipal) missing.push('Its service principal (enterprise application). If you own the app, choose "Carry on anyway" and the installer creates it.');
   if (check.undeclared.length) missing.push(`These Graph application permissions on its API permissions page: ${check.undeclared.join(', ')}`);
   // Someone who can grant consent gets it granted during the install.
-  if (check.unconsented.length && !who.canConsent) missing.push(`Admin consent for: ${check.unconsented.join(', ')}`);
+  const unconsented = check.unconsented.length && !who.canConsent;
+  if (unconsented) missing.push(`Admin consent for: ${check.unconsented.join(', ')}`);
   if (!missing.length) {
-    ui.ok(`${check.displayName ?? appId} has everything Consumption Central needs`);
+    ui.ok(`${check.displayName ?? appId} has everything ${PRODUCT_NAME} needs`);
     return true;
   }
   ui.warn(`${check.displayName ?? appId} isn't ready yet. It still needs:`);
   for (const m of missing) ui.info(`  - ${m}`);
-  ui.info('An admin can add the permissions and grant consent on its API permissions page:');
-  ui.info(apiPermissionsUrl(appId));
-  if (!check.undeclared.length) ui.note(`Or the direct consent link: ${adminConsentUrl(user.tenantId, appId)}`);
+  if (check.undeclared.length || unconsented) {
+    ui.info('An admin can add the permissions and grant consent on its API permissions page:');
+    ui.info(apiPermissionsUrl(appId));
+    if (!check.undeclared.length) ui.note(`Or the direct consent link: ${adminConsentUrl(user.tenantId, appId)}`);
+  }
   return false;
 }
-
-export const ADMIN_PACK_FILE = `${PRODUCT_ID}-admin-pack.md`;
 
 /**
  * The steps an admin runs to register the app for someone who can't: an Azure Cloud Shell
  * script and the same steps in the portal. The client secret goes where the install keeps it,
- * so in the vault admin mode it never leaves Azure.
+ * so in the vault admin mode it never leaves Azure. The GitHub token isn't in it: its secret
+ * name is settled at install time, when the installer hands it over (secretHandoff).
  * @param {Ctx} ctx
  * @returns {{ script: string[], checklist: string[] }}
  */
 export function adminPack(ctx) {
   const { config } = ctx;
   const kv = config.keyVault;
-  const perms = permissionsFor(config.modules, config.dataSources);
+  const perms = permissionsFor(config.dataSources);
   const mode = secretMode(config);
-  const script = [
-    '# Run in Azure Cloud Shell (Bash) as someone who can register apps and grant admin consent,',
-    '# such as a Privileged Role Administrator or Global Administrator.',
+  const script = perms.length
+    ? [
+        '# Run in Azure Cloud Shell (Bash) as someone who can register apps and grant admin consent,',
+        '# such as a Privileged Role Administrator or Global Administrator.',
+      ]
+    : [
+        '# Run in Azure Cloud Shell (Bash) as someone who can register apps, such as an',
+        '# Application Administrator or Cloud Application Administrator.',
+      ];
+  script.push(
     `APP_ID=$(az ad app create --display-name "${APP_NAME}" --sign-in-audience AzureADMyOrg --query appId -o tsv)`,
     'az ad sp create --id "$APP_ID" -o none',
-    `GRAPH=${GRAPH_APP_ID}`,
-    `for P in ${perms.join(' ')}; do`,
-    '  ROLE=$(az ad sp show --id $GRAPH --query "appRoles[?value==\'$P\'].id | [0]" -o tsv)',
-    '  if [ -n "$ROLE" ]; then az ad app permission add --id "$APP_ID" --api $GRAPH --api-permissions "$ROLE=Role" -o none; else echo "Skipped $P: not in this tenant yet"; fi',
-    'done',
-    'sleep 30  # let Entra catch up before granting consent',
-    'az ad app permission admin-consent --id "$APP_ID"',
-    'echo "Client ID: $APP_ID"',
-  ];
+  );
+  if (perms.length) {
+    script.push(
+      `GRAPH=${GRAPH_APP_ID}`,
+      `for P in ${perms.join(' ')}; do`,
+      '  ROLE=$(az ad sp show --id $GRAPH --query "appRoles[?value==\'$P\'].id | [0]" -o tsv)',
+      '  if [ -n "$ROLE" ]; then az ad app permission add --id "$APP_ID" --api $GRAPH --api-permissions "$ROLE=Role" -o none; else echo "Skipped $P: not in this tenant yet"; fi',
+      'done',
+      'sleep 30  # let Entra catch up before granting consent',
+      'az ad app permission admin-consent --id "$APP_ID"',
+    );
+  }
+  script.push('echo "Client ID: $APP_ID"');
   if (mode === 'keyvault-admin' && kv.name) {
     const ours = 'Client secret for $APP_ID';
     script.push(
@@ -873,8 +1071,12 @@ export function adminPack(ctx) {
   const checklist = [
     `Entra admin center > App registrations > New registration. Name it "${APP_NAME}", single tenant, no redirect URI.`,
     'Copy the Application (client) ID from its Overview page.',
-    `API permissions > Add a permission > Microsoft Graph > Application permissions. Add: ${perms.join(', ')}.`,
-    'Select "Grant admin consent" and confirm every permission shows "Granted".',
+    ...(perms.length
+      ? [
+          `API permissions > Add a permission > Microsoft Graph > Application permissions. Add: ${perms.join(', ')}.`,
+          'Select "Grant admin consent" and confirm every permission shows "Granted".',
+        ]
+      : []),
     mode === 'keyvault-admin' && kv.name
       ? `Certificates & secrets > New client secret (12 months). Copy its Value into Key Vault ${kv.name} > Secrets > Generate/Import, named ${kv.secretName}.`
       : 'Certificates & secrets > New client secret (12 months). Copy its Value.',
@@ -892,10 +1094,11 @@ export function adminPack(ctx) {
 export function writeAdminPack(ctx) {
   const { script, checklist } = adminPack(ctx);
   const file = join(ctx.configFile ? dirname(ctx.configFile) : process.cwd(), ADMIN_PACK_FILE);
+  const consent = permissionsFor(ctx.config.dataSources).length > 0;
   const body = [
-    '# Consumption Central: register the app',
+    `# ${PRODUCT_NAME}: register the app`,
     '',
-    'The person setting up Consumption Central can\'t register apps or grant admin consent in this tenant.',
+    `The person setting up ${PRODUCT_NAME} can't register apps${consent ? ' or grant admin consent' : ''} in this tenant.`,
     'Run the script, or follow the portal steps, then send them the client ID.',
     '',
     '## Azure Cloud Shell (Bash)',
@@ -911,4 +1114,40 @@ export function writeAdminPack(ctx) {
   ].join('\n');
   writeFileSync(file, body, 'utf8');
   return file;
+}
+
+/**
+ * Everything secret the install needs: Key Vault, the app registration with its secret and admin
+ * consent, and the GitHub token. With the defaults (CSV exports) that is only the app registration,
+ * for the semantic model's connection: no Key Vault, no Graph permissions and no admin consent.
+ * Returns what the first load has to wait for, or undefined when nothing is missing.
+ * @param {Ctx} ctx
+ * @param {{ canConsent: boolean }} who
+ * @returns {Promise<string | undefined>}
+ */
+export async function ensureIdentity(ctx, who) {
+  const { ui, config } = ctx;
+  const ds = config.dataSources;
+  if (!secretWanted(ds) && !appNeeded(config)) {
+    ui.ok('These choices need no app registration or secret');
+    return undefined;
+  }
+  if (secretWanted(ds)) await ensureKeyVault(ctx);
+  const byAdmin = secretMode(config) === 'keyvault-admin';
+  /** @type {string[]} */
+  const adminAdds = [];
+  /** @type {string[]} */
+  const waits = [];
+  if (appNeeded(config)) {
+    await ensureApp(ctx, { secret: appWanted(ds) });
+    if (appWanted(ds) && byAdmin && !config.keyVault.secretSetAt) adminAdds.push('the client secret');
+    if (permissionsFor(ds).length && !(await ensureConsent(ctx, who))) waits.push('admin consent is granted');
+  }
+  if (!(await ensureGithubToken(ctx))) {
+    if (byAdmin) adminAdds.push('the GitHub token');
+    else waits.push('the GitHub token is in place');
+  }
+  if (adminAdds.length) waits.unshift(`the vault admin has added ${listJoin(adminAdds)}`);
+  // At most two, and the first may have its own "and".
+  return waits.length ? waits.join(', and ') : undefined;
 }

@@ -125,9 +125,12 @@ test('uninstall on Fabric: the model\'s SQL connection goes after the workspace;
   const dc = fakeCtx({ fabric: denied.api, ui: d.ui });
   dc.config.fabric.createdWorkspace = true;
   dc.config.semanticModel.connectionId = 'conn-1';
+  dc.config.dataSources.studioCredits = 'api';
+  dc.config.dataSources.github = 'api';
+  dc.config.keyVault.name = 'kv-cc';
   assert.equal(await fabricUninstall(dc.ctx), true);
   assert.match(d.text(), /Couldn't delete the connection "conn-1"/);
-  assert.match(d.text(), /Key Vault and its secret/);
+  assert.match(d.text(), /the Key Vault kv-cc \(the client secret and the GitHub token\)/);
 
   const none = fakeWorkspace();
   const nc = fakeCtx({ fabric: none.api });

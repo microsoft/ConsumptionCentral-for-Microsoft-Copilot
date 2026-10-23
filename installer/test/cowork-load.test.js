@@ -9,12 +9,12 @@ import { DOWNSTREAM_READERS, evaluate, loadCoworkNow, PUBLISH_POLL_MS, PUBLISH_R
 import { countedFailures, coworkSkipForFirstLoad, runPipeline } from '../src/steps/run.js';
 import {
   buildPipeline,
-  CONSUMPTION_REFRESH_ACTIVITY,
   COWORK_DATAFLOW_ACTIVITY,
   COWORK_WRAPPER_ACTIVITY,
   REFRESH_ACTIVITY,
   SKIP_COWORK_PARAMETER,
   STATUS_ACTIVITY,
+  UPLOAD_ROUTER_ACTIVITY,
 } from '../src/transform/pipeline.js';
 import { fakeCtx, fakeFabric, fakeUi, realSources } from './fakes.js';
 
@@ -22,16 +22,15 @@ const STUDIO = 'Run_Consumption_Studio';
 const UNSIGNED = { errorCode: 'JobInstanceFailed', message: 'Job instance failed without detail error' };
 const SIGNED_IN = [{ path: 'VivaInsights', kind: 'VivaInsights' }, { path: 'Lakehouse', kind: 'Lakehouse' }];
 
-const ids = { auditIngester: 'a', licensedUsers: 'b', processor: 'c', orgData: 'd', refreshModel: 'e', studioConsumption: 'f', vivaConsumption: 'g', loadStatus: 'h' };
-const modules = { orgData: false, agent365: false, productFeedback: false, consumption: true };
+const ids = { uploadRouter: 'r', studioConsumption: 'f', vivaConsumption: 'g', refreshModel: 'e', loadStatus: 'h' };
+const dataSources = { ...emptyConfig().dataSources, coworkCredits: /** @type {const} */ ('api') };
 /** @param {boolean} [dataflow] */
 const build = (dataflow = true) =>
-  buildPipeline(realSources().pipeline, {
+  buildPipeline(realSources().catalog, {
     workspaceId: 'ws-1',
     notebookIds: ids,
-    modules,
-    semanticModelId: 'model-1',
-    consumptionModelId: 'model-2',
+    dataSources,
+    modelId: 'model-1',
     ...(dataflow ? { coworkDataflowId: 'df-1' } : {}),
   });
 
@@ -57,13 +56,12 @@ function runsOf(acts, changed = {}) {
 /** A record with the Cowork Dataflow. */
 function coworkConfig() {
   const config = emptyConfig();
-  config.modules.consumption = true;
   config.dataSources.coworkCredits = 'api';
   config.consumption.dataflowId = 'df-1';
   config.consumption.dataflowName = 'ConsumptionCentral_Cowork_Credits';
   config.fabric.workspaceId = 'ws-1';
   config.fabric.workspaceName = 'Consumption Central';
-  config.fabric.lakehouseName = 'ValueLens';
+  config.fabric.lakehouseName = 'ConsumptionCentral';
   return config;
 }
 
@@ -74,11 +72,11 @@ test('pipeline: the Dataflow sits in an If on SkipCowork, which defaults to fals
   assert.deepEqual(doc.properties.parameters[SKIP_COWORK_PARAMETER], { type: 'Boolean', defaultValue: false });
   const wrapper = doc.properties.activities.find((/** @type {any} */ a) => a.name === COWORK_WRAPPER_ACTIVITY);
   assert.deepEqual(wrapper.typeProperties.ifFalseActivities, []);
-  const params = runParameters(doc, /** @type {any} */ ({}), 'job-1');
+  const params = runParameters(doc);
   assert.equal(params[SKIP_COWORK_PARAMETER], false);
   assert.equal(evaluate(wrapper.typeProperties.expression.value, params), true, 'a scheduled run refreshes the Dataflow');
   assert.equal(evaluate(wrapper.typeProperties.expression.value, { ...params, [SKIP_COWORK_PARAMETER]: true }), false);
-  assert.match(doc.properties.description, /SkipCowork=true only when the Cowork Dataflow isn't signed in/);
+  assert.match(doc.properties.description, /SkipCowork=true only when the Dataflow isn't signed in yet; scheduled runs keep it false/);
 
   const without = build(false);
   assert.equal(without.properties.parameters[SKIP_COWORK_PARAMETER], undefined, 'no switch without a Dataflow');
@@ -87,19 +85,19 @@ test('pipeline: the Dataflow sits in an If on SkipCowork, which defaults to fals
 
 /* ---------- Rerun ---------- */
 
-test('rerun: a rerun Dataflow reruns the Viva load and the consumption model refresh, which had succeeded', async () => {
+test('rerun: a rerun Dataflow reruns the Viva load and the model refresh, which had succeeded', async () => {
   assert.deepEqual(DOWNSTREAM_READERS[VIVA_ACTIVITY], [COWORK_DATAFLOW_ACTIVITY]);
   const doc = build();
   const acts = doc.properties.activities;
   const runs = runsOf(acts, { [COWORK_WRAPPER_ACTIVITY]: 'Failed', [COWORK_DATAFLOW_ACTIVITY]: ['Failed', UNSIGNED] });
   /** @type {string[]} */
   const ran = [];
-  const result = await rerunSteps(acts, runs, runParameters(doc, /** @type {any} */ ({}), 'j'), async (a) => {
+  const result = await rerunSteps(acts, runs, runParameters(doc), async (a) => {
     ran.push(a.name);
     return { status: 'Succeeded' };
   });
-  assert.deepEqual(ran, [COWORK_DATAFLOW_ACTIVITY, VIVA_ACTIVITY, CONSUMPTION_REFRESH_ACTIVITY]);
-  assert.ok(!ran.includes(STUDIO) && !ran.includes(REFRESH_ACTIVITY) && !ran.includes('Run_Audit_Log_Ingester'), 'what reads nothing that reran is left');
+  assert.deepEqual(ran, [COWORK_DATAFLOW_ACTIVITY, VIVA_ACTIVITY, REFRESH_ACTIVITY]);
+  assert.ok(!ran.includes(STUDIO) && !ran.includes(UPLOAD_ROUTER_ACTIVITY), 'what reads nothing that reran is left');
   assert.equal(result.runs.get(COWORK_WRAPPER_ACTIVITY).status, 'Succeeded');
 });
 
@@ -108,18 +106,18 @@ test('rerun: a Dataflow that fails again leaves the Viva load and the refresh al
   const acts = doc.properties.activities;
   /** @type {string[]} */
   const ran = [];
-  await rerunSteps(acts, runsOf(acts, { [COWORK_WRAPPER_ACTIVITY]: 'Failed', [COWORK_DATAFLOW_ACTIVITY]: 'Failed' }), runParameters(doc, /** @type {any} */ ({}), 'j'), async (a) => {
+  await rerunSteps(acts, runsOf(acts, { [COWORK_WRAPPER_ACTIVITY]: 'Failed', [COWORK_DATAFLOW_ACTIVITY]: 'Failed' }), runParameters(doc), async (a) => {
     ran.push(a.name);
     return { status: 'Failed', error: UNSIGNED };
   });
   assert.deepEqual(ran, [COWORK_DATAFLOW_ACTIVITY]);
 
   ran.length = 0;
-  await rerunSteps(acts, runsOf(acts, { [STUDIO]: 'Failed', [CONSUMPTION_REFRESH_ACTIVITY]: 'absent' }), runParameters(doc, /** @type {any} */ ({}), 'j'), async (a) => {
+  await rerunSteps(acts, runsOf(acts, { [STUDIO]: 'Failed', [REFRESH_ACTIVITY]: 'absent' }), runParameters(doc), async (a) => {
     ran.push(a.name);
     return { status: 'Succeeded' };
   });
-  assert.deepEqual(ran, [STUDIO, CONSUMPTION_REFRESH_ACTIVITY], 'the Viva load and the Dataflow read nothing the Studio load wrote');
+  assert.deepEqual(ran, [STUDIO, REFRESH_ACTIVITY], 'the Viva load and the Dataflow read nothing the Studio load wrote');
 });
 
 /* ---------- Reasons and cards ---------- */
@@ -128,7 +126,7 @@ test('reasons: "Job instance failed without detail error" on the Cowork Dataflow
   const dataflow = classifyFailure(UNSIGNED, COWORK_DATAFLOW_ACTIVITY);
   assert.equal(dataflow.kind, 'signIn');
   assert.equal(dataflow.text, 'Needs sign-in: the Cowork Dataflow\'s connections aren\'t signed in (or it hadn\'t finished publishing).');
-  assert.equal(classifyFailure(UNSIGNED, 'Run_Licensed_Users_Ingester').kind, 'other');
+  assert.equal(classifyFailure(UNSIGNED, STUDIO).kind, 'other');
   assert.equal(classifyFailure(UNSIGNED).kind, 'other');
   const reasons = JSON.parse(statusConfigJson()).reasons;
   assert.equal(reasons[0].activity, COWORK_DATAFLOW_ACTIVITY, 'the notebook gets the step it is tied to');
@@ -167,7 +165,7 @@ test('coworkNextStep: the sign-in to-do, with the real names, only when the Data
   assert.equal(step.note, STAGING_ITEMS_NOTE);
   assert.match(step.note, /DataflowsStagingLakehouse and DataflowsStagingWarehouse.*expected/);
   assert.match(step.steps[0], /Open ConsumptionCentral_Cowork_Credits in Consumption Central: https:\/\/app\.fabric\.microsoft\.com\/groups\/ws-1\/dataflows-gen2\/df-1/);
-  assert.match(step.steps[1], /"Configure connection" twice.*Viva Insights source.*Lakehouse destination \(ValueLens\)/);
+  assert.match(step.steps[1], /"Configure connection" twice.*Viva Insights source.*Lakehouse destination \(ConsumptionCentral\)/);
   assert.match(step.steps[3], /Save.*finished publishing/);
   assert.match(step.steps[4], /Load Cowork now/);
 
@@ -208,7 +206,6 @@ function workspace() {
   const made = fakeCtx({ fabric: fabric.api, ui: ui.ui, config: coworkConfig() });
   const pipe = fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', build());
   made.config.fabric.pipelineId = pipe.id;
-  made.config.history.days = 30;
   return { ...made, fabric, ui };
 }
 
@@ -226,18 +223,17 @@ test('first load: leaves the Cowork Dataflow out only while it isn\'t signed in,
   const skip = await coworkSkipForFirstLoad(t.ctx);
   assert.equal(skip, true);
   assert.match(t.ui.text(), /Cowork credits are left out of this first load: the Cowork Dataflow isn't signed in yet/);
-  await runPipeline(t.ctx, { backfillDays: 30, wait: false, first: true, skipCowork: skip });
+  await runPipeline(t.ctx, { wait: false, first: true, skipCowork: skip });
   const start = t.fabric.calls.find((c) => c.startsWith('runJob Pipeline'));
   assert.ok(start);
   const data = JSON.parse(start.slice('runJob Pipeline '.length));
-  assert.equal(data.parameters[SKIP_COWORK_PARAMETER], true);
-  assert.equal(data.parameters.AuditMode, 'backfill');
+  assert.deepEqual(data.parameters, { [SKIP_COWORK_PARAMETER]: true }, 'the switch is the only parameter it sets');
   assert.equal(t.config.firstRun?.coworkSkipped, true);
 
   const signed = workspace();
   signed.fabric.dataflowConnections.push(SIGNED_IN);
   assert.equal(await coworkSkipForFirstLoad(signed.ctx), false);
-  await runPipeline(signed.ctx, { backfillDays: 30, wait: false, first: true, skipCowork: false });
+  await runPipeline(signed.ctx, { wait: false, first: true, skipCowork: false });
   assert.doesNotMatch(signed.fabric.calls.find((c) => c.startsWith('runJob Pipeline')) ?? '', /SkipCowork/);
   assert.equal(signed.config.firstRun?.coworkSkipped, undefined);
 
@@ -248,7 +244,7 @@ test('first load: leaves the Cowork Dataflow out only while it isn\'t signed in,
   const old = workspace();
   const oldPipe = old.fabric.items.find((i) => i.type === 'DataPipeline');
   assert.ok(oldPipe);
-  oldPipe.content = buildPipeline(realSources().pipeline, { workspaceId: 'ws-1', notebookIds: ids, modules, consumptionModelId: 'model-2' });
+  oldPipe.content = build(false);
   assert.equal(await coworkSkipForFirstLoad(old.ctx), false, 'a pipeline without the switch runs as it is');
 
   const scheduled = workspace();
@@ -325,7 +321,7 @@ test('Load Cowork now: waits for publishing, retries a refresh that fails straig
   t.fabric.jobs.push({ status: 'Failed', failureReason: UNSIGNED }, { status: 'Completed' }, { status: 'Completed' }, { status: 'Completed' });
   const result = await loadCoworkNow(t.ctx);
   assert.deepEqual(result.failed, []);
-  assert.deepEqual(result.reran.filter((n) => n !== COWORK_WRAPPER_ACTIVITY), [COWORK_DATAFLOW_ACTIVITY, VIVA_ACTIVITY, CONSUMPTION_REFRESH_ACTIVITY]);
+  assert.deepEqual(result.reran.filter((n) => n !== COWORK_WRAPPER_ACTIVITY), [COWORK_DATAFLOW_ACTIVITY, VIVA_ACTIVITY, REFRESH_ACTIVITY]);
   assert.ok(t.sleeps.includes(PUBLISH_POLL_MS), 'it waited for the Dataflow to publish');
   assert.ok(t.sleeps.includes(PUBLISH_RETRY_MS), 'it waited a minute before trying again');
   const starts = t.fabric.calls.filter((c) => c.startsWith('runJob'));

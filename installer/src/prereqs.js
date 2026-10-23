@@ -5,7 +5,7 @@
  * reports "unknown" rather than failing when it can't be read.
  */
 import { allowsAction, ROLES } from './clients/azure.js';
-import { APP_ROLES, CONSENT_ROLES, FABRIC_ADMIN_ROLE, POWER_PLATFORM_ADMIN_ROLE } from './clients/graph.js';
+import { APP_ROLES, BILLING_ADMIN_ROLE, CONSENT_ROLES, FABRIC_ADMIN_ROLE, GLOBAL_ADMIN_ROLE, POWER_PLATFORM_ADMIN_ROLE } from './clients/graph.js';
 import { secretMode } from './config.js';
 import { canWriteSecrets } from './steps/identity.js';
 import { blockedSettings, runsFabric } from './steps/plan.js';
@@ -71,6 +71,9 @@ const why = (err) => {
 /** Last segment of an ARM role definition ID. @param {string} [id] */
 const roleGuid = (id) => String(id ?? '').split('/').pop()?.toLowerCase() ?? '';
 
+/** "A or B", "A, B or C". @param {string[]} names */
+const orList = (names) => (names.length < 3 ? names.join(' or ') : `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`);
+
 /**
  * What an ARM permission set lets the user do in a subscription.
  * @param {{ actions?: string[], notActions?: string[] }[]} perms
@@ -133,7 +136,7 @@ export async function checkPrereqs(ctx) {
       if (elig?.length) {
         return { status: 'eligible', detail: `Not active yet: ${[...new Set(elig.map((r) => wanted[r.roleDefinitionId]))].join(', ')}. You can activate this role in Entra (Privileged Identity Management): ${PIM_URL} Then check again.` };
       }
-      return { status: 'missing', detail: `You don't have ${Object.values(wanted).join(' or ')} active.${elig ? '' : ' Couldn\'t check for roles you could activate yourself.'}` };
+      return { status: 'missing', detail: `You don't have ${orList(Object.values(wanted))} active.${elig ? '' : ' Couldn\'t check for roles you could activate yourself.'}` };
     });
 
   /** Owner, or Contributor plus User Access Administrator, per subscription. */
@@ -141,7 +144,7 @@ export async function checkPrereqs(ctx) {
     {
       id: 'azure-rbac',
       label: 'Azure: Owner, or Contributor and User Access Administrator',
-      neededFor: 'Creating the Key Vault for the app secret, and the Azure role assignments for credit consumption.',
+      neededFor: 'Creating the Key Vault for the app secret, and the Azure role assignments that let the app read Azure AI costs.',
       howTo: 'Ask a subscription owner for Owner, or for Contributor and User Access Administrator, on the subscription you\'ll use.',
       optional: true,
     },
@@ -152,7 +155,7 @@ export async function checkPrereqs(ctx) {
         return {
           status: 'missing',
           detail: 'No enabled Azure subscription you can see.',
-          howTo: 'Ask for Contributor (and User Access Administrator for credit consumption) on a subscription. Without one, choose no Key Vault (--no-key-vault): the app secret goes in the notebooks, where anyone with a role in the workspace can read it.',
+          howTo: 'Ask for Contributor (and User Access Administrator, for Azure AI costs) on a subscription. Without one, choose no Key Vault (--no-key-vault): the app secret goes in the notebooks, where anyone with a role in the workspace can read it.',
         };
       }
       const first = config.keyVault.subscriptionId;
@@ -198,9 +201,9 @@ export async function checkPrereqs(ctx) {
     entraRole(
       {
         id: 'fabric-admin',
-        label: 'Fabric administrator — only needed if the tenant settings below are off',
-        neededFor: 'Reading and switching on the Fabric tenant settings the model and reports need. If they are already on, you don\'t need this role.',
-        howTo: 'Ask a Fabric administrator to check the tenant settings below and turn on any that are off, or ask a Global Administrator for the Fabric Administrator role.',
+        label: 'Fabric administrator — only needed if the tenant setting below is off',
+        neededFor: 'Reading and switching on the Fabric tenant setting the model needs. If it\'s already on, you don\'t need this role.',
+        howTo: 'Ask a Fabric administrator to check the tenant setting below and turn it on if it\'s off, or ask a Global Administrator for the Fabric Administrator role.',
         optional: true,
       },
       { [FABRIC_ADMIN_ROLE]: 'Fabric Administrator' },
@@ -208,12 +211,12 @@ export async function checkPrereqs(ctx) {
     entraRole(
       {
         id: 'power-platform-admin',
-        label: 'Power Platform Administrator',
-        neededFor: 'Adding the app to Power Platform environments for the flows when you aren\'t a System Administrator there.',
-        howTo: 'Ask a Global Administrator for the Power Platform Administrator role, or be a System Administrator in each environment you use.',
+        label: 'Power Platform, Billing or Global Administrator',
+        neededFor: 'Only the Power Automate flow for Copilot Studio credits. Someone with one of these roles signs in to its Power Platform API connection, which reads the tenant\'s licensing data.',
+        howTo: 'If that isn\'t you, carry on: ask a Power Platform, Billing or Global Administrator to sign in to the flow\'s licensing connection when the installer asks. Or upload the Copilot Studio CSV exports instead.',
         optional: true,
       },
-      { [POWER_PLATFORM_ADMIN_ROLE]: 'Power Platform Administrator' },
+      { [POWER_PLATFORM_ADMIN_ROLE]: 'Power Platform Administrator', [BILLING_ADMIN_ROLE]: 'Billing Administrator', [GLOBAL_ADMIN_ROLE]: 'Global Administrator' },
     ),
     guard(
       {
@@ -252,8 +255,8 @@ export async function checkPrereqs(ctx) {
       {
         id: 'power-automate-premium',
         label: 'Power Automate Premium licence',
-        neededFor: 'Only the Power Automate flows: Copilot Studio credits and the product feedback export. Whoever signs in to the flow\'s connections needs it, because the flows use premium connectors.',
-        howTo: 'Ask your licence admin for Power Automate Premium for whoever will sign in to the flows. Without it, upload the CSV exports instead.',
+        neededFor: 'Only the Power Automate flow for Copilot Studio credits. Whoever signs in to the flow\'s connections needs it, because the flow uses premium connectors.',
+        howTo: 'Ask your licence admin for Power Automate Premium for whoever will sign in to the flow. Without it, upload the Copilot Studio CSV exports instead.',
         optional: true,
       },
       async () => {
@@ -262,7 +265,7 @@ export async function checkPrereqs(ctx) {
           .filter(Boolean);
         return found.length
           ? { status: 'met', detail: [...new Set(found)].join(', ') }
-          : { status: 'missing', detail: 'No Power Automate Premium (or per user) licence is assigned to you. Someone else who has one can sign in to the flows.' };
+          : { status: 'missing', detail: 'No Power Automate Premium (or per user) licence is assigned to you. Someone else who has one can sign in to the flow.' };
       },
     ),
     guard(
@@ -284,12 +287,12 @@ export async function checkPrereqs(ctx) {
       {
         id: 'key-vault',
         label: 'Key Vault access for the app secret',
-        neededFor: 'Keeping the app registration\'s client secret in Azure Key Vault (--key-vault), where the notebooks read it. Optional: by default on Fabric, the secret goes in the notebooks instead.',
+        neededFor: 'Keeping the app registration\'s client secret in Azure Key Vault (--key-vault), where the notebooks of sources you read by API read it. Optional: by default on Fabric, the secret goes in those notebooks instead.',
         howTo: 'Ask for Contributor on a subscription to create a vault, or Key Vault Secrets User on an existing one (a vault admin then adds the secret). Or keep the default, no Key Vault (--no-key-vault): anyone with a role in the workspace can then read the secret.',
         optional: true,
       },
       async () => {
-        if (secretMode(config) === 'notebook') return { status: 'met', detail: 'No Key Vault: the secret is kept in the notebooks, so no vault is needed.' };
+        if (secretMode(config) === 'notebook') return { status: 'met', detail: 'No Key Vault: sources you read by API keep the secret in their notebooks, so no vault is needed.' };
         const kv = config.keyVault;
         if (kv.id) {
           const vault = await api.arm.getVault(kv.id);
@@ -306,23 +309,27 @@ export async function checkPrereqs(ctx) {
     guard(
       {
         id: 'environments',
-        label: 'Power Platform environments, System Administrator in each',
-        neededFor: 'The flows are created in an environment.',
-        howTo: 'Ask an environment admin for the System Administrator security role, or a Power Platform Administrator to add the app for you.',
+        label: 'A Power Platform environment you can make flows in',
+        neededFor: 'Only the Power Automate flow for Copilot Studio credits, which the installer creates in an environment you pick.',
+        howTo: 'Ask an environment admin for the Environment Maker security role in an environment with Dataverse. Or have the installer write the flow to a file to import, or upload the Copilot Studio CSV exports instead.',
         optional: true,
       },
       async () => {
         const envs = (await api.discovery.instances()).filter((i) => i.Url && (i.State ?? 0) === 0);
-        if (!envs.length) return { status: 'missing', detail: 'No Dataverse environments you can see.' };
+        if (!envs.length) return { status: 'missing', detail: 'No Power Platform environment with Dataverse that you have access to.' };
+        // Discovery only says whether the user is a System Administrator. Making flows needs Environment
+        // Maker or higher, which it can't show, so anything short of System Administrator is "couldn't tell".
         const rows = envs.slice(0, MAX_ENVIRONMENTS).map((i) => ({
           name: i.FriendlyName ?? i.UniqueName ?? i.Url,
-          status: /** @type {PrereqStatus} */ (i.IsUserSysAdmin === true ? 'met' : i.IsUserSysAdmin === false ? 'missing' : 'unknown'),
-          detail: i.IsUserSysAdmin === true ? 'System Administrator' : i.IsUserSysAdmin === false ? 'Not a System Administrator' : 'Couldn\'t tell',
+          status: /** @type {PrereqStatus} */ (i.IsUserSysAdmin === true ? 'met' : 'unknown'),
+          detail: i.IsUserSysAdmin === true ? 'System Administrator' : i.IsUserSysAdmin === false ? 'Not a System Administrator. Environment Maker is enough, but can\'t be checked from here.' : 'Couldn\'t tell',
         }));
         const admin = rows.filter((r) => r.status === 'met').length;
+        const count = `${rows.length} ${rows.length === 1 ? 'environment' : 'environments'}`;
         const more = envs.length > MAX_ENVIRONMENTS ? ` Showing the first ${MAX_ENVIRONMENTS} of ${envs.length}.` : '';
-        const status = /** @type {PrereqStatus} */ (admin ? 'met' : rows.some((r) => r.status === 'unknown') ? 'unknown' : 'missing');
-        return { status, detail: `System Administrator in ${admin} of ${rows.length} ${rows.length === 1 ? 'environment' : 'environments'}.${more}`, rows };
+        return admin
+          ? { status: 'met', detail: `System Administrator in ${admin} of ${count}, so you can make flows there.${more}`, rows }
+          : { status: 'unknown', detail: `You have access to ${count}, but couldn't tell if you can make flows in any: that needs Environment Maker or higher in the one you pick.${more}`, rows };
       },
     ),
     // Viva Insights roles aren't readable through Graph, so this one is always "couldn't check".
@@ -339,8 +346,8 @@ export async function checkPrereqs(ctx) {
       {
         id: 'tenant-settings',
         label: 'Fabric tenant settings',
-        neededFor: 'The model\'s connection and the reports\' custom visuals each need a tenant setting on.',
-        howTo: 'A Fabric administrator switches them on in the admin portal, under Tenant settings.',
+        neededFor: 'The model\'s connection needs a tenant setting on, or the model can\'t refresh.',
+        howTo: 'A Fabric administrator switches it on in the admin portal, under Tenant settings.',
       },
       async () => {
         /** @type {any[]} */
@@ -353,7 +360,7 @@ export async function checkPrereqs(ctx) {
         const off = blockedSettings(Object.fromEntries(list.map((s) => [s.settingName, s])), { reports: true });
         return off.length
           ? { status: 'missing', detail: `Off: ${off.map((s) => s.title).join('; ')}.` }
-          : { status: 'met', detail: 'The settings Consumption Central needs are on.' };
+          : { status: 'met', detail: 'The setting Consumption Central needs is on.' };
       },
     ),
   ];

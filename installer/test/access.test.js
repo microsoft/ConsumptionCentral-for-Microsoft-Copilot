@@ -1,7 +1,9 @@
 // @ts-check
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { accessCommand, accessReview, ensureViewerGroup, grantModelAccess, myGroupsUrl, NEW_GROUP_ATTEMPTS, NEW_GROUP_RETRY_MS, planAccess, VIEWER_GROUP_NAME } from '../src/steps/access.js';
+import {
+  accessCommand, accessReview, ensureViewerGroup, grantModelAccess, myGroupsUrl, NEW_GROUP_ATTEMPTS, NEW_GROUP_RETRY_MS, planAccess, shareReport, shareReportPending, shareReportSteps, VIEWER_GROUP_NAME,
+} from '../src/steps/access.js';
 import { fabricViewerModels } from '../src/install.js';
 import { HttpError } from '../src/http.js';
 import { fakeCtx, fakeUi } from './fakes.js';
@@ -170,9 +172,10 @@ test('access: the viewer group is created once, with the installer as owner, the
 test('access: a created group that was deleted is created again; a chosen one is not', async () => {
   const dir = directory();
   const { ctx: ctx } = fakeCtx({ graph: dir.graph });
-  ctx.config.access = { groupId: 'gone', groupName: VIEWER_GROUP_NAME, createdGroup: true, grantedModels: ['ds-vl'] };
+  ctx.config.access = { groupId: 'gone', groupName: VIEWER_GROUP_NAME, createdGroup: true, grantedModels: ['ds-vl'], reportShared: 'rp-1' };
   assert.equal((await ensureViewerGroup(ctx))?.id, 'g-1');
   assert.deepEqual(ctx.config.access.grantedModels, []);
+  assert.equal(ctx.config.access.reportShared, undefined, 'the new group needs the report shared with it');
 
   const { ui, text } = fakeUi();
   const { ctx: other } = fakeCtx({ graph: dir.graph, ui });
@@ -240,11 +243,191 @@ test('access: the command adds viewers and owners, and skips names it cannot fin
   assert.match(text(), new RegExp(myGroupsUrl('g-1').replace(/[/.]/g, '\\$&')));
 });
 
-test('access: the viewer group gets Build on the deployed models', () => {
+test('access: the viewer group gets Build on the deployed model', () => {
   const { ctx: ctx } = fakeCtx();
   const config = ctx.config;
   config.semanticModel.enabled = true;
+  assert.deepEqual(fabricViewerModels(config), [], 'not deployed yet');
   config.semanticModel.id = 'ds-vl';
-  config.modules.consumption = true;
   assert.deepEqual(fabricViewerModels(config).map((m) => `${m.workspaceId}/${m.datasetId}`), ['ws-1/ds-vl']);
+  config.semanticModel.enabled = false;
+  assert.deepEqual(fabricViewerModels(config), [], 'switched off');
+});
+
+/**
+ * A record with the model and its report deployed, and a viewer group.
+ * @param {Parameters<typeof fakeCtx>[0]} [o]
+ */
+function withReport(o) {
+  const t = fakeCtx(o);
+  t.config.fabric.workspaceName = 'Consumption Central';
+  Object.assign(t.config.semanticModel, { enabled: true, reports: true, id: 'ds-cc', report: { id: 'rp-1', name: 'Consumption Central' } });
+  t.config.access = { groupId: 'g-1', groupName: VIEWER_GROUP_NAME, createdGroup: true };
+  return t;
+}
+
+test('access: the plan review gives the group Build on the model and no workspace role; the report is shared by hand', () => {
+  const { config } = fakeCtx();
+  config.access = { groupName: VIEWER_GROUP_NAME, contact: 'admin@contoso.com' };
+  const review = accessReview(config, 'Semantic model Consumption Central in workspace X');
+  assert.deepEqual(review.creates, [
+    { kind: 'Entra group', name: VIEWER_GROUP_NAME, isNew: true, detail: 'Who can view Consumption Central. You are its owner; share by adding people to it.' },
+  ]);
+  assert.deepEqual(review.grants, [{
+    who: `${VIEWER_GROUP_NAME} (group)`,
+    what: 'Build (ReadExplore)',
+    where: 'Semantic model Consumption Central in workspace X',
+    detail: 'So its members can view the report, once you share it with the group. Power BI has no API for that, so the installer shows you the clicks.',
+  }]);
+
+  config.access = { groupId: 'g-9', groupName: 'Copilot Leads', createdGroup: false };
+  assert.equal(accessReview(config, 'X').creates[0].detail, 'Who can view Consumption Central. Its owners share it by adding people to it.');
+  delete config.access;
+  assert.deepEqual(accessReview(config, 'X'), { creates: [], grants: [] });
+});
+
+test('access: granting Build and sharing the report never give the group a workspace role', async () => {
+  const pbi = datasets();
+  /** @type {string[]} */
+  const roles = [];
+  const record = (/** @type {string} */ what) => async (/** @type {any[]} */ ...args) => {
+    roles.push(`${what} ${args.join(' ')}`);
+  };
+  const dir = directory();
+  dir.groups.set('g-1', { id: 'g-1', displayName: VIEWER_GROUP_NAME, members: [], owners: ['user-1'] });
+  const { ui } = fakeUi({ answers: [true, 'grants', 'done'] });
+  const { ctx, config } = withReport({
+    ui,
+    graph: dir.graph,
+    fabric: { addRoleAssignment: record('workspace role'), updateRoleAssignment: record('workspace role') },
+    powerBi: { ...pbi.powerBi, addGroupUser: record('workspace user') },
+  });
+  await grantModelAccess(ctx, fabricViewerModels(config));
+  await shareReport(ctx);
+  await accessCommand(ctx, fabricViewerModels(config));
+  assert.deepEqual(pbi.calls, ['ws-1/ds-cc g-1 Group ReadExplore']);
+  assert.deepEqual(config.access?.grantedModels, ['ds-cc']);
+  assert.deepEqual(roles, []);
+});
+
+test('access: shareReportSteps opens the report, then Manage permissions, then grants the group', () => {
+  const { config } = withReport();
+  assert.deepEqual(shareReportSteps(config), [
+    'Open the Consumption Central report (https://app.powerbi.com/groups/ws-1/reports/rp-1), or in Consumption Central choose … (More options) next to it.',
+    'Choose Manage permissions, then Add user.',
+    `Enter "${VIEWER_GROUP_NAME}" and choose Grant.`,
+  ]);
+
+  config.access = { groupId: 'g-9', groupName: 'Copilot Leads' };
+  delete config.fabric.workspaceName;
+  delete config.semanticModel.report;
+  assert.deepEqual(shareReportSteps(config), [
+    'Open the Consumption Central report, or in the workspace choose … (More options) next to it.',
+    'Choose Manage permissions, then Add user.',
+    'Enter "Copilot Leads" and choose Grant.',
+  ]);
+});
+
+test('access: the report waits to be shared while there is a group and a published report nobody said was shared', () => {
+  const { config } = withReport();
+  assert.equal(shareReportPending(config), true);
+  /** @type {any} */ (config.access).reportShared = 'rp-1';
+  assert.equal(shareReportPending(config), false);
+  /** @type {any} */ (config.semanticModel.report).id = 'rp-2';
+  assert.equal(shareReportPending(config), true, 'a report published again has a new ID, so it is shared again');
+
+  const none = (/** @type {(c: import('../src/config.js').InstallConfig) => void} */ edit) => {
+    const t = withReport();
+    edit(t.config);
+    return shareReportPending(t.config);
+  };
+  assert.equal(none((c) => { delete c.access?.groupId; }), false, 'no group yet');
+  assert.equal(none((c) => { delete c.semanticModel.report?.id; }), false, 'no report yet');
+  assert.equal(none((c) => { c.semanticModel.reports = false; }), false, 'model only');
+  assert.equal(none((c) => { c.semanticModel.enabled = false; }), false, 'no model');
+});
+
+test('access: the report share is asked once; "I\'ve shared it" records the report, Later reminds', async () => {
+  const yes = fakeUi({ answers: [true] });
+  const shared = withReport({ ui: yes.ui });
+  await shareReport(shared.ctx);
+  assert.deepEqual(yes.asked, ['Have you shared the report?']);
+  assert.match(yes.text(), /Members of "Consumption Central Viewers" can open the report once it's shared with the group\. Power BI has no API for that, so it takes a few clicks:/);
+  assert.match(yes.text(), / {2}1\. Open the Consumption Central report \(https:\/\/app\.powerbi\.com\/groups\/ws-1\/reports\/rp-1\)/);
+  assert.match(yes.text(), / {2}2\. Choose Manage permissions, then Add user\./);
+  assert.match(yes.text(), / {2}3\. Enter "Consumption Central Viewers" and choose Grant\./);
+  assert.match(yes.text(), /The report is shared with "Consumption Central Viewers"/);
+  assert.equal(shared.config.access?.reportShared, 'rp-1');
+  assert.equal(shared.saves(), 1);
+
+  const again = fakeUi();
+  shared.ctx.ui = again.ui;
+  await shareReport(shared.ctx);
+  assert.deepEqual(again.asked, [], 'not asked again once shared');
+  assert.equal(again.text(), '');
+
+  const later = fakeUi();
+  const notYet = withReport({ ui: later.ui });
+  await shareReport(notYet.ctx);
+  assert.deepEqual(later.asked, ['Have you shared the report?']);
+  assert.match(later.text(), /Until it's shared, people in the group get "no access" when they open the report\./);
+  assert.equal(notYet.config.access?.reportShared, undefined, 'Later is the default');
+  assert.equal(notYet.saves(), 0);
+});
+
+test('access: with no group or no report there is nothing to share, and it says so', async () => {
+  const noGroup = fakeUi();
+  const a = withReport({ ui: noGroup.ui });
+  delete a.config.access?.groupId;
+  await shareReport(a.ctx);
+  assert.deepEqual(noGroup.asked, []);
+  assert.match(noGroup.text(), /There's no viewer group yet, so there's nothing to share\. The summary at the end says what to do\./);
+
+  const noReport = fakeUi();
+  const b = withReport({ ui: noReport.ui });
+  delete b.config.semanticModel.report;
+  await shareReport(b.ctx);
+  assert.deepEqual(noReport.asked, []);
+  assert.match(noReport.text(), /There's no report yet, so there's nothing to share\. The summary at the end says how to publish it\./);
+});
+
+test('access: the command offers to share the report only while it waits', async () => {
+  const dir = directory();
+  dir.groups.set('g-1', { id: 'g-1', displayName: VIEWER_GROUP_NAME, members: [], owners: ['user-1'] });
+  const t = fakeUi({ answers: ['share', true, 'done'] });
+  /** @type {any[][]} */
+  const offered = [];
+  const select = t.ui.select;
+  t.ui.select = /** @type {any} */ (async (/** @type {string} */ m, /** @type {any[]} */ ch, /** @type {any} */ d) => {
+    if (m === 'What next?') offered.push(ch);
+    return select(m, ch, d);
+  });
+  const { ctx, config } = withReport({ ui: t.ui, graph: dir.graph, powerBi: datasets().powerBi });
+  await accessCommand(ctx, fabricViewerModels(config));
+  assert.deepEqual(offered.map((ch) => ch.map((c) => c.value)), [['members', 'owner', 'grants', 'share', 'done'], ['members', 'owner', 'grants', 'done']]);
+  assert.deepEqual(offered[0].find((c) => c.value === 'share'), {
+    name: 'Share the report with the group', value: 'share', description: 'Once only. Members get "no access" on the report until it\'s shared.',
+  });
+  assert.equal(config.access?.reportShared, 'rp-1');
+});
+
+test('access: choosing another group in the plan asks for the report share again', async () => {
+  const dir = directory();
+  dir.groups.set('g-9', { id: 'g-9', displayName: 'Copilot Leads', members: [], owners: [] });
+  const keep = withReport({ graph: dir.graph, ui: fakeUi({ answers: ['new'] }).ui });
+  /** @type {any} */ (keep.config.access).reportShared = 'rp-1';
+  await planAccess(keep.ctx);
+  assert.equal(keep.config.access?.reportShared, 'rp-1', 'the group it created is kept');
+
+  const other = withReport({ graph: dir.graph, ui: fakeUi({ answers: ['existing', 'Copilot Leads'] }).ui });
+  /** @type {any} */ (other.config.access).reportShared = 'rp-1';
+  await planAccess(other.ctx);
+  assert.equal(other.config.access?.groupId, 'g-9');
+  assert.equal(other.config.access?.reportShared, undefined);
+
+  const fresh = withReport({ graph: dir.graph, ui: fakeUi({ answers: ['new'] }).ui });
+  Object.assign(/** @type {any} */ (fresh.config.access), { groupId: 'g-9', groupName: 'Copilot Leads', createdGroup: false, reportShared: 'rp-1' });
+  await planAccess(fresh.ctx);
+  assert.equal(fresh.config.access?.groupId, undefined, 'a new group is created');
+  assert.equal(fresh.config.access?.reportShared, undefined);
 });

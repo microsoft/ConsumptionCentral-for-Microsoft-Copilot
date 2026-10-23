@@ -1,9 +1,8 @@
 // @ts-check
 /**
- * The Power Automate cloud flows the installer can create: one saves product feedback exports
- * emailed to the admin, the other reads Copilot Studio credits from the Power Platform licensing
- * API each day. Both drop CSVs in the Lakehouse drop folder, where the pipeline's router picks
- * them up, so they need nothing the uploads don't.
+ * The Power Automate cloud flow the installer can create: it reads Copilot Studio credits from the
+ * Power Platform licensing API each day and drops CSVs in the Lakehouse drop folder, where the
+ * pipeline's router picks them up, so it needs nothing the uploads don't.
  *
  * By default the flows write through an "HTTP with Microsoft Entra ID (preauthorized)" connection
  * to storage that a person signs in to: no secret, no Key Vault. With the `app` identity they
@@ -15,10 +14,7 @@
 import { FLOWS_DIR, PRODUCT_NAME } from '../product.js';
 import { UPLOAD_DIR } from '../uploads.js';
 
-export const FEEDBACK_FLOW_NAME = `${PRODUCT_NAME} - Product feedback`;
 export const STUDIO_FLOW_NAME = `${PRODUCT_NAME} - Copilot Studio credits`;
-/** The subject the product feedback export is emailed under. */
-export const FEEDBACK_SUBJECT = 'Copilot Product Feedback';
 /** Days of credits each Studio flow run restates; the licensing API revises recent days. */
 export const STUDIO_FLOW_DAYS = 10;
 /** Days the first Studio flow run reads. The licensing API has kept about six months in practice. */
@@ -49,9 +45,8 @@ const ANY = ['Succeeded', 'Failed', 'Skipped', 'TimedOut'];
  * @property {string} label  What the user sees.
  */
 
-/** @type {Record<'outlook' | 'keyVault' | 'entra' | 'storage' | 'sharePoint', Connector>} */
+/** @type {Record<'keyVault' | 'entra' | 'storage' | 'sharePoint', Connector>} */
 export const CONNECTORS = {
-  outlook: { name: 'shared_office365', api: 'shared_office365', label: 'Office 365 Outlook' },
   keyVault: { name: 'shared_keyvault', api: 'shared_keyvault', label: 'Azure Key Vault' },
   entra: { name: 'shared_webcontents', api: 'shared_webcontents', label: 'HTTP with Microsoft Entra ID (preauthorized), for the Power Platform API' },
   storage: { name: 'shared_webcontents_storage', api: 'shared_webcontents', label: 'HTTP with Microsoft Entra ID (preauthorized), for OneLake' },
@@ -321,60 +316,6 @@ const PARAMETERS = {
   $connections: { defaultValue: {}, type: 'Object' },
   $authentication: { defaultValue: {}, type: 'SecureObject' },
 };
-
-/**
- * Saves product feedback CSVs emailed to the flow's owner into the drop folder.
- * @param {FlowTarget} t
- * @param {{ subject?: string, prefix?: string }} [o]
- */
-export function feedbackFlowDefinition(t, o = {}) {
-  const item = "items('For_each_attachment')";
-  const secret = secretStep(t, {});
-  return {
-    $schema: SCHEMA,
-    contentVersion: '1.0.0.0',
-    parameters: PARAMETERS,
-    triggers: {
-      When_a_new_email_arrives_V3: {
-        type: 'OpenApiConnectionNotification',
-        inputs: {
-          host: host(CONNECTORS.outlook, 'OnNewEmailV3'),
-          parameters: { folderPath: 'Inbox', subjectFilter: o.subject ?? FEEDBACK_SUBJECT, hasAttachments: true, includeAttachments: true, importance: 'Any' },
-          authentication: "@parameters('$authentication')",
-        },
-        splitOn: "@triggerOutputs()?['body/value']",
-      },
-    },
-    actions: {
-      ...secret.actions,
-      For_each_attachment: {
-        type: 'Foreach',
-        runAfter: secret.next,
-        foreach: "@triggerOutputs()?['body/attachments']",
-        actions: {
-          Only_feedback_CSVs: {
-            type: 'If',
-            expression: {
-              and: [
-                { endsWith: [`@toLower(${item}?['name'])`, '.csv'] },
-                { startsWith: [`@toLower(${item}?['name'])`, (o.prefix ?? 'feedback').toLowerCase()] },
-              ],
-            },
-            actions: saveFile(
-              t,
-              'Save_to_drop_folder',
-              t.dropDir ?? UPLOAD_DIR,
-              `@{utcNow('yyyyMMddHHmmss')}_@{encodeUriComponent(${item}?['name'])}`,
-              asApp(t) ? `@base64ToBinary(${item}?['contentBytes'])` : `@base64ToString(${item}?['contentBytes'])`,
-              {},
-            ),
-            else: { actions: {} },
-          },
-        },
-      },
-    },
-  };
-}
 
 /**
  * @param {string} path  A Power Platform API path and query, with expressions.

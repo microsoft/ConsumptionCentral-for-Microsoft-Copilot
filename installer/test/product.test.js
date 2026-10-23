@@ -90,7 +90,8 @@ test('product: the web app uses the same names', () => {
   const install = read('src/install.js');
   for (const heading of [`${P.PRODUCT_NAME} is set up`, `${P.PRODUCT_NAME} is partly set up`]) {
     assert.ok(app.includes(`'${heading}'`), `the web app knows "${heading}"`);
-    assert.ok(install.includes(`ui.heading('${heading}')`), `install.js prints "${heading}"`);
+    const printed = [`ui.heading('${heading}')`, `ui.heading(\`${heading.replace(P.PRODUCT_NAME, '${PRODUCT_NAME}')}\`)`];
+    assert.ok(printed.some((p) => install.includes(p)), `install.js prints "${heading}"`);
   }
 });
 
@@ -129,5 +130,41 @@ test('product: the code takes its identifiers from product.js', () => {
   const found = files.flatMap((f) => codeLines(readFileSync(f, 'utf8'))
     .filter(([, line]) => ids.test(line))
     .map(([n, line]) => `${relative(ROOT, f)}:${n}: ${line.trim()}`));
+  assert.deepEqual(found, []);
+});
+
+/** @param {string} dir @returns {string[]} */
+const allFiles = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+  const p = join(dir, e.name);
+  if (e.isDirectory()) return e.name === 'node_modules' ? [] : allFiles(p);
+  return [p];
+});
+
+test('product: no ValueLens or Analytics Hub names are left in what the installer shows, writes or deploys', () => {
+  const other = /value ?lens|analytics ?hub/i;
+  // Analytics Hub's lineage-tag seed for the pay-as-you-go table: internal, and kept so the port stays diffable.
+  const allowed = [/`valuelens:payg:\$\{key\}`/];
+  const files = ['bin', 'src', 'packaging', 'assets'].flatMap((d) => allFiles(join(ROOT, d)));
+  assert.ok(files.some((f) => f.endsWith('.ipynb')), 'found the helper notebooks');
+  /** @type {string[]} */
+  const found = [];
+  for (const f of files) {
+    const text = readFileSync(f, 'utf8');
+    if (f.endsWith('.ipynb')) {
+      // Every cell, comments included: people read these notebooks in Fabric.
+      JSON.parse(text).cells.forEach((/** @type {any} */ cell, /** @type {number} */ i) => {
+        if (other.test([].concat(cell.source).join(''))) found.push(`${relative(ROOT, f)}: cell ${i}`);
+      });
+      continue;
+    }
+    if (!/\.(js|cs|ps1|html|css|manifest|cmd)$/.test(f)) continue;
+    /** @type {[number, string][]} */
+    const lines = f.endsWith('.ps1')
+      ? text.split(/\r?\n/).map((line, i) => /** @type {[number, string]} */ ([i + 1, line])).filter(([, line]) => !line.trim().startsWith('#'))
+      : codeLines(text);
+    for (const [n, line] of lines) {
+      if (other.test(line) && !allowed.some((a) => a.test(line))) found.push(`${relative(ROOT, f)}:${n}: ${line.trim()}`);
+    }
+  }
   assert.deepEqual(found, []);
 });

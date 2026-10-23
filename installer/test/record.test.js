@@ -31,7 +31,7 @@ function record() {
 
 /** @param {(dir: string) => Promise<void> | void} fn */
 async function inDir(fn) {
-  const dir = mkdtempSync(join(tmpdir(), 'vl-record-'));
+  const dir = mkdtempSync(join(tmpdir(), 'cc-record-'));
   try {
     await fn(dir);
   } finally {
@@ -121,12 +121,12 @@ test('record: when two commands change the same field the later save wins; a fie
     delete other.uploads.flowIds;
     saveConfig(file, other);
     install.schedule.time = '03:00';
-    install.history.days = 90;
+    install.prices = { creditRate: 0.02 };
     saveConfig(file, install);
 
     for (const config of [loadConfig(file).config, install]) {
       assert.equal(config.schedule.time, '03:00');
-      assert.equal(config.history.days, 90);
+      assert.deepEqual(config.prices, { creditRate: 0.02 });
       assert.equal(config.access?.contact, 'helpdesk@contoso.com');
       assert.equal(config.access?.groupName, 'Consumption Central Viewers');
       assert.equal(config.uploads.flowIds, undefined);
@@ -140,10 +140,10 @@ test('record: a record saved to another file, such as the setup draft, is writte
     const live = loadConfig(file).config;
     saveConfig(draft, live);
     saveConfig(draft, { ...live, setup: { completed: [], approved: true } });
-    live.history.days = 90;
+    live.prices = { creditRate: 0.02 };
     saveConfig(draft, live);
     assert.equal(loadConfig(draft).config.setup, undefined);
-    assert.equal(loadConfig(draft).config.history.days, 90);
+    assert.deepEqual(loadConfig(draft).config.prices, { creditRate: 0.02 });
     assert.equal(live.setup, undefined);
   }));
 
@@ -157,13 +157,13 @@ test("record: a half-written record from another command is waited for; if it st
     const whole = `${JSON.stringify(other, null, 2)}\n`;
     // Written in place, as a save does when a synced folder keeps blocking the rename, and caught part way.
     writeFileSync(file, whole.slice(0, 40), 'utf8');
-    install.history.days = 90;
+    install.prices = { creditRate: 0.02 };
     /** @type {number[]} */
     const waits = [];
     saveConfig(file, install, { wait: (ms) => { waits.push(ms); writeFileSync(file, whole, 'utf8'); } });
     assert.deepEqual(waits, [100]);
     assert.equal(loadConfig(file).config.fabric.pipelineId, 'pipe-1');
-    assert.equal(loadConfig(file).config.history.days, 90);
+    assert.deepEqual(loadConfig(file).config.prices, { creditRate: 0.02 });
 
     writeFileSync(file, '{\n  "version": 1,\n  "fabr', 'utf8');
     install.schedule.time = '05:00';
@@ -172,7 +172,7 @@ test("record: a half-written record from another command is waited for; if it st
     assert.deepEqual(waits, [100, 200]);
     const saved = loadConfig(file).config;
     assert.equal(saved.schedule.time, '05:00');
-    assert.equal(saved.history.days, 90);
+    assert.deepEqual(saved.prices, { creditRate: 0.02 });
     assert.equal(saved.fabric.pipelineId, 'pipe-1');
   }));
 
@@ -360,7 +360,7 @@ test('wording: in Cloud Shell the plan says to keep the tab open, not the PC awa
 });
 
 test('Cloud Shell: without a storage account, the end of a run says how to download the record', () => {
-  const home = mkdtempSync(join(tmpdir(), 'ah-cs-'));
+  const home = mkdtempSync(join(tmpdir(), 'cc-cs-'));
   try {
     assert.equal(cloudShellKeepsFiles(home), false);
     const msg = cloudShellRecordMessage(join(home, 'consumption-central', 'consumption-central-setup.json'), home);
@@ -374,7 +374,7 @@ test('Cloud Shell: without a storage account, the end of a run says how to downl
 });
 
 test('Cloud Shell: an uploaded install record is moved to where the installer looks', () => {
-  const home = mkdtempSync(join(tmpdir(), 'ah-cs-'));
+  const home = mkdtempSync(join(tmpdir(), 'cc-cs-'));
   try {
     const file = join(home, 'consumption-central', 'consumption-central-setup.json');
     assert.equal(adoptUploadedRecord(file, home), undefined);
