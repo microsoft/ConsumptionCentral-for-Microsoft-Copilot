@@ -96,14 +96,20 @@ exports, no real data.
 
 ## App Edition
 
-Prefer an app to a Power BI report? **[`app/`](app/)** is a web app, deployable as a Fabric App in your
-Fabric workspace or as a Copilot Managed App, with the same
-measures, charts and tables, using the same DAX definitions. It replaces the 24 report pages with six
-simpler tabs: Overview, Cowork & Work IQ, Copilot Studio, GitHub Copilot, Azure AI Foundry and Guide.
-Drop in the Local CSV exports and everything is calculated in your browser. No data leaves your
-tenant. It opens on the synthetic sample.
+Prefer an app to a Power BI report? **[`app/`](app/)** is a web app with the same measures, charts
+and tables, using the same DAX definitions. It replaces the 24 report pages with six simpler tabs:
+Overview, Cowork & Work IQ, Copilot Studio, GitHub Copilot, Azure AI Foundry and Guide. Drop in the
+Local CSV exports and everything is calculated in your browser. No data leaves your tenant, and no
+Power BI licence is needed.
 
-**[App Edition setup and deploy →](app/README.md)**
+- **Open it on your PC:** open
+  [`app/download/Consumption-Central-App.html`](app/download/Consumption-Central-App.html), choose
+  **Download raw file**, and open the file in Edge or Chrome. It starts on a synthetic sample; choose
+  **Change data** to load your own exports. It works offline.
+- **Copilot Managed App:** see [`app/README.md`](app/README.md#as-a-copilot-managed-app).
+- **On Microsoft Fabric:** use [Analytics Hub](https://github.com/microsoft/AnalyticsHub-Dashboard).
+
+**[App Edition details →](app/README.md)**
 
 ---
 
@@ -129,7 +135,7 @@ Almost every parameter has a sensible default. Two are worth thinking about:
 | [Rates and pricing](docs/COMMERCIAL-TERMS.md) | What to set and where to find it |
 | [Every measure explained](docs/MEASURES.md) | Reference |
 | [Advanced setup](docs/ADVANCED-SETUP.md) | Scheduling, service principals, gateway refresh |
-| [App Edition](app/README.md) | The Managed App version: tabs, data detection, develop and deploy |
+| [App Edition](app/README.md) | The app version: download, tabs, data detection, develop and deploy |
 
 ---
 

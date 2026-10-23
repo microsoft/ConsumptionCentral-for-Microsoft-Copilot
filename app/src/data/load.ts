@@ -1,3 +1,4 @@
+import embeddedSample from 'virtual:embedded-sample'
 import { addDays, detectDayFirst, getter, has, hkey, num, numOrNull, parseCsv, toIso, truthy, type Rec } from './csv'
 import type {
   AzureDailyRow,
@@ -727,18 +728,29 @@ export async function loadFiles(files: File[]) {
   return res
 }
 
-export async function loadSample(): Promise<Dataset> {
+async function gunzipBase64(b64: string): Promise<string> {
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
+  return new Response(stream).text()
+}
+
+async function sampleFiles(): Promise<{ name: string; text: string }[]> {
+  const embedded = embeddedSample
+  if (embedded) return Promise.all(Object.keys(embedded).map(async (name) => ({ name, text: await gunzipBase64(embedded[name]) })))
   const base = `${import.meta.env.BASE_URL}sample/`
   const res = await fetch(`${base}manifest.json`)
   if (!res.ok) throw new Error(`Sample manifest returned ${res.status}`)
   const names = (await res.json()) as string[]
-  const parsed = await Promise.all(
+  return Promise.all(
     names.map(async (name) => {
       const r = await fetch(base + name)
       if (!r.ok) throw new Error(`${name} returned ${r.status}`)
-      const { headers, rows } = parseCsv(await r.text())
-      return { name, headers, rows }
+      return { name, text: await r.text() }
     }),
   )
+}
+
+export async function loadSample(): Promise<Dataset> {
+  const parsed = (await sampleFiles()).map(({ name, text }) => ({ name, ...parseCsv(text) }))
   return buildDataset(parsed, 'Synthetic sample (Contoso Health)', true).dataset
 }

@@ -9,7 +9,6 @@ services:
     allowedRedirectUris:
       - http://localhost:5173
       - http://127.0.0.1:5173
-      - https://round-tide-f4e286b3c8-westcentralus.webapp.msit.fabricapps.net
   data:
     enabled: false
   storage:

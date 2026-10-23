@@ -1,8 +1,21 @@
 # Consumption Central: App Edition
 
-A Copilot Managed App version of the Consumption Central Power BI report. It shows the same measures, charts and tables as the report, using the same DAX definitions. The layout is simpler: the 24 report pages become six tabs with short sub-views.
+An app version of the Consumption Central Power BI report. It shows the same measures, charts and tables as the report, using the same DAX definitions. The layout is simpler: the 24 report pages become six tabs with short sub-views.
 
 Everything runs in the browser. The app reads your CSV exports locally and calculates every metric on the page, and no data is sent anywhere.
+
+## Get the app
+
+Neither option needs a Power BI licence or Node.js.
+
+| Option | What you do | Best for |
+|---|---|---|
+| **Open it on your PC** | Open [`download/Consumption-Central-App.html`](download/Consumption-Central-App.html), choose **Download raw file**, then open the downloaded file in Edge or Chrome. | Trying it, or one person looking at the numbers. Works offline. |
+| **Copilot Managed App** | See [Deploy](#as-a-copilot-managed-app). | Tenants that use Copilot Managed Apps. |
+
+The downloaded page opens with a labelled synthetic sample. Choose **Change data** and drop in your CSV exports (see [Data](#data)). The page is self-contained: the code, styles and sample are all inside it, and it makes no network calls.
+
+On Microsoft Fabric, get Consumption Central through [Analytics Hub for Microsoft Copilot](https://github.com/microsoft/AnalyticsHub-Dashboard) instead.
 
 ## Tabs
 
@@ -52,10 +65,13 @@ A synthetic sample in `public/sample/` loads on first open and is clearly labell
 
 ```powershell
 npm install
-npm run dev       # local dev server
+npm run dev         # local dev server
 npm run lint
-npm run build     # type-check and build to dist/
+npm run build       # type-check and build to dist/ (Managed App and Fabric App hosting)
+npm run build:file  # build the single-file download to download/Consumption-Central-App.html
 ```
+
+`download/Consumption-Central-App.html` is committed so people can download it. Whenever you change the app or the sample, run `npm run build:file` and commit the result. The single-file build inlines the code and styles, and embeds the sample CSVs listed in `public/sample/manifest.json`, gzipped.
 
 The code is organised like this:
 - `src/data/`: CSV loading and header detection.
@@ -67,7 +83,7 @@ The design system is in [DESIGN.md](DESIGN.md) and the product brief is in [PROD
 
 ## Deploy
 
-The same build runs in two hosts. Pick one.
+Most people should use [Get the app](#get-the-app). This section is for deploying from a clone of the repo. The same `npm run build` output runs in two hosts.
 
 ### As a Fabric App in a Fabric workspace
 
