@@ -27,6 +27,8 @@ entra_org.csv
 # App Edition: its source folder and its bundled synthetic sample
 !app/src/data/
 !app/public/sample/*.csv
+# Fabric App: its rayfin/data folder is source code (table schemas), not an export
+!fabric-app/rayfin/data/
 
 # OS / editor
 Thumbs.db
