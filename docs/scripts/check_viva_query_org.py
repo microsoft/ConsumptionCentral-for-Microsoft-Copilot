@@ -631,7 +631,7 @@ class PackageContracts(unittest.TestCase):
         for product in ("Cowork", "Studio", "GitHub"):
             self.assertIn(f'"Usage Intensity ({product})"', dax)
             self.assertIn(f"{product}Missing", dax)
-        for token in ("SUMMARIZE(", "RANKX(", "EXCEPT(", '"0. Not used"', "NOT ISEMPTY(", "0.95", "0.99"):
+        for token in ("SUMMARIZE(", "TOPN(", "EXCEPT(", '"0. Not used"', "NOT ISEMPTY(", "0.95", "0.99"):
             self.assertIn(token, dax)
 
     def test_baseline_exact_unaffected_records_and_model(self):

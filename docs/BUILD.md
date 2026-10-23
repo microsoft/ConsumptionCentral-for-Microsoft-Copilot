@@ -270,6 +270,7 @@ take `--dry-run` and all are idempotent:
 |---|---|
 | `fix_org_upn_case.py` | Folds the `Org` key to lower case. `Table.Distinct`, `Table.NestedJoin` and `Record.FromList` all compare case-sensitively while the DAX relationship does not, so a tenant whose directory says `AlexW@x` and whose Viva export says `alexw@x` got two `Org` rows for one person and the refresh died on the duplicate key. Only bites when two sources are present at once. |
 | `fix_query_body_drift.py` | Resettles the `UnappliedChanges` copy of a query on the schema copy. A Desktop re-export trims trailing blank lines from one and not the other; it refuses to touch anything that differs by more than that. |
+| `fix_refresh_time_cuts.py` | Cuts refresh time on a large tenant without changing a single bucket. Fabric and Power Automate + Dataverse buffer the seven tables they read column by column from a SQL endpoint, once each instead of once per column. In every template, `CoworkBilling`'s query loads `UsageCohortRank` instead of a calculated column ranking every user per row, `UsageCohort` reads that rank, `CreditsWeekly[Weeks Ago]` drops a per-row `CALCULATE`, and Group By's Studio and GitHub intensity rows find each cut once with `TOPN`. Ported from Analytics Hub; `--check` exits 1 if a template is stale, and CI runs `check_refresh_time_cuts.py` and `test_refresh_time_cuts.py`. |
 
 `fix_credits_guide_text.py` is *not* one of these. It edits textboxes, so it is a report-layer change
 and runs against a PBIP project, then comes back through step 3 above:
