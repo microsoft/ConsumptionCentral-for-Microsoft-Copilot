@@ -131,6 +131,11 @@ jobs:
           # the template at all, and no other check here notices.
           python docs/scripts/check_lineage_tags.py
 
+      - name: Refresh-time cuts are applied to every template
+        run: |
+          python docs/scripts/check_refresh_time_cuts.py
+          python docs/scripts/test_refresh_time_cuts.py
+
       - name: Azure notebook request regression tests
         run: python docs/scripts/test_azure_notebook_requests.py
 
