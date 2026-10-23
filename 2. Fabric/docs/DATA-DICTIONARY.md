@@ -12,7 +12,9 @@ up empty and every other page is unaffected. A customer with GitHub Copilot but 
 loads the same template and simply sees no Studio pages populated. Nothing needs commenting out.
 
 Every table also carries **`_loaded_at`** (timestamp), written by the ingester. Not used by the
-report; useful when a number looks wrong and you need to know when it arrived.
+report; useful when a number looks wrong and you need to know when it arrived. The exceptions are
+[`copilot_org_data`](#copilot_org_data) and the [Azure tables](#azure-tables), which are replaced
+whole on every run.
 
 ---
 
@@ -41,6 +43,11 @@ the Cowork pages are empty and the rest of the report is unaffected.
 All four are needed. A person can hold rows under two policies in the same week — their own, and the
 all-zero GUID for usage outside a policy window — and dropping the policy from the key would collapse
 those into one and lose credits.
+
+**Sources.** `Ingest_Viva_Consumption` loads this from the CSV exports in `Files/landing/viva`, from
+`viva_credits_dataflow`, or both. `viva_credits_dataflow` is the staging table a Dataflow Gen2 writes
+from the live Viva query, with the export's own column names; the report never reads it directly. For
+the weeks it covers it replaces the CSV rows, because it is the fresher copy.
 
 ---
 
@@ -113,6 +120,13 @@ Studio table with a real date**, and so the only one Consumption Central plots o
 | `usage_date` | date | Parsed from PPAC's `M/d/yyyy H:mm` |
 
 **Merge key:** `usage_date`, `environment_id`, `billing_plan_id`, `capacity_type`.
+
+> **Licensing API files (optional, off by default).** With `READ_API_FILES = True`, `Ingest_Studio`
+> also reads daily files a Power Automate flow saves from the Power Platform licensing API. It keeps
+> them in `studio_agent_daily` and `studio_user_daily`, which the report does not read, and rolls
+> them up into this table, `studio_agent` and `studio_user` with `source_file = 'ppac-api'`, or
+> `'ppac-api-users'` for days summed from the per-user file alone. An export always wins where it
+> covers the same day and environment, or the same month for agents and users.
 
 ---
 
@@ -273,6 +287,38 @@ once, in their new one.
 
 ---
 
+<a id="copilot_org_data"></a>
+
+## `copilot_org_data`
+
+Every user in Microsoft Entra ID, read through Microsoft Graph by
+[`Ingest_Org_Graph`](../notebooks/Ingest_Org_Graph.ipynb). One row per user. An alternative to
+`org_attributes` that needs no export: the template reads the first of `copilot_org_data` and
+`org_attributes` that has rows, in that order, then keeps only the people on the licensed roster
+(or every row, if none match).
+
+| Column | Type | Notes |
+|---|---|---|
+| `PersonId` | string | UPN, as Entra holds it. A user without one fails the run. |
+| `PersonId_Normalized` | string | `PersonId` lowercased and trimmed |
+| `displayName` | string | |
+| `Department` | string | Department breakdowns leave out people without one |
+| `JobTitle` | string | |
+| `companyName` | string | |
+| `officeLocation` | string | |
+| `city` | string | |
+| `country` | string | |
+| `accountEnabled` | string | `True` or `False`. Disabled accounts are kept. |
+| `managerUPN` | string | Blank where no manager is set |
+
+**Load:** full replace on every run. A run that finds no users fails rather than emptying the
+table, unless `ALLOW_EMPTY_SNAPSHOT = True`.
+
+> The template matches people on any identifier column it recognises (`PersonId`,
+> `PersonId_Normalized`, a UPN or an email column), lowercased and trimmed on both sides.
+
+---
+
 ## `commercial_terms`
 
 **Optional, and unlike the others it holds no consumption data at all.** One row, one column per
@@ -302,6 +348,125 @@ a perfectly good use of this.
 
 ---
 
+## Azure tables
+
+[`Ingest_Azure_AI`](../notebooks/Ingest_Azure_AI.ipynb) writes these for one subscription. Each run
+replaces each table whole with the last `DAYS` complete UTC days (90 by default). `azure_ai_spend`
+and `azure_ai_tokens` feed the Foundry figures; their columns are listed in
+[Azure ingestion in Fabric](../../docs/ADVANCED-SETUP.md#azure-ingestion-in-fabric). The last three
+below are best effort: if a run cannot read their source, it logs a warning and leaves the table as
+it was.
+
+### `copilot_payg_spend`
+
+Copilot Studio and Cowork credits billed pay-as-you-go to Azure through Power Platform billing
+policies. **One row per day × subscription × meter × service tag × currency**, from Cost Management
+for `SUBSCRIPTION_ID` and every subscription in `PAYG_SUBSCRIPTION_IDS`. No template reads it yet.
+
+| Column | Type | Notes |
+|---|---|---|
+| `UsageDate` | date | UTC |
+| `SubscriptionId` | string | The subscription billed |
+| `Meter` | string | e.g. `Pay As You Go Copilot Credit` |
+| `ServiceTag` | string | Azure's `serviceName` tag: `cowork` on Cowork charges, blank on Copilot Studio |
+| `Product` | string | `Copilot Studio` or `Cowork`, from the tag; any other tag value passes through |
+| `Cost` | double | In `Currency`; nothing is converted |
+| `UsageQuantity` | double | Credits, on the credit meter |
+| `Currency` | string | |
+
+Billing can lag usage by a day or more. A duplicate grain or an unexpected tag key fails the run
+rather than double counting or guessing the product.
+
+### `azure_deployment_health`
+
+Model deployments and how they ran, for the **Azure: Capacity & Health** page. **One row per
+deployment per calendar month.** ARM supplies the inventory and Azure Monitor the telemetry. Past
+months list the deployments that reported telemetry; the current month lists every deployment, so an
+idle one shows as having no telemetry rather than disappearing.
+
+| Column | Type | Notes |
+|---|---|---|
+| `SnapshotDate` | date | Last day the row covers: the month end, or the last complete day this month |
+| `MetricDate` | date | Month end |
+| `SubscriptionName` | string | |
+| `SubscriptionId` | string | |
+| `ResourceId` | string | The AI account, lowercased |
+| `DeploymentId` | string | Same value as `DeploymentName` |
+| `DeploymentName` | string | |
+| `Application` | string | Tag `Application`, `App`, `Solution`, `Workload` or `Project`, on the deployment or else its account |
+| `ModelName` | string | |
+| `ModelVersion` | string | |
+| `SkuName` | string | e.g. `GlobalStandard`, `ProvisionedManaged` |
+| `Region` | string | The account's location |
+| `PtuCapacity` | double | Provisioned SKUs only. On Standard SKUs capacity is a rate limit, not PTUs, so this is blank. |
+| `MeanUtilizationPct` | double | 0–100, the mean of daily averages. Provisioned only. |
+| `PeakUtilizationPct` | double | The highest daily maximum. Provisioned only. |
+| `Requests` | double | Month total |
+| `ServerErrors5xx` | double | Month total of 5xx responses |
+| `Throttles429` | double | Month total of 429 responses |
+| `MeanLatencyMs` | double | Weighted by daily requests |
+
+Blank telemetry means none was reported, not zero.
+
+### `azure_solution_spend`
+
+What the whole AI solution costs, for the **Azure: Spend & Consumption** page. **One row per day ×
+resource × service × currency**, covering the AI services and every other resource in a resource
+group that holds an AI account.
+
+| Column | Type | Notes |
+|---|---|---|
+| `UsageDate` | date | UTC |
+| `SubscriptionName` | string | |
+| `SubscriptionId` | string | |
+| `ResourceId` | string | Lowercased |
+| `ResourceName` | string | |
+| `ResourceGroup` | string | |
+| `Application` | string | Resource tag `Application`, `App`, `Solution`, `Workload` or `Project` |
+| `DepartmentTag` | string | The resource's department tag, as in `azure_ai_spend` |
+| `ServiceName` | string | Cost Management service |
+| `ServiceCategory` | string | `Model` (Foundry Models, Azure OpenAI), `AI service` (the other AI services) or `Supporting` (anything else in those resource groups) |
+| `ActualCost` | double | As billed |
+| `AmortizedCost` | double | With reservations and prepurchases spread over their term |
+| `Currency` | string | |
+| `TotalTokensM` | double | Millions of tokens, from Azure Monitor |
+| `PaygTokensM` | double | Millions of tokens billed pay-as-you-go, from the token meters |
+| `InputPaygCost`, `OutputPaygCost`, `CachedPaygCost` | double | Pay-as-you-go token cost by direction. `Model` rows only. |
+| `Requests` | double | From Azure Monitor |
+| `SpeechHours`, `DocumentPages`, `Images` | double | Not collected yet; always blank |
+| `AllocationStatus` | string | `Tagged` when `Application` or `DepartmentTag` is set, otherwise `Untagged` |
+| `PricingModel` | string | `PAYG`, `Provisioned` or `PAYG + Provisioned`, from the meters billed |
+| `BillingScope` | string | `Subscription: <name>` |
+
+`TotalTokensM` and `Requests` sit on one row per resource and day, so they can be summed. Usage with
+no cost that day gets a zero-cost `Foundry Models` row to carry it.
+
+### `azure_billing_reconciliation`
+
+Estimated against actual AI spend, for the **Billing: Reconciliation** page. **Two rows per month ×
+service × pool × currency**: a `UsageEstimate` (metered quantity × the public Azure Retail Prices
+list price) and the `AzureActual` it is compared with. List prices exclude negotiated discounts,
+credits and reservations, so some variance is expected under an enterprise agreement.
+
+| Column | Type | Notes |
+|---|---|---|
+| `Period` | string | `yyyy-MM` |
+| `PeriodStart` | date | First day of the month, or of the collection window |
+| `PeriodEnd` | date | Last day of the month, or the last complete day collected |
+| `Product` | string | Cost Management service, e.g. `Foundry Models` |
+| `PoolName` | string | `Foundry Provisioned Pool` for provisioned meters, otherwise `Foundry PAYG Pool` |
+| `Representation` | string | `UsageEstimate` or `AzureActual` |
+| `Amount` | double | Blank on a `UsageEstimate` row when no meter had a list price |
+| `Currency` | string | |
+| `Status` | string | The same on both rows: `Reconciled` (within 1%), `Variance within tolerance` (within 5%), `Unexplained variance`, or `Unpriced` |
+| `EvidenceType` | string | Where `Amount` came from |
+| `Notes` | string | Meters priced, cost left unpriced, and the list-price caveat |
+
+Variance is judged on the priced meters only; cost on meters without a list price is stated in
+`Notes` instead.
+
+---
+
 ## How they relate
 
 ```
@@ -321,3 +486,6 @@ The three products share **no key with each other** — a GitHub login, a Viva p
 user ID are unrelated. They meet only through `org_attributes`, and only when every source carries a
 matching UPN. That is why the combined page normalises to a monthly run rate per product rather than
 attempting a single per-person total across all three, and why it says so on its face.
+
+Where `copilot_org_data` has rows, it takes the place of `org_attributes` in every join above. The
+Azure tables share no key with any of these.

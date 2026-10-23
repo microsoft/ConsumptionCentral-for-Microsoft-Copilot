@@ -20,9 +20,9 @@ The single question most people arrive with. Answered once, here:
 |---|---|---|
 | [Cowork / Work IQ](#1-cowork--work-iq-credits--viva-insights-consumption-dashboard) | Certified Power Query connector — direct on Power BI, Dataflow Gen2 on Fabric | **No** |
 | [GitHub Copilot](#3-github-copilot-ai-credits) | REST API | **No** |
-| [Entra org attributes](#5-org-attributes--microsoft-entra-optional) | Graph PowerShell on a schedule | **No** |
+| [Entra org attributes](#5-org-attributes--microsoft-entra-optional) | Graph PowerShell on a schedule, or the [`Ingest_Org_Graph`](../2.%20Fabric/notebooks/Ingest_Org_Graph.ipynb) Fabric notebook | **No** |
 | [Copilot Studio](#2-copilot-studio-credits) | None — PPAC is download-only | **Yes** |
-| [Azure AI Foundry](#4-azure-ai-foundry) | Cost Management Query API + Azure Monitor; scheduled Python collector or Fabric notebook | **No** |
+| [Azure AI Foundry](#4-azure-ai-foundry) | Cost Management Query API + Azure Monitor; scheduled Python collector or Fabric notebook, which also records Copilot pay-as-you-go | **No** |
 
 For manually downloaded exports, a [Power Automate flow](../2.%20Fabric/flows/) can land
 the file in the right place. Azure collection does not require that flow.
@@ -263,6 +263,8 @@ treat `ServiceName` as an open list — Consumption Central groups by whatever v
 > Two paths use it instead of the CSV: the Fabric notebook
 > [`Ingest_Studio_Consumption.ipynb`](../2.%20Fabric/notebooks/Ingest_Studio_Consumption.ipynb) and the
 > flows in [4. Power Automate + Dataverse](../4.%20Power%20Automate%20%2B%20Dataverse).
+> [`Ingest_Studio.ipynb`](../2.%20Fabric/notebooks/Ingest_Studio.ipynb) can also read daily files a
+> flow saves from it (`READ_API_FILES`, off by default), but no flow in this repository saves them yet.
 >
 > **The per-user grain has no API.** `StudioPerUser.csv` stays a manual export on every path.
 >
@@ -443,7 +445,7 @@ it does not execute the collector.
 | Shipped template | Collection route | What the template actually reads |
 |---|---|---|
 | **Local CSV** | Schedule [`pull_azure_ai.py`](../1.%20Local%20CSV/pull_azure_ai.py) | `DataFolder\AzureAiSpendDaily.csv` and `DataFolder\AzureAiTokensDaily.csv` |
-| **Fabric** | Schedule [`Ingest_Azure_AI.ipynb`](../2.%20Fabric/notebooks/Ingest_Azure_AI.ipynb) | `dbo.azure_ai_spend` and `dbo.azure_ai_tokens` through the Lakehouse SQL analytics endpoint |
+| **Fabric** | Schedule [`Ingest_Azure_AI.ipynb`](../2.%20Fabric/notebooks/Ingest_Azure_AI.ipynb) | `dbo.azure_ai_spend` and `dbo.azure_ai_tokens` through the Lakehouse SQL analytics endpoint, plus the three Azure page tables below |
 | **Viva Direct** | Same Python collector as Local CSV | The same two CSVs in `DataFolder`; the Viva connector does **not** collect Azure data |
 
 Follow the [Azure collection steps](ADVANCED-SETUP.md#automating-azure-collection)
@@ -459,9 +461,16 @@ Missing optional files/tables and a failed collection are not the same thing: mo
 collection job and freshness, even when Power BI shows no error.
 
 The local script also produces `AzureAiDeployments.csv` for inventory inspection.
-**None of the three shipped templates loads that file.** The expanded whole-solution spend,
-deployment-health and billing-reconciliation prototype is not shipped in these templates;
-its additional three feeds are not populated by this automation.
+**None of the three shipped templates loads that file.**
+
+The Azure pages (**9. Azure: Spend & Consumption**, **10. Azure: Capacity & Health** and
+**10.1. Billing: Reconciliation**) read three further tables: whole-solution spend, deployment
+health and billing reconciliation. On Fabric, `Ingest_Azure_AI` writes them as
+`azure_solution_spend`, `azure_deployment_health` and `azure_billing_reconciliation`, on a
+best-effort basis: if one of those sections fails, the run logs a warning and leaves that table as
+it was. The Python collector does not produce them. The notebook also writes Copilot Studio and
+Cowork pay-as-you-go to `copilot_payg_spend`, which no template reads yet. Columns:
+[data dictionary](../2.%20Fabric/docs/DATA-DICTIONARY.md#azure-tables).
 
 ### Important limits of the shipped Azure page
 

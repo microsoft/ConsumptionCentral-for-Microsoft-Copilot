@@ -1,0 +1,171 @@
+{
+  "$comment": "What the Consumption Central installer deploys. Field meanings: CONTRIBUTING.md#installer-asset-manifest. Enforced by docs/scripts/test_installer_assets.py.",
+  "version": 1,
+  "templates": {
+    "fabric": {
+      "path": "2. Fabric/Consumption Central - Fabric.pbit",
+      "parameters": ["FabricSQLEndpoint", "LakehouseName", "BillingPeriodWeeks", "CreditRate", "PrepaidCreditRate", "PrepaidCreditBalance", "GitHubBusinessSeatPrice", "GitHubEnterpriseSeatPrice"]
+    },
+    "vivaDirect": {
+      "path": "3. Viva Direct/Consumption Central - Viva Direct.pbit",
+      "parameters": ["BillingPeriodWeeks", "VivaPartitionId", "VivaQueryId", "CoworkRatePerCredit", "CoworkPrepaidRatePerCredit", "StudioRatePerCredit", "StudioPrepaidRatePerCredit", "CapacityPackCredits", "GitHubRatePerCredit", "GitHubBusinessSeatPrice", "GitHubEnterpriseSeatPrice", "GitHubAllowanceChangeDate", "GitHubBusinessStandardCredits", "GitHubEnterpriseStandardCredits", "DataFolder"]
+    },
+    "localCsv": {
+      "path": "1. Local CSV/Consumption Central - Local CSV.pbit",
+      "parameters": ["DataFolder", "BillingPeriodWeeks", "CreditRate", "PrepaidCreditRate", "PrepaidCreditBalance", "GitHubBusinessSeatPrice", "GitHubEnterpriseSeatPrice"]
+    },
+    "dataverse": {
+      "path": "4. Power Automate + Dataverse/Consumption Central - Power Automate + Dataverse.pbit",
+      "parameters": ["DataverseServer", "DataverseDatabase", "DataversePrefix", "BillingPeriodWeeks", "CreditRate", "PrepaidCreditRate", "PrepaidCreditBalance", "GitHubBusinessSeatPrice", "GitHubEnterpriseSeatPrice"]
+    }
+  },
+  "notebooks": [
+    {
+      "key": "azureAi",
+      "name": "Ingest_Azure_AI",
+      "path": "2. Fabric/notebooks/Ingest_Azure_AI.ipynb",
+      "credentials": false,
+      "values": ["SUBSCRIPTION_ID", "TENANT_ID", "CLIENT_ID", "KEY_VAULT_URL", "CLIENT_SECRET_NAME"],
+      "expressions": [],
+      "patches": ["PAYG_SUBSCRIPTION_IDS = []", "secret = notebookutils.credentials.getSecret(KEY_VAULT_URL, CLIENT_SECRET_NAME)"],
+      "secret": { "kind": "clientSecret", "name": "consumption-central-azure-client-secret" },
+      "reads": [],
+      "writes": ["azure_ai_spend", "azure_ai_tokens", "copilot_payg_spend", "azure_deployment_health", "azure_solution_spend", "azure_billing_reconciliation"],
+      "landing": null,
+      "loadSummary": null,
+      "run": "pipeline",
+      "exclusiveGroup": null
+    },
+    {
+      "key": "studioConsumption",
+      "name": "Ingest_Studio",
+      "path": "2. Fabric/notebooks/Ingest_Studio.ipynb",
+      "credentials": true,
+      "values": [],
+      "expressions": ["READ_API_FILES"],
+      "patches": [],
+      "secret": { "kind": "clientSecret", "name": null },
+      "reads": [],
+      "writes": ["studio_tenant_daily", "studio_agent", "studio_user", "studio_agent_daily", "studio_user_daily"],
+      "landing": "Files/landing/studio",
+      "loadSummary": null,
+      "run": "pipeline",
+      "exclusiveGroup": null
+    },
+    {
+      "key": "vivaConsumption",
+      "name": "Ingest_Viva_Consumption",
+      "path": "2. Fabric/notebooks/Ingest_Viva_Consumption.ipynb",
+      "credentials": false,
+      "values": [],
+      "expressions": [],
+      "patches": [],
+      "secret": null,
+      "reads": ["viva_credits_dataflow"],
+      "writes": ["viva_credits_weekly", "viva_spending_policy", "cowork_tasks_weekly"],
+      "landing": "Files/landing/viva",
+      "loadSummary": "Files/consumption_central_installer/viva_load.json",
+      "run": "pipeline",
+      "exclusiveGroup": null
+    },
+    {
+      "key": "github",
+      "name": "Ingest_GitHub",
+      "path": "2. Fabric/notebooks/Ingest_GitHub.ipynb",
+      "credentials": false,
+      "values": [],
+      "expressions": [],
+      "patches": [],
+      "secret": null,
+      "reads": [],
+      "writes": ["github_ai_usage", "github_user_map"],
+      "landing": "Files/landing/github",
+      "loadSummary": null,
+      "run": "pipeline",
+      "exclusiveGroup": "github"
+    },
+    {
+      "key": "githubApi",
+      "name": "Ingest_GitHub_API",
+      "path": "2. Fabric/notebooks/Ingest_GitHub_API.ipynb",
+      "credentials": false,
+      "values": ["ENTERPRISE"],
+      "expressions": ["TOKEN"],
+      "patches": [],
+      "secret": { "kind": "githubPat", "name": "github-billing-pat" },
+      "reads": [],
+      "writes": ["github_ai_usage", "github_user_map"],
+      "landing": null,
+      "loadSummary": null,
+      "run": "pipeline",
+      "exclusiveGroup": "github"
+    },
+    {
+      "key": "commercialTerms",
+      "name": "Ingest_CommercialTerms",
+      "path": "2. Fabric/notebooks/Ingest_CommercialTerms.ipynb",
+      "credentials": false,
+      "values": ["SCOPE", "FROM_DATE", "TO_DATE", "COST_TYPE"],
+      "expressions": ["PREPAID_CREDIT_RATE", "PREPAID_CREDIT_BALANCE", "GITHUB_BUSINESS_SEAT", "GITHUB_ENTERPRISE_SEAT"],
+      "patches": [],
+      "secret": null,
+      "reads": [],
+      "writes": ["commercial_terms"],
+      "landing": null,
+      "loadSummary": null,
+      "run": "once",
+      "exclusiveGroup": null
+    },
+    {
+      "key": "org",
+      "name": "Ingest_Org",
+      "path": "2. Fabric/notebooks/Ingest_Org.ipynb",
+      "credentials": false,
+      "values": [],
+      "expressions": [],
+      "patches": [],
+      "secret": null,
+      "reads": ["viva_credits_weekly"],
+      "writes": ["org_attributes"],
+      "landing": "Files/landing/org",
+      "loadSummary": null,
+      "run": "pipeline",
+      "exclusiveGroup": null
+    },
+    {
+      "key": "orgGraph",
+      "name": "Ingest_Org_Graph",
+      "path": "2. Fabric/notebooks/Ingest_Org_Graph.ipynb",
+      "credentials": true,
+      "values": [],
+      "expressions": [],
+      "patches": [],
+      "secret": { "kind": "clientSecret", "name": null },
+      "reads": [],
+      "writes": ["copilot_org_data"],
+      "landing": null,
+      "loadSummary": null,
+      "run": "pipeline",
+      "exclusiveGroup": null
+    },
+    {
+      "key": "studioConsumptionLegacy",
+      "name": "Ingest_Studio_Consumption",
+      "path": "2. Fabric/notebooks/Ingest_Studio_Consumption.ipynb",
+      "credentials": false,
+      "values": ["TENANT_ID", "CLIENT_ID", "KEY_VAULT_URL", "CLIENT_SECRET_NAME"],
+      "expressions": [],
+      "patches": [],
+      "secret": { "kind": "clientSecret", "name": "consumption-central-powerplatform-client-secret" },
+      "reads": [],
+      "writes": ["studio_consumption_daily", "studio_capacity", "studio_environment"],
+      "landing": null,
+      "loadSummary": null,
+      "run": "interactive",
+      "exclusiveGroup": null
+    }
+  ],
+  "app": {
+    "path": "app"
+  }
+}

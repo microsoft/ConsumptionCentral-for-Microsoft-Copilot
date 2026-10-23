@@ -109,20 +109,28 @@ success dependency.
 
 ## Azure ingestion in Fabric
 
-`Ingest_Azure_AI.ipynb` writes `azure_ai_spend` and `azure_ai_tokens` without manual exports. It
-reads one subscription and overwrites a rolling window of **1–90 complete UTC days** (`DAYS = 90`
-by default) rather than accumulating an archive. Keep these tables dedicated to that subscription —
-independent runs for different subscriptions would replace each other's data.
+`Ingest_Azure_AI.ipynb` writes six tables without manual exports: Foundry spend and tokens, Copilot
+pay-as-you-go, and the three tables behind the Azure pages. It reads one subscription (plus any
+pay-as-you-go subscriptions you list) and overwrites a rolling window of **1–90 complete UTC days**
+(`DAYS = 90` by default) rather than accumulating an archive. Keep these tables dedicated to that
+subscription — independent runs for different subscriptions would replace each other's data.
 
 | Table | From | Columns |
 |---|---|---|
 | `azure_ai_spend` | Cost Management Query API | `UsageDate`, `ServiceName`, `MeterCategory`, `Meter`, `ResourceId`, `ResourceName`, `ResourceGroup`, `Cost`, `UsageQuantity`, `Currency`, `DepartmentTag` |
 | `azure_ai_tokens` | Azure Monitor metrics | `Date`, `ResourceName`, `ResourceGroup`, `Deployment`, `Metric`, `Value` |
+| `copilot_payg_spend` | Cost Management Query API, for `SUBSCRIPTION_ID` and `PAYG_SUBSCRIPTION_IDS` | `UsageDate`, `SubscriptionId`, `Meter`, `ServiceTag`, `Product`, `Cost`, `UsageQuantity`, `Currency` |
+| `azure_deployment_health` | ARM inventory and Azure Monitor metrics | One row per deployment per month |
+| `azure_solution_spend` | Cost Management Query API, ARM and Azure Monitor | Daily actual and amortized cost by resource and service |
+| `azure_billing_reconciliation` | Cost Management Query API and the public Azure Retail Prices API | Monthly usage estimate against actual cost |
 
-The shipped Fabric template reads these exact **`dbo` tables**, not views, through
-`Sql.Database(FabricSQLEndpoint, LakehouseName)`. It derives model and token direction from `Meter`;
-`ResourceId` and `MeterCategory` are not retained in the model. Missing tables are an optional,
-supported state; connection and authentication failures still need fixing.
+Columns for the last four are in the [data dictionary](../2.%20Fabric/docs/DATA-DICTIONARY.md#azure-tables).
+
+The shipped Fabric template reads every table except `copilot_payg_spend` as **`dbo` tables**, not
+views, through `Sql.Database(FabricSQLEndpoint, LakehouseName)`. From `azure_ai_spend` it derives
+model and token direction from `Meter`; `ResourceId` and `MeterCategory` are not retained in the
+model. Missing tables are an optional, supported state; connection and authentication failures
+still need fixing.
 
 ### Authentication and permissions
 
@@ -139,7 +147,8 @@ package is required.
 1. **Register an Entra application** in the subscription's tenant. Store its client secret **value**
    in Azure Key Vault; never paste it into notebook code, parameters, logs or source control.
    Assign **Cost Management Reader** at subscription scope, **Monitoring Reader** on the AI
-   accounts, and **Reader** at subscription scope for inventory/tag discovery. Cost visibility also
+   accounts, and **Reader** at subscription scope for inventory/tag discovery. Also assign Cost
+   Management Reader on each subscription you list in `PAYG_SUBSCRIPTION_IDS`. Cost visibility also
    depends on the billing agreement's charge policies, including EA **AO view charges** or MCA
    **Azure charges**; see
    [Cost Management access](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/assign-access-acm-data).
@@ -149,9 +158,12 @@ package is required.
    ARM application and the execution identity are distinct: roles on one do not grant the other's
    access.
 3. **Import the notebook**, attach the intended Lakehouse as its default, and set `SUBSCRIPTION_ID`,
-   `TENANT_ID`, `CLIENT_ID`, `KEY_VAULT_URL`, `CLIENT_SECRET_NAME` and `DAYS`. Leave the shipped
-   table names unchanged. Ensure Fabric can reach Key Vault, Entra login and ARM endpoints under
-   your network policy, and rotate the stored credential before expiry.
+   `TENANT_ID`, `CLIENT_ID`, `KEY_VAULT_URL`, `CLIENT_SECRET_NAME` and `DAYS`. Power Platform
+   billing policies can charge Copilot Studio and Cowork pay-as-you-go to other subscriptions; list
+   those in `PAYG_SUBSCRIPTION_IDS` (empty by default, which reads `SUBSCRIPTION_ID` only). Leave the
+   shipped table names unchanged. Ensure Fabric can reach Key Vault, Entra login, ARM and, for
+   reconciliation, the Azure Retail Prices API (`prices.azure.com`, called without credentials)
+   under your network policy, and rotate the stored credential before expiry.
 4. **Run interactively once, then validate the actual scheduled identity.**
    [Fabric documents](https://learn.microsoft.com/en-us/fabric/data-engineering/how-to-use-notebook)
    interactive runs under the current user, notebook schedules under the schedule creator/last
@@ -176,12 +188,19 @@ package is required.
 - Numeric zero points are retained. Null or missing telemetry is omitted, not converted to zero.
   HTTP, authentication and per-metric errors propagate. A successful empty collection replaces old
   rows with empty, explicitly typed tables.
-- All reads and validation finish before writes begin. The two Delta overwrites are individually
-  atomic, **not a cross-table transaction** — a second-write failure can leave a mixed snapshot.
-  Retry the whole notebook and gate report refresh on whole-run success. ARM throttling and
-  transient 502/503/504 responses retry up to five attempts, honouring `Retry-After`. Delays over
-  300 seconds defer the job with an error. Configure bounded pipeline retries and avoid overlapping
-  runs. Costs can arrive late or be revised; later rolling-window runs pick up those changes.
+- For spend, tokens and pay-as-you-go, all reads and validation finish before writes begin. Those
+  three Delta overwrites are individually atomic, **not a cross-table transaction** — a later write
+  failing can leave a mixed snapshot. Retry the whole notebook and gate report refresh on
+  whole-run success. ARM throttling and transient 502/503/504 responses retry up to five attempts,
+  honouring `Retry-After`. Delays over 300 seconds defer the job with an error. Configure bounded
+  pipeline retries and avoid overlapping runs. Costs can arrive late or be revised; later
+  rolling-window runs pick up those changes.
+- `azure_deployment_health`, `azure_solution_spend` and `azure_billing_reconciliation` are written
+  afterwards, **best effort**. A failed account, deployment or metric call is logged as a `WARNING`
+  and skipped, and a table whose source fails entirely is left as it was, so a successful run can
+  leave one of them stale: check the run output for `WARNING` lines. Reconciliation prices usage at
+  public list prices, which exclude negotiated discounts, credits and reservations, so some variance
+  against actual cost is expected.
 
 A Cost Management export to storage is another automated source, but needs transformation to this
 schema and does not contain Azure Monitor metrics.
