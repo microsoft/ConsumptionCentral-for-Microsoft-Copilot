@@ -11,7 +11,6 @@ const ICONS = {
   pulse: 'M3 12h4l3-7 4 14 3-7h4',
   database: 'M4 6a8 3 0 1 0 16 0a8 3 0 1 0-16 0M4 6v12a8 3 0 0 0 16 0V6M4 12a8 3 0 0 0 16 0',
   upload: 'M12 15V4M7.5 8.5 12 4l4.5 4.5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4',
-  app: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
   key: 'M3 15a4 4 0 1 0 8 0a4 4 0 1 0-8 0M10 12l9-9M16 6l3 3M13.5 8.5l2 2',
   check: 'M5 12.5 9.5 17 19 7.5',
   x: 'M6.5 6.5l11 11M17.5 6.5l-11 11',
@@ -80,12 +79,6 @@ const COMMANDS = {
     desc: 'Push the notebooks, pipeline and semantic model from this checkout to Fabric, then refresh the models. If Fabric can\'t update a model and keep its data, the page asks before the data is cleared and reloaded.',
     off: 'Nothing is installed yet.',
   },
-  'deploy-app': {
-    title: 'Redeploy the app', short: 'Redeploy', icon: 'app', section: 'App deployment', adopt: true,
-    row: 'Redeploy the app', button: 'Redeploy',
-    desc: 'Rebuild Analytics Hub from this checkout and deploy it to the workspace.',
-    off: 'The app needs the semantic model.',
-  },
   'rotate-secret': {
     title: 'Create new secrets', short: 'New secrets', icon: 'key', section: 'New secrets', adopt: true,
     row: 'Create new secrets', button: 'Create new secrets',
@@ -107,7 +100,7 @@ const COMMANDS = {
   uninstall: {
     title: 'Uninstall Analytics Hub', short: 'Uninstall', icon: 'x', section: 'Uninstall', adopt: true,
     row: 'Uninstall', button: 'Uninstall',
-    desc: 'Azure: delete the resource group the installer created, or only tagged resources in an existing group, and the Power BI workspace if it created one. Fabric: delete the workspace, after its managed private endpoints.',
+    desc: 'Delete the workspace, after its managed private endpoints.',
     off: 'Nothing is installed yet.',
   },
   prereqs: {
@@ -116,20 +109,19 @@ const COMMANDS = {
     desc: 'See which roles, licences, capacities and Azure access you have and which are missing. Changes nothing.',
   },
 };
-const ROW_ORDER = ['run', 'rerun-failed', 'load-cowork', 'refresh', 'status', 'upload', 'check', 'update', 'deploy-app', 'access', 'rotate-secret', 'uninstall', 'install'];
+const ROW_ORDER = ['run', 'rerun-failed', 'load-cowork', 'refresh', 'status', 'upload', 'check', 'update', 'access', 'rotate-secret', 'uninstall', 'install'];
 /** The id of the Cowork Dataflow card in steps/next-steps.js. */
 const COWORK_STEP_ID = 'cowork-dataflow';
 
-// The install's stages in the order the installer prints them. Other headings (the target question,
-// Advanced settings, Who can view, Schedule...) slot in as they come.
+// The install's stages in the order the installer prints them. Other headings (Advanced settings,
+// Who can view, Schedule...) slot in as they come.
 const INSTALL_STAGES = [
-  'Sign in', 'Checking your tenant', 'Data sources', 'What to collect', 'Azure', 'Power BI', 'Fabric', 'App registration',
-  'Key Vault for the app secret', 'Checking Azure', 'Ready to set up', 'Setting up', 'Done',
+  'Sign in', 'Checking your tenant', 'Data sources', 'Power BI', 'Fabric', 'App registration',
+  'Key Vault for the app secret', 'Ready to set up', 'Setting up', 'Done',
 ];
 // Stages only one target has. The rail shows the chosen target's; the record's target, else Fabric, until one is entered.
 const TARGET_STAGES = {
   fabric: new Set(['Data sources', 'Fabric', 'App registration', 'Key Vault for the app secret']),
-  azure: new Set(['What to collect', 'Azure', 'Checking Azure']),
 };
 const stageTarget = (title) => Object.keys(TARGET_STAGES).find((k) => TARGET_STAGES[k].has(title));
 const applies = (run, s) => !s.only || s.only === run.platform;
@@ -151,11 +143,7 @@ const NEEDS = [
   'Permission to register apps in Entra, or an app registration you already have. If you have neither, you get an admin pack to send an admin.',
   'A Global Administrator or Privileged Role Administrator to grant admin consent. If that isn\'t you, you get a link to send them.',
 ];
-// The exe and the PowerShell launcher carry their own Node.js and a ready-built app.
-const NODE_NEED = 'Node.js 22.13 or later on this computer to build the Analytics Hub app.';
-const bundled = () => !!app.state?.exe;
 const launcher = () => app.state?.launcher ?? {};
-const needs = () => (bundled() ? NEEDS : [...NEEDS, NODE_NEED]);
 const installerName = () => launcher().command ?? 'valuelens-install';
 const installerWindow = () => launcher().window ?? 'your terminal';
 const GLYPH = { ok: 'check', warn: 'warn', fail: 'x' };
@@ -446,7 +434,7 @@ function createRun(e) {
   const run = {
     command: cmd, title, startedAt: e.at, endedAt: 0, state: 'running', error: '', phase: 'signin',
     stages: cmd === 'install' ? INSTALL_STAGES.map((t) => newStage(t, { only: stageTarget(t) })) : [newStage('Sign in'), newStage(COMMANDS[cmd].section)],
-    platform: app.state?.record?.target === 'azure' ? 'azure' : 'fabric',
+    platform: 'fabric',
     cur: null, child: null, doneTitle: '', signedIn: false, user: null, prompts: new Map(), progress: new Map(), adopted: false,
     events: [e],
   };
@@ -1569,7 +1557,6 @@ function renderHome() {
     ['Lakehouse', rec.lakehouse],
     ['Collects', rec.data.join(', ')],
     ['Semantic model', rec.model ?? 'Not deployed'],
-    ['App', rec.app ? link(rec.app.name, rec.app.url) : 'Not deployed'],
     ['Schedule', rec.schedule ?? 'Not set'],
     ['Client secret expires', rec.secretExpires ? h('span', { class: soon ? 'soon' : null }, `${rec.secretExpires} (${days < 0 ? 'expired' : `in ${days} days`})`) : 'Unknown'],
     ['First load', firstRun],
@@ -1655,7 +1642,7 @@ function prereqsPanel(busy) {
   } else {
     body = [
       h('p', { class: 'hint' }, 'Sign in to check which of these you have. The check only reads; it changes nothing.'),
-      h('ul', { class: 'needs' }, needs().map((n) => h('li', null, n))),
+      h('ul', { class: 'needs' }, NEEDS.map((n) => h('li', null, n))),
     ];
   }
   return h('section', { class: 'panel' },

@@ -26,7 +26,6 @@ import {
 import { run } from '../src/install.js';
 import { ensureWorkspaceRole } from '../src/steps/model.js';
 import {
-  agentInventoryFlowDefinition,
   BACKFILL_MARKER,
   connectionReferencesOf,
   isBound,
@@ -225,7 +224,6 @@ test('nameByConnection: each action on an HTTP with Microsoft Entra ID connectio
   assert.ok(studio.has('Reset_token') && studio.has('Reset_user_token'));
   const adls = { endpoint: 'https://acct.dfs.core.windows.net/landing' };
   check(feedbackFlowDefinition(adls), adls, 'via_Azure_Storage');
-  check(agentInventoryFlowDefinition(USER, SCHEDULE, 'Files/agent_inventory'), USER, 'via_OneLake');
   check(studioFlowDefinition(adls, SCHEDULE), adls, 'via_Azure_Storage');
 });
 
@@ -740,7 +738,7 @@ test('offerStudioRun: a trigger Power Automate turns down ends in the steps, nev
   assert.match(other.text(), new RegExp(`Couldn't run ${STUDIO_FLOW_NAME} \\(Forbidden\\)`));
 });
 
-test('offerStudioRun: --yes never runs it; an older record finds its environment ID; Azure goes by run history', async () => {
+test('offerStudioRun: --yes never runs it; an older record finds its environment ID', async () => {
   const yes = fakeUi({ yes: true });
   const flow = fakeFlowApi();
   const { ctx } = studioCtx({ ui: yes.ui, flow: flow.api });
@@ -759,20 +757,6 @@ test('offerStudioRun: --yes never runs it; an older record finds its environment
   assert.equal(c2.uploads.flowEnvironment?.id, 'env-found');
   assert.equal(older.calls[0], 'getFlow env-found flow-1');
   assert.ok(saves() >= 1);
-
-  const az = fakeFlowApi({ runs: [{ name: 'run-1', properties: { status: 'Succeeded' } }] });
-  const { ctx: ctx3, config: c3, looked } = studioCtx({ flow: az.api });
-  c3.target = 'azure';
-  c3.modules.consumption = true;
-  assert.equal(await offerStudioRun(ctx3, { pipelineNext: true }), 'done');
-  assert.deepEqual(looked, [], 'no OneLake on Azure');
-
-  const fresh = fakeFlowApi();
-  const { ctx: ctx4, config: c4 } = studioCtx({ flow: fresh.api });
-  c4.target = 'azure';
-  c4.modules.consumption = true;
-  assert.equal(await offerStudioRun(ctx4, { pipelineNext: true }), 'ran');
-  assert.ok(fresh.calls.includes('runTrigger env-1 flow-1 Daily'));
 });
 
 test('run: offers the Studio flow first, so the pipeline it starts picks up its files', async () => {
@@ -882,7 +866,6 @@ test('connections client: create, sign-in link, list, look up and delete in the 
   assert.equal(isConnected({ name: 'x', properties: { statuses: [{ status: 'Error', error: { code: 'Unauthenticated' } }] } }), false);
   assert.equal(isConnected(undefined), false);
   assert.equal(isOwnedConnectionName('Analytics Hub - OneLake'), true);
-  assert.equal(isOwnedConnectionName('Analytics Hub - Azure Storage (acct)'), true);
   assert.equal(isOwnedConnectionName('Analytics Hub - OneLake (copy)'), false);
   assert.equal(isOwnedConnectionName('HTTP with Microsoft Entra ID'), false);
 });
@@ -1031,20 +1014,7 @@ test('ensureFlows: when the connections can\'t be made or bound, it says so and 
   assert.match(text(), /To finish .*Copilot Studio credits/);
 });
 
-test('ownedConnections: Azure Storage names its account; the SharePoint drop and the app identity need no storage connection', () => {
-  const { ctx, config } = fakeCtx();
-  config.target = 'azure';
-  config.modules.consumption = true;
-  config.dataSources.studioCredits = 'api';
-  config.azure = /** @type {any} */ ({ outputs: { storageAccountName: 'acct' } });
-  const az = ownedConnections(ctx, ['studio']);
-  assert.deepEqual(az.map((w) => w.displayName), [CONNECTION_NAMES.ppApi, 'Analytics Hub - Azure Storage (acct)']);
-  assert.deepEqual(az[1].parameters, { baseResourceUrl: 'https://acct.dfs.core.windows.net', 'token:ResourceUri': 'https://storage.azure.com' });
-  assert.match(az[1].who, /Storage Blob Data Contributor on acct/);
-
-  config.azure = /** @type {any} */ ({ outputs: { storageAccountName: 'acct' }, drop: { siteId: 'site-1', folderUrl: 'https://contoso.sharepoint.com/drop' } });
-  assert.deepEqual(ownedConnections(ctx, ['studio']).map((w) => w.displayName), [CONNECTION_NAMES.ppApi]);
-
+test('ownedConnections: the app identity needs no storage connection', () => {
   const { ctx: app, config: appConfig } = fakeCtx();
   appConfig.dataSources.studioCredits = 'api';
   appConfig.uploads = { flowIdentity: 'app' };

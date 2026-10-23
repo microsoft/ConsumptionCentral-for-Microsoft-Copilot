@@ -8,7 +8,7 @@ import { routerWanted } from './uploads.js';
 /** Microsoft Graph's application ID. Same in every tenant. */
 export const GRAPH_APP_ID = '00000003-0000-0000-c000-000000000000';
 
-/** @typedef {'core' | 'orgData' | 'm365Activity' | 'agent365' | 'productFeedback' | 'consumption' | 'agentEvaluator' | 'defender'} ModuleId */
+/** @typedef {'core' | 'orgData' | 'agent365' | 'productFeedback' | 'consumption'} ModuleId */
 
 /**
  * @typedef {object} ModuleInfo
@@ -18,7 +18,6 @@ export const GRAPH_APP_ID = '00000003-0000-0000-c000-000000000000';
  * @property {boolean} required
  * @property {boolean} defaultOn
  * @property {string[]} permissions  Graph application permissions (by value).
- * @property {{ supported: boolean, graphRoles: string[] }} azure
  * @property {string | null} pipelineParameter  The pipeline's Enable* switch.
  */
 
@@ -31,7 +30,6 @@ export const MODULES = {
     required: true,
     defaultOn: true,
     permissions: ['AuditLogsQuery.Read.All', 'Reports.Read.All'],
-    azure: { supported: true, graphRoles: ['AuditLogsQuery.Read.All', 'Reports.Read.All', 'User.Read.All'] },
     pipelineParameter: null,
   },
   orgData: {
@@ -41,18 +39,7 @@ export const MODULES = {
     required: true,
     defaultOn: true,
     permissions: ['User.Read.All'],
-    azure: { supported: true, graphRoles: ['User.Read.All'] },
     pipelineParameter: 'EnableOrgDataPull',
-  },
-  m365Activity: {
-    id: 'm365Activity',
-    label: 'Microsoft 365 activity',
-    description: 'From the Microsoft 365 usage reports. Shows how people work across Teams, Outlook, SharePoint, OneDrive, Viva Engage and the Office apps.',
-    required: false,
-    defaultOn: true,
-    permissions: ['Reports.Read.All'],
-    azure: { supported: true, graphRoles: ['Reports.Read.All', 'ReportSettings.Read.All'] },
-    pipelineParameter: 'EnableM365Activity',
   },
   agent365: {
     id: 'agent365',
@@ -61,7 +48,6 @@ export const MODULES = {
     required: false,
     defaultOn: false,
     permissions: ['CopilotPackages.Read.All', 'Application.Read.All', 'User.Read.All'],
-    azure: { supported: true, graphRoles: [] },
     pipelineParameter: 'EnableAgent365',
   },
   productFeedback: {
@@ -71,7 +57,6 @@ export const MODULES = {
     required: false,
     defaultOn: false,
     permissions: [],
-    azure: { supported: true, graphRoles: [] },
     pipelineParameter: 'EnableProductFeedback',
   },
   consumption: {
@@ -81,41 +66,20 @@ export const MODULES = {
     required: false,
     defaultOn: false,
     permissions: [],
-    azure: { supported: true, graphRoles: [] },
     pipelineParameter: null,
-  },
-  agentEvaluator: {
-    id: 'agentEvaluator',
-    label: 'Agent Evaluator',
-    description: 'From Copilot Studio conversation transcripts in Dataverse. Shows how well your agents work: how conversations end, what people thought and where agents fall short.',
-    required: false,
-    defaultOn: false,
-    permissions: [],
-    azure: { supported: true, graphRoles: [] },
-    pipelineParameter: null,
-  },
-  defender: {
-    id: 'defender',
-    label: 'Defender (shadow AI and agent risk)',
-    description: 'From Microsoft Defender advanced hunting and Cloud Discovery. Shows AI tools other than Copilot in use on your devices and network, and agents that answer without sign-in. Needs Defender for Endpoint P2 or Defender for Cloud Apps; probes you aren\'t licensed for are skipped.',
-    required: false,
-    defaultOn: false,
-    permissions: ['ThreatHunting.Read.All', 'CloudApp-Discovery.Read.All'],
-    azure: { supported: true, graphRoles: ['ThreatHunting.Read.All', 'CloudApp-Discovery.Read.All'] },
-    pipelineParameter: 'EnableDefender',
   },
 };
 
 /** Modules that change the ValueLens semantic model. The others have their own model or none. */
-export const MODEL_MODULES = /** @type {const} */ (['core', 'orgData', 'm365Activity', 'agent365', 'productFeedback', 'defender']);
+export const MODEL_MODULES = /** @type {const} */ (['core', 'orgData', 'agent365', 'productFeedback']);
 
 /** Always collected: the dashboard is built on them. Shown locked on the Data sources screen. */
 export const ESSENTIAL_MODULES = /** @type {const} */ (['core', 'orgData']);
 
 /** Modules the Data sources screen can switch on, in order. */
-export const OPTIONAL_MODULES = /** @type {const} */ (['m365Activity', 'agent365', 'productFeedback', 'consumption', 'agentEvaluator', 'defender']);
+export const OPTIONAL_MODULES = /** @type {const} */ (['agent365', 'productFeedback', 'consumption']);
 
-/** @typedef {'auditIngester' | 'licensedUsers' | 'processor' | 'dataCheck' | 'orgData' | 'm365Activity' | 'agent365Registry' | 'agent365Lander' | 'productFeedback' | 'refreshModel' | 'azureAi' | 'studioConsumption' | 'vivaConsumption' | 'agentTranscripts' | 'uploadRouter' | 'workdayLander' | 'loadStatus' | 'defender' | 'resourceGraph' | 'accessScope'} NotebookKey */
+/** @typedef {'auditIngester' | 'licensedUsers' | 'processor' | 'dataCheck' | 'orgData' | 'agent365Registry' | 'agent365Lander' | 'productFeedback' | 'refreshModel' | 'azureAi' | 'studioConsumption' | 'vivaConsumption' | 'uploadRouter' | 'workdayLander' | 'loadStatus' | 'accessScope'} NotebookKey */
 
 /**
  * A text change the installer makes to its copy of a notebook. `find` must occur exactly once.
@@ -134,11 +98,9 @@ export const OPTIONAL_MODULES = /** @type {const} */ (['m365Activity', 'agent365
  * @property {string | null} placeholder  Notebook-ID placeholder in the pipeline template.
  * @property {boolean} [semanticModel]  Only deployed with the semantic model.
  * @property {boolean} [azure]  Only deployed when an Azure subscription is chosen for Azure AI.
- * @property {boolean} [dataverse]  Only deployed when at least one Dataverse environment is chosen.
  * @property {boolean} [uploads]  Only deployed when a source arrives as an uploaded CSV.
  * @property {boolean} [workday]  Only deployed when Workday org data is uploaded.
  * @property {boolean} [registry]  Left out when Agent 365 comes from its CSV export instead of the API.
- * @property {boolean} [resourceGraph]  Only deployed when agent configuration and Foundry come from Azure Resource Graph.
  * @property {boolean} [access]  Only deployed with org-scoped access (row-level security) on.
  * @property {Record<string, string>} [values]  String settings the installer's copy always has.
  * @property {Record<string, string>} [expressions]  Python expressions the installer's copy always has, e.g. `True`.
@@ -149,7 +111,6 @@ export const OPTIONAL_MODULES = /** @type {const} */ (['m365Activity', 'agent365
 export const SETUP_DIR = 'fabric';
 export const NOTEBOOKS_DIR = `${SETUP_DIR}/notebooks`;
 export const CONSUMPTION_NOTEBOOKS_DIR = `${NOTEBOOKS_DIR}/credit-consumption`;
-export const AGENT_EVALUATOR_NOTEBOOKS_DIR = `${NOTEBOOKS_DIR}/agent-evaluator`;
 export const WORKDAY_NOTEBOOKS_DIR = `${NOTEBOOKS_DIR}/workday-org-data`;
 export const STUDIO_LANDING = 'Files/landing/studio';
 export const VIVA_LANDING = 'Files/landing/viva';
@@ -226,16 +187,6 @@ export const NOTEBOOKS = [
     uploads: true,
   },
   {
-    key: 'resourceGraph',
-    file: 'Copilot_Resource_Graph_Ingester.ipynb',
-    displayName: 'Copilot_Resource_Graph_Ingester',
-    module: 'core',
-    credentials: true,
-    parameters: [],
-    placeholder: null,
-    resourceGraph: true,
-  },
-  {
     key: 'loadStatus',
     file: 'AnalyticsHub_Load_Status.ipynb',
     displayName: 'AnalyticsHub_Load_Status',
@@ -243,15 +194,6 @@ export const NOTEBOOKS = [
     credentials: false,
     parameters: ['PIPELINE_RUN_ID', 'PIPELINE_TRIGGER_TIME'],
     placeholder: null,
-  },
-  {
-    key: 'm365Activity',
-    file: 'Copilot_M365_Activity_Ingester.ipynb',
-    displayName: 'Copilot_M365_Activity_Ingester',
-    module: 'm365Activity',
-    credentials: true,
-    parameters: [],
-    placeholder: 'REPLACE_WITH_M365_ACTIVITY_NOTEBOOK_ID',
   },
   {
     key: 'agent365Registry',
@@ -301,15 +243,6 @@ export const NOTEBOOKS = [
     placeholder: 'REPLACE_WITH_PRODUCT_FEEDBACK_NOTEBOOK_ID',
     // Until the first export is uploaded, an empty table keeps the User Feedback page dormant.
     expressions: { ALLOW_EMPTY_FIRST_SNAPSHOT: 'True' },
-  },
-  {
-    key: 'defender',
-    file: 'Copilot_Defender_Ingester.ipynb',
-    displayName: 'Copilot_Defender_Ingester',
-    module: 'defender',
-    credentials: true,
-    parameters: [],
-    placeholder: 'REPLACE_WITH_DEFENDER_NOTEBOOK_ID',
   },
   {
     key: 'refreshModel',
@@ -362,31 +295,17 @@ export const NOTEBOOKS = [
     parameters: [],
     placeholder: null,
   },
-  {
-    key: 'agentTranscripts',
-    file: 'Copilot_Agent_Transcript_Parser.ipynb',
-    dir: AGENT_EVALUATOR_NOTEBOOKS_DIR,
-    displayName: 'AgentEval_Transcript_Parser',
-    module: 'agentEvaluator',
-    credentials: true,
-    parameters: ['LOOKBACK_DAYS'],
-    placeholder: null,
-    dataverse: true,
-  },
 ];
 
-/** @typedef {{ orgData: boolean, m365Activity: boolean, agent365: boolean, productFeedback: boolean, consumption: boolean, agentEvaluator: boolean, defender?: boolean }} ModuleChoice */
+/** @typedef {{ orgData: boolean, agent365: boolean, productFeedback: boolean, consumption: boolean }} ModuleChoice */
 
 /** @returns {ModuleChoice} */
 export function defaultModules() {
   return {
     orgData: MODULES.orgData.defaultOn,
-    m365Activity: MODULES.m365Activity.defaultOn,
     agent365: MODULES.agent365.defaultOn,
     productFeedback: MODULES.productFeedback.defaultOn,
     consumption: MODULES.consumption.defaultOn,
-    agentEvaluator: MODULES.agentEvaluator.defaultOn,
-    defender: MODULES.defender.defaultOn,
   };
 }
 
@@ -416,19 +335,16 @@ export function enabledModules(modules) {
   /** @type {ModuleId[]} */
   const out = ['core'];
   if (modules.orgData) out.push('orgData');
-  if (modules.m365Activity) out.push('m365Activity');
   if (modules.agent365) out.push('agent365');
   if (modules.productFeedback) out.push('productFeedback');
   if (modules.consumption) out.push('consumption');
-  if (modules.agentEvaluator) out.push('agentEvaluator');
-  if (modules.defender) out.push('defender');
   return out;
 }
 
 /**
  * Notebooks to deploy for the chosen modules, in deployment order.
  * @param {ModuleChoice} modules
- * @param {{ semanticModel?: boolean, azureAi?: boolean, dataverse?: boolean, access?: boolean, dataSources?: import('./uploads.js').DataSourceModes }} [opts]
+ * @param {{ semanticModel?: boolean, azureAi?: boolean, access?: boolean, dataSources?: import('./uploads.js').DataSourceModes }} [opts]
  * @returns {NotebookInfo[]}
  */
 export function notebooksFor(modules, opts = {}) {
@@ -439,11 +355,9 @@ export function notebooksFor(modules, opts = {}) {
       on.has(nb.module) &&
       (!nb.semanticModel || opts.semanticModel) &&
       (!nb.azure || opts.azureAi) &&
-      (!nb.dataverse || opts.dataverse) &&
       (!nb.uploads || (!!ds && routerWanted(ds))) &&
       (!nb.workday || ds?.workday === 'csv') &&
       (!nb.registry || ds?.agent365 !== 'csv') &&
-      (!nb.resourceGraph || ds?.resourceGraph === 'api') &&
       (!nb.access || !!opts.access),
   );
 }
@@ -461,19 +375,6 @@ export function permissionsFor(modules, dataSources) {
   for (const id of enabledModules(modules)) {
     if (id === 'agent365' && dataSources?.agent365 === 'csv') continue;
     for (const p of MODULES[id].permissions) set.add(p);
-  }
-  return [...set].sort();
-}
-
-/**
- * Graph application roles assigned to the Azure managed identity for the selected modules.
- * @param {ModuleChoice} modules
- */
-export function azureGraphRolesFor(modules) {
-  const set = new Set(MODULES.core.azure.graphRoles);
-  for (const id of enabledModules(modules)) {
-    if (!MODULES[id].azure.supported && id !== 'core') continue;
-    for (const p of MODULES[id].azure.graphRoles) set.add(p);
   }
   return [...set].sort();
 }

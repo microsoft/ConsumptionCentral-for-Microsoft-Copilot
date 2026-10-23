@@ -8,14 +8,15 @@ import { NOTEBOOKS } from '../catalog.js';
 /** Activities whose notebooks are archived. The installer never deploys them. */
 export const ARCHIVED_ACTIVITIES = ['Conditionally_Run_Dataverse_Transcripts', 'Conditionally_Run_Credit_Consumption'];
 export const ARCHIVED_PARAMETERS = ['EnableDataverse', 'EnableConsumption'];
+/** Template branches for loads this installer doesn't offer. It never deploys them either. */
+export const UNOFFERED_ACTIVITIES = ['Conditionally_Run_M365_Activity', 'Conditionally_Run_Defender'];
+export const UNOFFERED_PARAMETERS = ['EnableM365Activity', 'EnableDefender'];
 
 /** Module branches in the template, so they can be dropped when a module is off. */
 const MODULE_BRANCHES = {
   orgData: { activities: ['Conditionally_Run_Org_Data'], parameter: 'EnableOrgDataPull' },
-  m365Activity: { activities: ['Conditionally_Run_M365_Activity'], parameter: 'EnableM365Activity' },
   agent365: { activities: ['Conditionally_Run_Agent365', 'Run_Agent365_CSV_Fallback'], parameter: 'EnableAgent365' },
   productFeedback: { activities: ['Conditionally_Run_Product_Feedback'], parameter: 'EnableProductFeedback' },
-  defender: { activities: ['Conditionally_Run_Defender'], parameter: 'EnableDefender' },
 };
 
 /**
@@ -55,7 +56,6 @@ const BINDINGS = {
  * agent's detail, and on a large tenant its weekly refresh outgrew the template's 2 hours. `registry`
  * sets that load's TIME_BUDGET_MIN, after which it leaves scheduled refreshes to the next run and writes
  * what it has, and its retry count (the CSV fallback covers a failure, so it keeps its own).
- * `transcripts` is the Copilot Studio transcript load's timeout.
  * @type {Record<TenantScale, ScaleProfile>}
  */
 export const SCALE_PROFILES = {
@@ -63,10 +63,8 @@ export const SCALE_PROFILES = {
     audit: { CHUNK_HOURS: 24, TIME_BUDGET_MIN: 90 },
     timeouts: {
       Run_Agent365_Registry_Ingester: '0.03:00:00',
-      Run_Defender_Ingester: '0.01:00:00',
     },
     registry: { budget: 120, retry: 1 },
-    transcripts: '0.03:00:00',
     refresh: { timeout: '0.03:00:00', minutes: 170 },
   },
   large: {
@@ -76,12 +74,9 @@ export const SCALE_PROFILES = {
       Run_Audit_Log_Processor: '0.03:00:00',
       Run_Licensed_Users_Ingester: '0.00:30:00',
       Run_Org_Data_Ingester: '0.01:00:00',
-      Run_M365_Activity_Ingester: '0.02:00:00',
       Run_Agent365_Registry_Ingester: '0.06:00:00',
-      Run_Defender_Ingester: '0.02:00:00',
     },
     registry: { budget: 270, retry: 2 },
-    transcripts: '0.06:00:00',
     refresh: { timeout: '0.05:00:00', minutes: 290 },
   },
 };
@@ -91,7 +86,6 @@ export const SCALE_PROFILES = {
  * @property {Record<string, number>} audit  The audit load's window size, retries and time budget.
  * @property {Record<string, string>} timeouts  Activity timeouts that replace the template's.
  * @property {{ budget: number, retry: number }} [registry]  The Agent 365 registry load's TIME_BUDGET_MIN and retry count.
- * @property {string} transcripts  The Copilot Studio transcript load's timeout.
  * @property {{ timeout: string, minutes: number }} refresh
  */
 
@@ -102,7 +96,7 @@ export const SCALE_PROFILES = {
  * notebook's own budget, which fits the template's 2 hours.
  * @type {ScaleProfile}
  */
-export const UNSIZED_PROFILE = { audit: { TIME_BUDGET_MIN: 90 }, timeouts: {}, transcripts: '0.02:00:00', refresh: SCALE_PROFILES.standard.refresh };
+export const UNSIZED_PROFILE = { audit: { TIME_BUDGET_MIN: 90 }, timeouts: {}, refresh: SCALE_PROFILES.standard.refresh };
 
 /** @param {TenantScale | undefined} scale */
 export const scaleProfile = (scale) => (scale === 'large' || scale === 'standard' ? SCALE_PROFILES[scale] : UNSIZED_PROFILE);
@@ -117,13 +111,10 @@ export const scaleProfile = (scale) => (scale === 'large' || scale === 'standard
  * @property {string} [semanticModelId]  Adds a last step that refreshes this model.
  * @property {boolean} [azureAi]  Runs the Azure AI notebook (credit consumption).
  * @property {string} [consumptionModelId]  Adds a step that refreshes the consumption model.
- * @property {boolean} [agentTranscripts]  Runs the Agent Evaluator transcript parser.
- * @property {string} [agentEvaluatorModelId]  Adds a step that refreshes the Agent Evaluator model.
  * @property {boolean} [uploadRouter]  Runs the upload router first in lane 2, so uploaded CSVs reach their loads.
  * @property {boolean} [workday]  Enriches org data from the uploaded Workday export after the Entra ID load.
  * @property {boolean} [agent365Csv]  Agent 365 comes from its admin center export: the lander replaces the registry load.
  * @property {string} [coworkDataflowId]  Refreshes this Dataflow, which pulls Cowork credits from Viva Insights, before the Viva load.
- * @property {boolean} [resourceGraph]  Reads agent configuration and Foundry from Azure Resource Graph, after Agent 365.
  * @property {boolean} [access]  Org-scoped access is on: loads the access tables after org data, before the models refresh.
  */
 
@@ -131,16 +122,6 @@ export const REFRESH_ACTIVITY = 'Refresh_Semantic_Model';
 /** Loads access_scope and rebuilds access_people. Only with org-scoped access on. */
 export const ACCESS_ACTIVITY = 'Run_Access_Scope';
 export const CONSUMPTION_REFRESH_ACTIVITY = 'Refresh_Consumption_Model';
-export const AGENT_EVALUATOR_ACTIVITY = 'Run_Agent_Evaluator_Transcripts';
-export const AGENT_EVALUATOR_REFRESH_ACTIVITY = 'Refresh_Agent_Evaluator_Model';
-
-/** Days of transcripts each scheduled run re-reads. Merge keeps the overlap from duplicating. */
-export const TRANSCRIPT_LOOKBACK_DAYS = 14;
-/**
- * Days of transcripts a backfill, such as the first run, reads at least. Dataverse keeps transcripts
- * for 30 days unless an admin changed the clean-up job, so this reads all an environment still has.
- */
-export const TRANSCRIPT_BACKFILL_DAYS = 180;
 
 /** The credit consumption notebooks, as pipeline activities. */
 export const CONSUMPTION_ACTIVITIES = /** @type {const} */ ([
@@ -182,14 +163,12 @@ export const COWORK_WRAPPER_ACTIVITY = 'Conditionally_Refresh_Cowork_Credits';
  * Dataflow's connections aren't signed in yet.
  */
 export const SKIP_COWORK_PARAMETER = 'SkipCowork';
-/** Agent configuration and Foundry from Azure Resource Graph. It never fails for want of access: the notebook records that in arg_status. */
-export const RESOURCE_GRAPH_ACTIVITY = 'Run_Resource_Graph_Ingester';
 
 /** Bump when the pipeline's layout changes, so re-running the installer updates a pipeline an older version built. */
 export const PIPELINE_VERSION = 7;
 /** What this version changed, for people whose pipeline an older version built. */
 export const PIPELINE_CHANGE =
-  'This version gives the Agent 365 registry, Defender and Copilot Studio transcript loads more time, sized by tenant size, and gives the registry load a time budget so a long weekly refresh finishes on the next run instead of timing out. Your data and settings are kept.';
+  'This version gives the Agent 365 registry load more time, sized by tenant size, and gives it a time budget so a long weekly refresh finishes on the next run instead of timing out. Your data and settings are kept.';
 
 /** Notebooks with the same tag share one high-concurrency Spark session (letters, digits and underscores only). */
 export const SESSION_TAG = 'analytics_hub';
@@ -199,14 +178,14 @@ export const STATUS_ACTIVITY = 'Record_Load_Status';
 /**
  * Lane 2: every step except the audit log, its processor and the semantic model refresh, one after
  * another while lane 1 runs. A trial or small capacity can start only a few notebooks at once and
- * turns the rest away.
+ * turns the rest away. The template branches the installer drops keep their places, so the Manual
+ * setup template, which still has them, is in the same lanes.
  */
 export const LANE_ORDER = [
   'Run_Licensed_Users_Ingester',
   UPLOAD_ROUTER_ACTIVITY,
   'Conditionally_Run_Agent365',
   AGENT365_FALLBACK,
-  RESOURCE_GRAPH_ACTIVITY,
   'Conditionally_Run_Org_Data',
   WORKDAY_ACTIVITY,
   ACCESS_ACTIVITY,
@@ -218,16 +197,14 @@ export const LANE_ORDER = [
   COWORK_WRAPPER_ACTIVITY,
   ...CONSUMPTION_ACTIVITIES.slice(2).map((a) => a.name),
   CONSUMPTION_REFRESH_ACTIVITY,
-  AGENT_EVALUATOR_ACTIVITY,
-  AGENT_EVALUATOR_REFRESH_ACTIVITY,
 ];
 
 /** Lane 2 steps that keep their own conditions. Each already waits for the step before it. */
-const OWN_CONDITIONS = new Set([AGENT365_FALLBACK, CONSUMPTION_REFRESH_ACTIVITY, AGENT_EVALUATOR_REFRESH_ACTIVITY]);
+const OWN_CONDITIONS = new Set([AGENT365_FALLBACK, CONSUMPTION_REFRESH_ACTIVITY]);
 
 /**
  * Chains the lane 2 steps that are present. Each waits for the one before it to finish, whether it
- * succeeded or failed. The fallback and the two model refreshes keep their own conditions, and the
+ * succeeded or failed. The fallback and the consumption model refresh keep their own conditions, and the
  * next step also runs when one of them is skipped.
  * @param {any[]} activities  Top-level activities.
  */
@@ -352,7 +329,7 @@ function refreshStep(settings, o) {
 function refreshActivity(activities, settings) {
   const has = (/** @type {string} */ name) => activities.some((a) => a.name === name);
   const dependsOn = [{ activity: 'Run_Audit_Log_Processor', dependencyConditions: ['Succeeded'] }];
-  for (const name of [RESOURCE_GRAPH_ACTIVITY, 'Conditionally_Run_Org_Data', WORKDAY_ACTIVITY, ACCESS_ACTIVITY, 'Conditionally_Run_M365_Activity', 'Conditionally_Run_Product_Feedback', 'Conditionally_Run_Defender']) {
+  for (const name of ['Conditionally_Run_Org_Data', WORKDAY_ACTIVITY, ACCESS_ACTIVITY, 'Conditionally_Run_Product_Feedback']) {
     if (has(name)) dependsOn.push({ activity: name, dependencyConditions: ['Completed'] });
   }
   return refreshStep(settings, {
@@ -439,53 +416,6 @@ function consumptionRefreshActivity(activities, settings) {
 }
 
 /**
- * Reads Copilot Studio transcripts from Dataverse. A backfill reads as far back as the audit load, and
- * at least {@link TRANSCRIPT_BACKFILL_DAYS}, as the transcripts don't add to the audit load's time.
- * @param {PipelineSettings} settings
- */
-function agentTranscriptsActivity(settings) {
-  const notebookId = settings.notebookIds.agentTranscripts;
-  if (!notebookId) throw new Error('The Copilot Studio transcript notebook has not been deployed.');
-  const timeout = scaleProfile(settings.scale).transcripts;
-  return {
-    name: AGENT_EVALUATOR_ACTIVITY,
-    description: 'Reads Copilot Studio conversation transcripts from each chosen Dataverse environment and merges them into agent_sessions, agent_turns and the other agent tables.',
-    type: 'TridentNotebook',
-    dependsOn: [],
-    policy: { timeout, ...retryPolicy(timeout), secureOutput: false, secureInput: false },
-    typeProperties: {
-      notebookId,
-      workspaceId: settings.workspaceId,
-      parameters: {
-        LOOKBACK_DAYS: {
-          value: {
-            value: `@if(equals(pipeline().parameters.AuditMode, 'backfill'), max(pipeline().parameters.BackfillDays, ${TRANSCRIPT_BACKFILL_DAYS}), ${TRANSCRIPT_LOOKBACK_DAYS})`,
-            type: 'Expression',
-          },
-          type: 'int',
-        },
-      },
-    },
-  };
-}
-
-/**
- * Refreshes the Agent Evaluator model once the transcripts have loaded and the org data has had its turn.
- * @param {any[]} activities
- * @param {PipelineSettings} settings
- */
-function agentEvaluatorRefreshActivity(activities, settings) {
-  const dependsOn = [{ activity: AGENT_EVALUATOR_ACTIVITY, dependencyConditions: ['Succeeded'] }, ...orgDataDependencies(activities)];
-  return refreshStep(settings, {
-    name: AGENT_EVALUATOR_REFRESH_ACTIVITY,
-    description: 'Refreshes the Agent Evaluator model once the transcripts have loaded.',
-    modelId: /** @type {string} */ (settings.agentEvaluatorModelId),
-    dependsOn,
-    writeMode: 'merge',
-  });
-}
-
-/**
  * A model refresh waits for the org data loads that are present, whether they succeeded or not.
  * @param {any[]} activities
  */
@@ -538,8 +468,8 @@ export function buildPipeline(template, settings) {
   const props = doc.properties;
   if (!props || !Array.isArray(props.activities)) throw new Error('Pipeline template has no activities.');
 
-  const drop = new Set(ARCHIVED_ACTIVITIES);
-  const dropParams = new Set(ARCHIVED_PARAMETERS);
+  const drop = new Set([...ARCHIVED_ACTIVITIES, ...UNOFFERED_ACTIVITIES]);
+  const dropParams = new Set([...ARCHIVED_PARAMETERS, ...UNOFFERED_PARAMETERS]);
   for (const [module, branch] of Object.entries(MODULE_BRANCHES)) {
     const on = settings.modules[/** @type {keyof typeof MODULE_BRANCHES} */ (module)];
     if (on) {
@@ -600,16 +530,6 @@ export function buildPipeline(template, settings) {
     );
   }
   const workday = !!(settings.workday && settings.modules.orgData !== false);
-  if (settings.resourceGraph) {
-    filled.properties.activities.push(
-      notebookStep(settings, {
-        key: 'resourceGraph',
-        name: RESOURCE_GRAPH_ACTIVITY,
-        description: 'Reads Copilot Studio agent configuration, Power Platform environments, agent flows and Foundry resources from Azure Resource Graph, or the agent inventory flow\'s newest file in Files/arg_inventory. Writes arg_agent_config, arg_environments, arg_agent_flows, arg_foundry_resources and arg_status; what it can\'t read is recorded there, not failed.',
-        timeout: '0.00:30:00',
-      }),
-    );
-  }
   if (workday) {
     filled.properties.activities.push(
       notebookStep(settings, {
@@ -639,11 +559,6 @@ export function buildPipeline(template, settings) {
     }
     if (settings.consumptionModelId) filled.properties.activities.push(consumptionRefreshActivity(filled.properties.activities, settings));
   }
-  const transcripts = !!(settings.modules.agentEvaluator && settings.agentTranscripts);
-  if (transcripts) {
-    filled.properties.activities.push(agentTranscriptsActivity(settings));
-    if (settings.agentEvaluatorModelId) filled.properties.activities.push(agentEvaluatorRefreshActivity(filled.properties.activities, settings));
-  }
   chainLanes(filled.properties.activities);
   const status = !!settings.notebookIds.loadStatus;
   if (status) filled.properties.activities.push(statusActivity(filled.properties.activities, settings));
@@ -656,7 +571,6 @@ export function buildPipeline(template, settings) {
     'Lane 2 runs the other loads one after another; a load that fails doesn\'t stop the next. ' +
     `${settings.uploadRouter ? 'Lane 2 starts by routing any CSV exports dropped in Files/analytics_hub_uploads to the loads that read them. ' : ''}` +
     `${settings.modules.consumption ? `The credit consumption loads run in lane 2${settings.consumptionModelId ? ' and refresh the consumption model when they all succeed' : ''}. ` : ''}` +
-    `${transcripts ? `The Agent Evaluator reads Copilot Studio transcripts at the end of lane 2${settings.agentEvaluatorModelId ? ', then refreshes its model' : ''}. ` : ''}` +
     `${status ? `${STATUS_ACTIVITY} runs last: it writes each load's outcome to dbo.load_log and fails the run if any load failed. ` : ''}` +
     `Each load retries up to 3 times, ${RETRY_INTERVAL_SECONDS / 60} minutes apart. ` +
     'Scheduled runs use the parameter defaults (incremental audit load, merge into the curated table). ' +

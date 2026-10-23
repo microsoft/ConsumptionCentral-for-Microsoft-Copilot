@@ -14,19 +14,18 @@ import {
   SCOPED_ROLE,
   scopedFilter,
 } from '../src/transform/access.js';
-import { buildAgentEvaluatorModel, buildConsumptionModel, buildModel, loadTemplateModel } from '../src/transform/model.js';
+import { buildConsumptionModel, buildModel, loadTemplateModel } from '../src/transform/model.js';
 import { realSources } from './fakes.js';
 
 const sources = realSources();
 const lake = { server: 'abc.datawarehouse.fabric.microsoft.com', database: 'ValueLens' };
-const allModules = { orgData: true, m365Activity: true, agent365: true, productFeedback: true, defender: true, consumption: true, agentEvaluator: true };
+const allModules = { orgData: true, agent365: true, productFeedback: true, consumption: true };
 
 /** @type {Record<keyof typeof ACCESS_INVENTORY, (access?: { orgAttribute?: string }) => import('../src/transform/model.js').ModelBim>} */
 const build = {
   valuelens: (access) =>
-    buildModel(loadTemplateModel(/** @type {string} */ (sources.modelFile)), { ...lake, modules: /** @type {any} */ (allModules), resourceGraph: true, access }),
-  consumption: (access) => buildConsumptionModel(loadTemplateModel(/** @type {string} */ (sources.consumptionModelFile)), { ...lake, resourceGraph: true, access }),
-  agentEvaluator: (access) => buildAgentEvaluatorModel(loadTemplateModel(/** @type {string} */ (sources.agentEvaluatorModelFile)), { ...lake, access }),
+    buildModel(loadTemplateModel(/** @type {string} */ (sources.modelFile)), { ...lake, modules: /** @type {any} */ (allModules), access }),
+  consumption: (access) => buildConsumptionModel(loadTemplateModel(/** @type {string} */ (sources.consumptionModelFile)), { ...lake, access }),
 };
 const kinds = /** @type {(keyof typeof ACCESS_INVENTORY)[]} */ (Object.keys(ACCESS_INVENTORY));
 

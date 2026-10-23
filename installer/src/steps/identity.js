@@ -50,8 +50,6 @@ export const isResumeLater = (err) => /** @type {Error | undefined} */ (err)?.na
 /** Permissions some tenants don't have yet, and what happens without them. Their module falls back gracefully. */
 export const OPTIONAL_PERMISSION_EFFECTS = {
   'CopilotPackages.Read.All': 'The Agent 365 registry will fall back to its CSV export.',
-  'ThreatHunting.Read.All': "Defender's device and agent probes will be skipped.",
-  'CloudApp-Discovery.Read.All': "Defender's Cloud Discovery probe will be skipped.",
 };
 export const OPTIONAL_PERMISSIONS = Object.keys(OPTIONAL_PERMISSION_EFFECTS);
 

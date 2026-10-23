@@ -5,19 +5,6 @@
  */
 
 export const DISCOVERY_URL = 'https://globaldisco.crm.dynamics.com/api/discovery/v2.0';
-/**
- * Created by Copilot Studio in each environment. Its transcript read is at Basic depth, so on its
- * own it reads only the transcripts the reader owns or that are shared with it. Copilot Studio's
- * service user owns them, so for an app registration or managed identity that's usually none.
- */
-export const TRANSCRIPT_ROLE = 'Bot Transcript Viewer';
-/**
- * The whole of the role the installer creates for the transcript reader, at Organization depth.
- * Agent (bot) read isn't here: nothing the reader runs uses it yet.
- */
-export const TRANSCRIPT_READ_PRIVILEGES = Object.freeze(['prvReadconversationtranscript']);
-/** The start of the description of a role the installer created, so it never touches a role that only shares the name. */
-export const READ_ROLE_MARK = 'Created by the Analytics Hub installer';
 
 const ODATA = { 'OData-MaxVersion': '4.0', 'OData-Version': '4.0' };
 /** Dataverse's privilege depths, in the order of their numbers. Global is Organization in the admin center. */

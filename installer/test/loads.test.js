@@ -36,11 +36,10 @@ const ids = {
   agent365Registry: id(5),
   agent365Lander: id(6),
   productFeedback: id(7),
-  m365Activity: id(8),
   refreshModel: id(9),
   loadStatus: id(10),
 };
-const modules = { orgData: true, m365Activity: true, agent365: true, productFeedback: false, consumption: false, agentEvaluator: false };
+const modules = { orgData: true, agent365: true, productFeedback: false, consumption: false };
 /** @param {Partial<import('../src/transform/pipeline.js').PipelineSettings>} [more] */
 const build = (more = {}) => buildPipeline(template, { workspaceId: WS, notebookIds: ids, modules, semanticModelId: 'model-1', ...more });
 
@@ -134,8 +133,6 @@ test('loadCards: one card per source; switched-off sources and covered API loads
     [AGENT365_REGISTRY]: 'Failed',
     [AGENT365_FALLBACK]: 'Succeeded',
     Conditionally_Run_Org_Data: 'Succeeded',
-    Conditionally_Run_M365_Activity: 'Succeeded',
-    Run_M365_Activity_Ingester: 'Succeeded',
   });
   const cards = loadCards(runs, acts);
   const by = Object.fromEntries(cards.map((c) => [c.activity, c]));
@@ -192,8 +189,6 @@ test('rerunSteps reruns the failed load, what waited for it and the refresh, but
     [AGENT365_REGISTRY]: 'Succeeded',
     Conditionally_Run_Org_Data: 'Succeeded',
     Run_Org_Data_Ingester: 'Succeeded',
-    Conditionally_Run_M365_Activity: 'Succeeded',
-    Run_M365_Activity_Ingester: 'Succeeded',
   });
   /** @type {string[]} */
   const ran = [];
@@ -265,8 +260,6 @@ function failedRun() {
     ran(AGENT365_REGISTRY),
     ran('Conditionally_Run_Org_Data'),
     ran('Run_Org_Data_Ingester'),
-    ran('Conditionally_Run_M365_Activity'),
-    ran('Run_M365_Activity_Ingester'),
   ];
   // A test that starts more jobs than it planned for fails instead of polling forever.
   const getJob = fabric.api.getJob;
@@ -380,5 +373,4 @@ test('status tables and warnings: every kind has a plain text, and the notebook 
   assert.deepEqual(json.statusTables, STATUS_TABLES);
   assert.deepEqual(json.warnings.map((/** @type {any} */ w) => w.kind), ['forbidden', 'unlicensed', 'other', 'empty']);
   for (const w of WARNINGS) assert.ok(w.text.includes('{items}') && w.fix, w.kind);
-  assert.ok(STATUS_TABLES.some((t) => t.table === 'evaluator_status'));
 });

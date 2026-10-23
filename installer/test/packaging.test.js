@@ -5,23 +5,9 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { DEFAULT_SOURCE_DIR } from '../src/sources.js';
 import {
-  APP_PAYLOAD_DIR, MAX_NATIVE_PATH, MAX_PAYLOAD_PATH, MIRROR_REGISTRY, PUBLIC_REGISTRY, appFile, appPackageJson, fileVersion, installerFile, leakedIds,
-  localIds, payloadId, prebuiltRayfinYml, prunable, publicRegistry, sourceFiles, tooLong,
+  MAX_NATIVE_PATH, MAX_PAYLOAD_PATH, MIRROR_REGISTRY, PUBLIC_REGISTRY, fileVersion, installerFile, leakedIds,
+  localIds, payloadId, prunable, publicRegistry, sourceFiles, tooLong,
 } from '../packaging/payload.js';
-
-const RAYFIN_YML = `id: valuelens
-name: Analytics Hub
-services:
-  auth:
-    enabled: true
-  staticHosting:
-    enabled: true
-    folder: dist
-    buildCommand: npm run build:fabric
-    indexDocument: index.html
-  functions:
-    enabled: false
-`;
 
 test('packaging: ships every template the installer reads, and they exist', () => {
   const files = sourceFiles();
@@ -29,9 +15,6 @@ test('packaging: ships every template the installer reads, and they exist', () =
   assert.ok(files.includes('fabric/ValueLens - Fabric.pbit'));
   assert.ok(files.includes('fabric/notebooks/Copilot_Audit_Log_Processor.ipynb'));
   assert.ok(files.some((f) => f.startsWith('fabric/notebooks/credit-consumption/')));
-  assert.ok(files.some((f) => f.startsWith('fabric/notebooks/agent-evaluator/')));
-  assert.ok(files.includes('app/src/ask/catalogue.json'), 'the Ask catalogue, for the data agent');
-  assert.ok(files.some((f) => f.startsWith('app/src/queries/') && f.endsWith('.dax')), 'the queries the catalogue names');
   assert.ok(files.every((f) => !f.includes('\\')));
   for (const f of files) assert.ok(existsSync(join(DEFAULT_SOURCE_DIR, f)), `${f} is missing`);
 });
@@ -39,43 +22,6 @@ test('packaging: ships every template the installer reads, and they exist', () =
 test('packaging: ships the installer code, not its tests or tooling', () => {
   for (const f of ['bin/valuelens-install.js', 'src/cli.js', 'src/web/index.html', 'package.json', 'package-lock.json', 'README.md']) assert.ok(installerFile(f), f);
   for (const f of ['test/cli.test.js', 'packaging/build-exe.js', 'jsconfig.json', '.gitignore', 'valuelens-install.json']) assert.ok(!installerFile(f), f);
-});
-
-test('packaging: ships only what deploys the built app', () => {
-  for (const f of ['tsconfig.json', 'LICENSE', 'rayfin/tsconfig.json', 'rayfin/data/schema.ts', 'rayfin/data/TaskTime.ts', 'rayfin/data/ReportPack.ts']) assert.ok(appFile(f), f);
-  for (const f of ['src/main.tsx', 'package.json', 'rayfin/rayfin.yml', 'rayfin/.deployments.json', 'rayfin/.env', 'fabric.yaml', '.env.local', 'rayfin/data/sub/x.ts']) {
-    assert.ok(!appFile(f), f);
-  }
-  assert.equal(APP_PAYLOAD_DIR, 'f/app');
-});
-
-test('packaging: rayfin.yml deploys the built files without building', () => {
-  const out = prebuiltRayfinYml(RAYFIN_YML);
-  assert.match(out, /^ {4}folder: public$/m);
-  assert.doesNotMatch(out, /buildCommand/);
-  assert.match(out, /^ {4}indexDocument: index.html$/m);
-  assert.match(out, /^ {2}functions:\n {4}enabled: false$/m);
-  assert.equal(out.split('\n').length, RAYFIN_YML.split('\n').length - 1);
-  assert.equal(prebuiltRayfinYml(RAYFIN_YML.replaceAll('\n', '\r\n')), out);
-});
-
-test('packaging: rayfin.yml without static hosting is refused', () => {
-  assert.throws(() => prebuiltRayfinYml('id: x\nservices:\n  auth:\n    enabled: true\n'), /no staticHosting section/);
-  assert.throws(() => prebuiltRayfinYml('services:\n  staticHosting:\n    enabled: true\n  data:\n    folder: x\n'), /no staticHosting folder/);
-});
-
-test('packaging: the committed rayfin.yml can be made prebuilt', () => {
-  // The working copy is skip-worktree on developer machines, but keeps the same shape.
-  const yml = readFileSync(join(DEFAULT_SOURCE_DIR, 'app', 'rayfin', 'rayfin.yml'), 'utf8');
-  assert.match(prebuiltRayfinYml(yml), /^ {4}folder: public$/m);
-});
-
-test('packaging: the app package.json pins Rayfin and names vite without installing it', () => {
-  const pkg = appPackageJson({ rayfin: '1.35.1', vite: '8.0.16', version: '0.2.0' });
-  assert.deepEqual(pkg.dependencies, { '@microsoft/rayfin-cli': '1.35.1', '@microsoft/rayfin-core': '1.35.1' });
-  assert.deepEqual(pkg.devDependencies, { vite: '8.0.16' });
-  assert.equal(pkg.type, 'module');
-  assert.equal(pkg.private, true);
 });
 
 test('packaging: payload IDs change with the content', () => {
@@ -106,27 +52,6 @@ test('packaging: source maps in installed packages are left out', () => {
   for (const f of ['f/app/public/assets/index.js.map', 'f/app/node_modules/a/index.js', 'f/installer/node_modules/a/map.js', 'f/x.map']) {
     assert.ok(!prunable(f), f);
   }
-});
-
-test('packaging: esbuild, tsx and the native sign-in broker are left out; the token cache add-ons stay', () => {
-  for (const f of [
-    'f/app/node_modules/@esbuild/win32-x64/esbuild.exe',
-    'f/app/node_modules/esbuild/package.json',
-    'f/app/node_modules/tsx/dist/cli.mjs',
-    'f/app/node_modules/@azure/msal-node-runtime/dist/windows/x64/msal-node-runtime.node',
-    'f/app/node_modules/@azure/msal-node-runtime/dist/linux/x64/msalruntime.so',
-    'f/app/node_modules/@azure/msal-node-runtime/dist/macos/arm64/msal-node-runtime.node',
-  ]) assert.ok(prunable(f), f);
-  for (const f of [
-    'f/app/node_modules/@azure/msal-node-runtime/dist/index.js',
-    'f/app/node_modules/@azure/msal-node-runtime/package.json',
-    'f/app/node_modules/@azure/msal-node-extensions/bin/x64/dpapi.node',
-    'f/app/node_modules/keytar/build/Release/keytar.node',
-    'f/app/node_modules/typescript/lib/tsc.js',
-    'f/app/node_modules/esbuild-plugin-x/index.js',
-    'f/app/node_modules/tsx-helper/index.js',
-    'node/node.exe',
-  ]) assert.ok(!prunable(f), f);
 });
 
 test('packaging: IDs from local settings are caught, public ones are not', () => {

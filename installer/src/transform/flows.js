@@ -9,19 +9,13 @@
  * to storage that a person signs in to: no secret, no Key Vault. With the `app` identity they
  * write as the installer's app registration instead, reading its secret from Key Vault at run time.
  * The writer only needs a DFS base URL, so the same flows can target OneLake or an ADLS container.
- * Where storage takes no public traffic (an Azure install on private networking), they write to a
- * SharePoint folder through the SharePoint connector instead.
+ * Where storage takes no public traffic, they can write to a SharePoint folder through the
+ * SharePoint connector instead.
  */
 import { UPLOAD_DIR } from '../uploads.js';
 
 export const FEEDBACK_FLOW_NAME = 'Analytics Hub - Product feedback';
 export const STUDIO_FLOW_NAME = 'Analytics Hub - Copilot Studio credits';
-export const AGENT_INVENTORY_FLOW_NAME = 'Analytics Hub - Agent inventory';
-/** Where the agent inventory flow saves on a Lakehouse; the notebook reads the newest file there. */
-export const AGENT_INVENTORY_DIR = 'Files/arg_inventory';
-/** The Power Platform inventory types the Resource Graph collector reads. */
-export const INVENTORY_TYPES = ['microsoft.copilotstudio/agents', 'microsoft.powerplatform/environments', 'microsoft.powerautomate/agentflows'];
-const INVENTORY_VERSION = '2024-10-01';
 /** The subject the product feedback export is emailed under. */
 export const FEEDBACK_SUBJECT = 'Copilot Product Feedback';
 /** Days of credits each Studio flow run restates; the licensing API revises recent days. */
@@ -733,64 +727,6 @@ export function studioFlowDefinition(t, schedule) {
         inputs: { from: "@variables('EntitlementRows')", format: 'CSV' },
       },
       ...saveFile(t, 'Save_entitlement', dropDir, `StudioApiEntitlement_${stamp}.csv`, "@body('Entitlement_CSV')", { Entitlement_CSV: ['Succeeded'] }),
-    },
-  };
-}
-
-/**
- * Reads the Power Platform inventory (Copilot Studio agents, environments and agent flows) once a
- * day and saves its pages as one JSON file, for when Azure Resource Graph won't give the app or
- * managed identity the agents. The inventory API takes delegated sign-ins only, so it reads as the
- * flow's owner.
- * @param {FlowTarget} t
- * @param {{ time: string, timeZone: string }} schedule  The pipeline's, as HH:mm and a Windows time zone.
- * @param {string} dir  Folder under the endpoint the collector reads.
- */
-export function agentInventoryFlowDefinition(t, schedule, dir) {
-  const page = "body('Get_inventory')";
-  const token = `coalesce(${page}?['skipToken'], ${page}?['$skipToken'], ${page}?['SkipToken'], '')`;
-  const secret = secretStep(t, { Pages: ['Succeeded'] });
-  return {
-    $schema: SCHEMA,
-    contentVersion: '1.0.0.0',
-    parameters: PARAMETERS,
-    triggers: {
-      Daily: {
-        type: 'Recurrence',
-        recurrence: { frequency: 'Day', interval: 1, timeZone: schedule.timeZone, schedule: hourBefore(schedule.time) },
-      },
-    },
-    actions: {
-      Skip_token: { type: 'InitializeVariable', runAfter: {}, inputs: { variables: [{ name: 'SkipToken', type: 'string', value: '' }] } },
-      Pages: { type: 'InitializeVariable', runAfter: { Skip_token: ['Succeeded'] }, inputs: { variables: [{ name: 'Pages', type: 'array', value: [] }] } },
-      ...secret.actions,
-      Each_page: {
-        type: 'Until',
-        runAfter: secret.next,
-        expression: "@equals(variables('SkipToken'), 'done')",
-        limit: { count: 100, timeout: 'PT1H' },
-        actions: {
-          Get_inventory: {
-            ...ppApi(`/resourcequery/resources/query?api-version=${INVENTORY_VERSION}`, {
-              TableName: 'PowerPlatformResources',
-              Clauses: [{ $type: 'where', FieldName: 'type', Operator: 'in~', Values: INVENTORY_TYPES.map((v) => `'${v}'`) }],
-              Options: { Top: 1000, Skip: 0, SkipToken: "@{variables('SkipToken')}" },
-            }),
-            runAfter: {},
-          },
-          Keep_page: { type: 'AppendToArrayVariable', runAfter: { Get_inventory: ['Succeeded'] }, inputs: { name: 'Pages', value: `@${page}` } },
-          Next_page: { type: 'SetVariable', runAfter: { Keep_page: ['Succeeded'] }, inputs: { name: 'SkipToken', value: `@{if(empty(${token}), 'done', ${token})}` } },
-          // A refused or failed page ends the paging; what was read is still saved.
-          Stop_paging: { type: 'SetVariable', runAfter: { Get_inventory: ['Failed', 'TimedOut'] }, inputs: { name: 'SkipToken', value: 'done' } },
-        },
-      },
-      Any_pages: {
-        type: 'If',
-        runAfter: { Each_page: ANY },
-        expression: { greater: ["@length(variables('Pages'))", 0] },
-        actions: saveFile(t, 'Save_inventory', dir, "@{utcNow('yyyyMMddHHmmss')}_agent_inventory.json", "@{string(variables('Pages'))}", {}, 'application/json'),
-        else: { actions: {} },
-      },
     },
   };
 }

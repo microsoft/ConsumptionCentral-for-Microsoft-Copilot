@@ -19,7 +19,7 @@ export const UPLOAD_FOLDERS = [UPLOAD_DIR, FEEDBACK_DIR, AGENT365_DIR, WORKDAY_D
 export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 /** @typedef {'api' | 'csv' | 'skip'} SourceMode */
-/** @typedef {'core' | 'orgData' | 'workday' | 'm365Activity' | 'agent365' | 'productFeedback' | 'studioCredits' | 'coworkCredits' | 'azureAi' | 'agentEvaluator' | 'defender' | 'resourceGraph'} DataSourceId */
+/** @typedef {'core' | 'orgData' | 'workday' | 'agent365' | 'productFeedback' | 'studioCredits' | 'coworkCredits' | 'azureAi'} DataSourceId */
 /** @typedef {Record<DataSourceId, SourceMode>} DataSourceModes */
 
 /**
@@ -70,14 +70,6 @@ export const DATA_SOURCES = [
       url: 'https://doc.workday.com/',
       files: 'One CSV. Each upload replaces the last.',
     },
-  },
-  {
-    id: 'm365Activity',
-    label: 'Microsoft 365 activity',
-    description: 'Teams, Outlook, SharePoint, OneDrive, Viva Engage and Office app usage reports.',
-    modes: ['api', 'skip'],
-    defaultMode: 'api',
-    page: 'M365 activity',
   },
   {
     id: 'agent365',
@@ -156,32 +148,6 @@ export const DATA_SOURCES = [
     defaultMode: 'skip',
     page: 'Consumption Central',
     group: CREDIT_GROUP,
-  },
-  {
-    id: 'agentEvaluator',
-    label: 'Agent Evaluator',
-    description: 'Copilot Studio conversation transcripts from Dataverse: how conversations end and where agents fall short.',
-    modes: ['api', 'skip'],
-    defaultMode: 'skip',
-    page: 'Agent Evaluator',
-  },
-  {
-    id: 'defender',
-    label: 'Defender (shadow AI and agent risk)',
-    description: 'Other AI tools on your devices and network, and agents that answer without sign-in, from Microsoft Defender. Needs Defender for Endpoint P2 or Defender for Cloud Apps.',
-    modes: ['api', 'skip'],
-    defaultMode: 'skip',
-  },
-  {
-    id: 'resourceGraph',
-    label: 'Agent configuration and Foundry (Azure Resource Graph)',
-    description: 'How each Copilot Studio agent is set up (sign-in, connectors, sharing, model) and your Foundry resources and projects, from Azure Resource Graph.',
-    modes: ['api', 'skip'],
-    defaultMode: 'skip',
-    page: 'Governance',
-    hints: {
-      api: 'Read each day from Azure Resource Graph. Foundry needs Reader on a management group; agents need an Entra role such as Global Reader. What can\'t be read is reported, not failed.',
-    },
   },
 ];
 
@@ -430,14 +396,11 @@ export function normaliseDataSources(saved, modules, consumption = {}, uploads =
   const legacy = saved
     ? {}
     : {
-        m365Activity: modules.m365Activity ? 'api' : 'skip',
         agent365: modules.agent365 ? 'api' : 'skip',
         productFeedback: modules.productFeedback ? 'csv' : 'skip',
         studioCredits: modules.consumption ? 'csv' : 'skip',
         coworkCredits: modules.consumption ? 'csv' : 'skip',
         azureAi: modules.consumption && consumption.azureSubscriptionId ? 'api' : 'skip',
-        agentEvaluator: modules.agentEvaluator ? 'api' : 'skip',
-        defender: modules.defender ? 'api' : 'skip',
       };
   const out = { ...defaultDataSources(), ...legacy };
   for (const s of DATA_SOURCES) {
@@ -459,12 +422,9 @@ export function modulesFromSources(ds) {
   const on = (/** @type {DataSourceId} */ id) => ds[id] !== 'skip';
   return {
     orgData: true,
-    m365Activity: on('m365Activity'),
     agent365: on('agent365'),
     productFeedback: on('productFeedback'),
     consumption: on('studioCredits') || on('coworkCredits') || on('azureAi'),
-    agentEvaluator: on('agentEvaluator'),
-    defender: on('defender'),
   };
 }
 

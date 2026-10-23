@@ -6,15 +6,13 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { applyDataFlags, parseCli } from '../src/cli.js';
 import { emptyConfig, loadConfig } from '../src/config.js';
-import { CURRENCIES, currencySymbol, describeReporting, normaliseReporting, parseRate, toCurrencyCode } from '../src/currency.js';
-import { fabricConfigFile } from '../src/steps/app.js';
-import { azureDeployment } from '../src/steps/azure/index.js';
+import { CURRENCIES, currencySymbol, normaliseReporting, parseRate, toCurrencyCode } from '../src/currency.js';
 import { askReportingCurrency } from '../src/steps/plan.js';
 import { buildModel, CURRENCY_SYMBOL_MEASURE, loadTemplateModel } from '../src/transform/model.js';
 import { fakeCtx, fakeUi, realSources } from './fakes.js';
 
 const template = loadTemplateModel(/** @type {string} */ (realSources().modelFile));
-const lake = { server: 's', database: 'd', modules: { orgData: true, m365Activity: false, agent365: false, productFeedback: false, consumption: false, agentEvaluator: false } };
+const lake = { server: 's', database: 'd', modules: { orgData: true, agent365: false, productFeedback: false, consumption: false } };
 /** @param {import('../src/transform/model.js').ModelBim} bim */
 const symbolOf = (bim) => bim.model.tables.flatMap((t) => t.measures ?? []).find((m) => m.name === CURRENCY_SYMBOL_MEASURE)?.expression;
 
@@ -120,32 +118,4 @@ test('currency: the model shows the reporting currency symbol; the template keep
   assert.equal(symbolOf(buildModel(template, { ...lake, currency: 'GBP' })), '"£"');
   assert.equal(symbolOf(buildModel(template, { ...lake, currency: 'CHF' })), '"CHF"');
   assert.equal(symbolOf(template), before);
-});
-
-test('currency: the Fabric app config carries the choice', () => {
-  const { config } = fakeCtx();
-  config.semanticModel.id = 'm';
-  assert.equal('reporting' in fabricConfigFile(config, 'ws', ['vl']), false);
-  config.reporting = { currency: 'EUR', exchangeRate: 0.92 };
-  assert.deepEqual(fabricConfigFile(config, 'ws', ['vl']).reporting, { currency: 'EUR', exchangeRate: 0.92 });
-});
-
-test('currency: the Azure deployment passes the choice to the web app', async () => {
-  const { ctx, config } = fakeCtx();
-  config.target = 'azure';
-  config.azure = { subscriptionId: 'sub', resourceGroup: 'rg', location: 'uksouth', namePrefix: 'vlens', installId: 'id', tags: {}, deployments: [], outputs: {}, graphRoles: { assigned: [], pending: [] } };
-  let params = (await azureDeployment(ctx, { pass: 1 })).properties.parameters;
-  assert.equal(params.reportingCurrency.value, 'USD');
-  assert.equal(params.exchangeRate.value, '');
-  config.reporting = { currency: 'GBP', exchangeRate: 0.79 };
-  params = (await azureDeployment(ctx, { pass: 1 })).properties.parameters;
-  assert.equal(params.reportingCurrency.value, 'GBP');
-  assert.equal(params.exchangeRate.value, '0.79');
-});
-
-test('currency: the plan review says which currency the Value page uses', () => {
-  assert.equal(describeReporting(undefined), 'The Value page reports in US dollars.');
-  assert.equal(describeReporting({ currency: 'USD' }), 'The Value page reports in US dollars.');
-  assert.equal(describeReporting({ currency: 'EUR', exchangeRate: 0.92 }), 'The Value page reports in EUR, at 0.92 to $1.');
-  assert.match(describeReporting({ currency: 'GBP' }), /GBP; set its rate under Prices/);
 });

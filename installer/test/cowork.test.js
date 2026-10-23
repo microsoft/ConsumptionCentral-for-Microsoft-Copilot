@@ -172,7 +172,7 @@ test('ensureCoworkDataflow: without IDs, or when it cannot be made, Cowork credi
 
 test('pipeline: the Dataflow is refreshed between the Studio and Viva loads, only when there is one', () => {
   const ids = { auditIngester: 'a', licensedUsers: 'b', processor: 'c', orgData: 'd', refreshModel: 'e', studioConsumption: 'f', vivaConsumption: 'g' };
-  const modules = { orgData: true, m365Activity: false, agent365: false, productFeedback: false, consumption: true, agentEvaluator: false };
+  const modules = { orgData: true, agent365: false, productFeedback: false, consumption: true };
   const doc = buildPipeline(realSources().pipeline, { workspaceId: 'ws-1', notebookIds: ids, modules, coworkDataflowId: 'df-1' });
   const step = findActivity(doc.properties.activities, COWORK_DATAFLOW_ACTIVITY);
   assert.equal(step.type, 'RefreshDataflow');

@@ -7,7 +7,7 @@ import { runCommand } from '../src/install.js';
 import { ensureLakehouse, ensureNotebooks, ensurePipeline, ensureSchedule, freeName, pipelineSignature, usesSecret } from '../src/steps/fabric.js';
 import { ensureConsent } from '../src/steps/identity.js';
 import { connectionName } from '../src/steps/model.js';
-import { APP_NAME, lakehouseNameFrom, largeCapacity, planCosts, planReview, reserveNames, validateNewLakehouseName } from '../src/steps/plan.js';
+import { APP_NAME, lakehouseNameFrom, largeCapacity, planReview, reserveNames, validateNewLakehouseName } from '../src/steps/plan.js';
 import { BUSY_RETRIES, BUSY_WAIT_MS, capacityBusy, chooseLoad, firstLoadEstimate, firstRunStatus, historyLoaded, NETWORK_LOSSES, printDataCheck, ranSince, runDataCheck, runPipeline, status, waitForJob } from '../src/steps/run.js';
 import { DATA_CHECK_FILE } from '../src/transform/notebook.js';
 import { PIPELINE_CHANGE, PIPELINE_VERSION, REFRESH_ACTIVITY } from '../src/transform/pipeline.js';
@@ -182,10 +182,6 @@ test('planReview: lists what adds to the bill with pricing links and no prices',
   const t = fakeUi();
   t.ui.review(planReview(ctx));
   assert.match(t.text(), /Costs: +Fabric capacity https:\/\/azure\.microsoft\.com\/pricing\/details\/microsoft-fabric\/\n +Power Automate Premium https:\/\/www\.microsoft\.com\/power-platform\/products\/power-automate\/pricing/);
-
-  config.target = 'azure';
-  const azure = planCosts(config).map((x) => x.what);
-  assert.ok(azure.includes('Azure resources') && !azure.includes('Fabric capacity') && !azure.includes('Azure Key Vault'));
 });
 
 test('lakehouse: never writes to one it did not create', async () => {
@@ -220,7 +216,6 @@ test('names: new installs use Analytics Hub names; an older install keeps the na
   const config = emptyConfig();
   assert.equal(config.semanticModel.name, 'Analytics Hub Model');
   assert.equal(config.consumption.model.name, 'Analytics Hub Consumption Model');
-  assert.equal(config.agentEvaluator.model.name, 'Analytics Hub Agent Evaluator Model');
   assert.equal(APP_NAME, 'Analytics Hub Data Collector');
   assert.equal(connectionName('12345678-aaaa'), 'Analytics Hub SQL 12345678');
 
@@ -255,7 +250,7 @@ test('pipeline: created once, left alone on re-run, updated when modules change'
   assert.deepEqual(fabric.calls, ['createPipeline AnalyticsHub_Pipeline']);
   const pipeline = fabric.items.find((i) => i.type === 'DataPipeline');
   assert.equal(config.fabric.pipelineId, pipeline?.id, 'ID found by name when the create returns no body');
-  assert.equal(config.fabric.pipelineModules, 'core,orgData,m365Activity');
+  assert.equal(config.fabric.pipelineModules, 'core,orgData');
   const json = JSON.stringify(pipeline?.content);
   assert.doesNotMatch(json, /REPLACE_WITH_/);
   assert.match(json, new RegExp(config.fabric.notebooks.auditIngester ?? 'missing'));
@@ -264,10 +259,10 @@ test('pipeline: created once, left alone on re-run, updated when modules change'
   await ensurePipeline(ctx);
   assert.deepEqual(fabric.calls, []);
 
-  config.modules.m365Activity = false;
+  config.modules.orgData = false;
   await ensurePipeline(ctx);
   assert.deepEqual(fabric.calls, ['updatePipeline AnalyticsHub_Pipeline']);
-  assert.equal(config.fabric.pipelineModules, 'core,orgData');
+  assert.equal(config.fabric.pipelineModules, 'core');
   assert.match(ui.text(), /replaces the pipeline definition/);
 });
 
@@ -285,7 +280,7 @@ test('pipeline: rewritten when a deleted notebook comes back with a new ID', asy
   fabric.calls.length = 0;
   await ensurePipeline(ctx);
   assert.deepEqual(fabric.calls, ['updatePipeline AnalyticsHub_Pipeline']);
-  assert.equal(config.fabric.pipelineModules, 'core,orgData,m365Activity');
+  assert.equal(config.fabric.pipelineModules, 'core,orgData');
 });
 
 test('pipeline: declining an update keeps the old module signature', async () => {
@@ -524,7 +519,7 @@ test('a run that completed with a failed load says which, and still checks the d
     activity('Run_Audit_Log_Ingester', 'Succeeded'),
     activity('Conditionally_Run_Org_Data', 'Failed', '2026-06-01T12:05:00Z'),
     activity('Run_Org_Data_Ingester', 'Failed', '2026-06-01T12:05:05Z', { error: { errorCode: '2011', message: 'Forbidden' } }),
-    activity('Conditionally_Run_M365_Activity', 'Succeeded', '2026-06-01T12:10:00Z'),
+    activity('Conditionally_Run_Agent365', 'Succeeded', '2026-06-01T12:10:00Z'),
   ];
   const oneLake = { readJson: async () => ({ checkedAt: '2026-06-01T12:40:00+00:00', tables: { licensed: { rows: 5 } } }) };
   const ui = fakeUi();
@@ -603,16 +598,13 @@ test('run loads the history until a run has loaded it, then runs as usual', asyn
   assert.deepEqual(await chooseLoad(ctx, wait), { wait: true });
   assert.equal(config.firstRun?.status, 'Completed', 'and is marked so');
 
-  // It must also have refreshed the model and read the transcripts, when they are installed.
+  // It must also have refreshed the model, when it is installed.
   config.firstRun = { jobId: 'job-9', status: 'Failed' };
   Object.assign(config.semanticModel, { enabled: true, id: 'model-1', bound: true });
   assert.equal(await historyLoaded(ctx), false);
-  fabric.activityRuns['job-9'].push(activity(REFRESH_ACTIVITY, 'Succeeded'));
-  config.modules.agentEvaluator = true;
-  config.agentEvaluator.environments = [{ url: 'https://org.crm.dynamics.com', access: true }];
-  assert.deepEqual(await chooseLoad(ctx, wait), { wait: true, backfillDays: 30, first: true }, 'the transcripts are missing');
+  assert.deepEqual(await chooseLoad(ctx, wait), { wait: true, backfillDays: 30, first: true }, 'the model refresh is missing');
   assert.deepEqual(await chooseLoad(ctx, { wait: true, backfillDays: 60 }), { wait: true, backfillDays: 60, first: true });
-  fabric.activityRuns['job-9'].push(activity('Run_Agent_Evaluator_Transcripts', 'Succeeded'));
+  fabric.activityRuns['job-9'].push(activity(REFRESH_ACTIVITY, 'Succeeded'));
   assert.equal(await historyLoaded(ctx), true);
 
   // Installs from before the installer tracked the first load count any completed run.
@@ -711,8 +703,8 @@ test('status names the loads that failed in the latest run, unless a retry or th
     activity('Conditionally_Run_Agent365', 'Failed', '2026-06-02T02:07:00Z'),
     activity('Run_Agent365_Registry_Ingester', 'Failed', '2026-06-02T02:07:05Z'),
     activity('Run_Agent365_CSV_Fallback', 'Succeeded', '2026-06-02T02:09:00Z'),
-    activity('Conditionally_Run_M365_Activity', 'Failed', '2026-06-02T02:12:00Z'),
-    activity('Run_M365_Activity_Ingester', 'Failed', '2026-06-02T02:12:05Z', { error: busy }),
+    activity('Conditionally_Run_Product_Feedback', 'Failed', '2026-06-02T02:12:00Z'),
+    activity('Run_ProductFeedback_Ingester', 'Failed', '2026-06-02T02:12:05Z', { error: busy }),
   ];
   const run = async () => {
     const ui = fakeUi();
@@ -724,7 +716,7 @@ test('status names the loads that failed in the latest run, unless a retry or th
 
   let text = await run();
   assert.match(text, /Latest run, by source/);
-  assert.match(text, /✗ Microsoft 365 activity: failed/);
+  assert.match(text, /✗ Product feedback: failed/);
   assert.match(text, /✓ Licensed users \(2 attempts\)/, 'its retry worked');
   assert.match(text, /✓ Agent 365 \(export\)/);
   assert.doesNotMatch(text, /Agent 365 \(API\)/, 'the fallback stood in');
@@ -754,7 +746,6 @@ test('data check runs the notebook and prints the summary it saved', async () =>
           audit: { table: 'dbo.audit', rows: 48211, from: '2026-03-03 00:01:00', to: '2026-05-31 23:59:00' },
           agents: null,
           org: { table: 'dbo.copilot_org_data', rows: 0 },
-          m365: { table: 'dbo.m365_activity_daily', rows: 118, from: '2026-09-06', to: '2026-09-29' },
         },
       };
     },
@@ -770,7 +761,6 @@ test('data check runs the notebook and prints the summary it saved', async () =>
   assert.match(text, /✓ Licensed users: 1,250 rows/);
   assert.match(text, /✓ Copilot interactions: 48,211 rows, 2026-03-03 to 2026-05-31/);
   assert.match(text, /! Org data: 0 rows/);
-  assert.match(text, /✓ Microsoft 365 activity: 118 rows, 2026-09-06 to 2026-09-29/);
   assert.match(text, /Agents: not loaded/);
 });
 
@@ -879,7 +869,7 @@ test('status says when the last data check is out of date, or has never run', as
   let jobs = [{ id: 'j-1', status: 'Completed', startTimeUtc: '2026-06-02T02:00:00', endTimeUtc: '2026-06-02T02:20:00', invokeType: 'Scheduled' }];
   /** @type {any} */ (fabric.api).listJobs = async () => jobs;
   /** @type {any} */
-  let saved = { checkedAt: '2026-06-01T12:30:00+00:00', tables: { m365: null } };
+  let saved = { checkedAt: '2026-06-01T12:30:00+00:00', tables: { agents: null } };
   const oneLake = { readJson: async () => saved ?? Promise.reject(new Error('404')) };
   const run = async () => {
     const ui = fakeUi();
@@ -894,7 +884,7 @@ test('status says when the last data check is out of date, or has never run', as
   assert.match(text, /Last data check \(2026-06-01 12:30 UTC\)/);
   assert.match(text, /! The pipeline has run since this check, so these results may be out of date/);
   assert.match(text, /Run "valuelens-install check" to check the data again/);
-  assert.match(text, /Microsoft 365 activity: not loaded/);
+  assert.match(text, /Agents: not loaded/);
 
   saved = { ...saved, checkedAt: '2026-06-02T02:40:00+00:00' };
   text = await run();
@@ -915,8 +905,8 @@ test('printDataCheck flags missing core tables', () => {
   printDataCheck(ctx, { tables: { licensed: null } });
   assert.match(ui.text(), /! Licensed users: no table yet/);
   assert.match(ui.text(), /! Copilot interactions: no table yet/);
-  assert.match(ui.text(), /Microsoft 365 activity: not loaded/);
-  assert.doesNotMatch(ui.text(), /! Microsoft 365 activity/);
+  assert.match(ui.text(), /Agents: not loaded/);
+  assert.doesNotMatch(ui.text(), /! Agents/);
 });
 
 test('printDataCheck explains an audit table emptied by test activity', () => {

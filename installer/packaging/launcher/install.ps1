@@ -20,7 +20,7 @@ Options:
   -Proxy <url>       Download through this proxy, signed in as you.
   -UseInstalledNode  Run the installer with the Node.js already on this PC, such as one your IT
                      team approved, instead of the zip's. It needs x64 Node.js 22.13 or later on
-                     22.x, or 24.x. The zip is still downloaded: it holds the installer and the app.
+                     22.x, or 24.x. The zip is still downloaded: it holds the installer.
   -Uninstall         Remove the unpacked installer and its command. Your install record in
                      Documents\Analytics Hub stays.
 Anything else goes to the installer, for example: status, or install --device-code.
@@ -100,7 +100,7 @@ by installer/packaging/build-exe.js from installer/packaging/launcher/install.ps
       if ($LASTEXITCODE -ne 0) { throw "$What failed with exit code $LASTEXITCODE." }
     }
 
-    # Building the app needs Node.js 22.13 or later. Cloud Shell's own is used when it's new enough.
+    # The installer needs Node.js 22.13 or later. Cloud Shell's own is used when it's new enough.
     $NodeExe = $null
     $NodeDir = $null
     $sys = Get-SystemNode

@@ -29,7 +29,7 @@ export const ORG_VALUE_COLUMN = 'Access Org Value';
 /** The org attributes a scope can name, as the installer offers them. */
 export const ORG_ATTRIBUTES = /** @type {const} */ (['department', 'country']);
 /** @typedef {typeof ORG_ATTRIBUTES[number]} OrgAttribute */
-/** @typedef {'valuelens' | 'consumption' | 'agentEvaluator'} AccessModelKind */
+/** @typedef {'valuelens' | 'consumption'} AccessModelKind */
 
 /**
  * @typedef {object} AccessInventory
@@ -49,22 +49,10 @@ export const ORG_ATTRIBUTES = /** @type {const} */ (['department', 'country']);
 export const ACCESS_INVENTORY = {
   valuelens: {
     org: { table: 'Chat + Agent Org Data', key: 'PersonId', attributes: { department: 'Organization', country: 'country' } },
-    viaOrg: ['Chat + Agent Interactions (Audit Logs)', 'M365 Activity'],
+    viaOrg: ['Chat + Agent Interactions (Audit Logs)'],
     direct: [{ table: 'Copilot Licensed', key: 'UPN_Normalized' }],
     allOnly: [
       'ProductFeedback',
-      'Defender AI Watchlist',
-      'Shadow AI Daily',
-      'Shadow AI Totals',
-      'Defender AI Installed',
-      'Defender Cloud Discovery',
-      'Defender AI Agents',
-      'Defender Status',
-      'Agent Configuration',
-      'Power Platform Environments',
-      'Agent Flows',
-      'Foundry Resources',
-      'Resource Graph Status',
       'Load Log',
     ],
     open: ['Agents 365', 'Behavior Value Map', 'Human Time Estimates', 'Effort Scenario'],
@@ -83,31 +71,15 @@ export const ACCESS_INVENTORY = {
       'AzureDeploymentHealth',
       'AzureBillingReconciliation',
       'CopilotPaygSpend',
-      'Foundry Resources',
     ],
     open: ['Assumptions', 'Settings', 'SpendingPolicy'],
-  },
-  agentEvaluator: {
-    org: { table: 'Chat + Agent Org Data', key: 'PersonId_Normalized', attributes: { department: 'Organization', country: 'country' } },
-    viaOrg: [
-      'Agent Sessions',
-      'Agent Turns',
-      'Agent Errors',
-      'Agent Sub-Agent Calls',
-      'Agent Performance',
-      'Agent Variables',
-      'Credit Consumption (User)',
-    ],
-    direct: [],
-    allOnly: ['Credit Consumption (Agent)', 'Credit Consumption (Tenant)', 'Conversation Transcripts (Raw)', 'Dataverse Diagnostic', 'Evaluator Status'],
-    open: ['Agent Catalogue', 'Agent Name Map'],
   },
 };
 
 /** The M function each model reads its Lakehouse or SQL tables with. */
-const ACCESSOR = /** @type {Record<AccessModelKind, string>} */ ({ valuelens: 'FabricTable', consumption: 'GetTable', agentEvaluator: 'FabricTable' });
+const ACCESSOR = /** @type {Record<AccessModelKind, string>} */ ({ valuelens: 'FabricTable', consumption: 'GetTable' });
 
-/** Written by the Access Scope notebook (Fabric) or the jobs' publish step (Azure). */
+/** Written by the Access Scope notebook. */
 export const SOURCE_TABLES = /** @type {const} */ ({ scope: 'access_scope', people: 'access_people' });
 
 const SCOPE_COLUMNS = /** @type {const} */ ([

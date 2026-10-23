@@ -7,17 +7,13 @@
 import { FEEDBACK_SUBJECT } from '../transform/flows.js';
 import { isVivaId } from '../transform/dataflow.js';
 import { COWORK_DATAFLOW_ACTIVITY } from '../transform/pipeline.js';
-import { commandLine } from '../launch.js';
-import { appItemUrl, shareAppPending, shareAppSteps, VIEWER_GROUP_NAME, myGroupsUrl } from './access.js';
 import { COWORK_DATAFLOW_NAME, coworkSignInSteps, DATAFLOW_GUIDE } from './consumption.js';
-import { coworkDataflowOn, modelDeployed } from './fabric.js';
+import { coworkDataflowOn } from './fabric.js';
 import { connectionSteps, FLOW_NAMES, flowsWanted } from './flows.js';
-import { APP_NAME } from './plan.js';
-import { AGENT_DIRECTORY_ROLES, resourceGraphOn } from './resource-graph.js';
 
 /**
  * @typedef {object} NextStep
- * @property {string} id  Stable, e.g. "share-app".
+ * @property {string} id  Stable, e.g. "flows".
  * @property {string} title
  * @property {string} why  Why it matters, in a sentence or two.
  * @property {string} who  Who does it, e.g. "You" or "A Microsoft 365 admin".
@@ -29,9 +25,6 @@ import { AGENT_DIRECTORY_ROLES, resourceGraphOn } from './resource-graph.js';
  * @property {boolean} [optional]
  */
 
-/** The Entra role template ID of Global Reader, the same in every tenant. */
-export const GLOBAL_READER_ROLE_ID = 'f2ef992c-3afb-46b9-b7cf-a126ee74c451';
-export const ENTRA_ROLES_URL = 'https://entra.microsoft.com/#view/Microsoft_AAD_IAM/RolesManagementMenuBlade/~/AllRoles';
 export const M365_ADMIN_URL = 'https://admin.microsoft.com/';
 const MAKER = 'https://make.powerautomate.com/';
 
@@ -46,21 +39,17 @@ const letter = (body, from) => ['Hi,', '', ...body, '', 'Thanks', ...(from ? [fr
 const numbered = (steps) => steps.map((s, i) => `${i + 1}. ${s}`);
 
 /**
- * The cards, in the order to do them: deploy the app if it isn't, share it, sign in to the flows and the
- * Cowork Dataflow, then hand-offs to other admins. Empty when nothing is left.
+ * The cards, in the order to do them: sign in to the flows and the Cowork Dataflow, then hand-offs to
+ * other admins. Empty when nothing is left.
  * @param {import('../config.js').InstallConfig} config
  * @param {{ tenantId?: string, upn?: string }} [user]
- * @param {{ appFailed?: boolean }} [opts]  appFailed: this run's app step failed.
  * @returns {NextStep[]}
  */
-export function nextSteps(config, user = {}, opts = {}) {
+export function nextSteps(config, user = {}) {
   return [
-    deployAppStep(config, opts),
-    shareStep(config, user),
     flowsStep(config, user),
     coworkStep(config),
     vivaQueryStep(config, user),
-    entraRoleStep(config, user),
     m365ExportStep(config, user),
   ].filter(/** @returns {s is NextStep} */ (s) => !!s);
 }
@@ -74,59 +63,6 @@ export function stepsLeftTitle(steps) {
   const optional = steps.length - needed;
   if (!needed) return `${optional} optional ${optional === 1 ? 'step' : 'steps'}`;
   return `${needed} ${needed === 1 ? 'step' : 'steps'} left${optional ? `, and ${optional} optional` : ''}`;
-}
-
-/**
- * The app the user chose, when this run's app step failed or it isn't deployed: the step said to fix the
- * problem and run deploy-app, and that's easy to lose in a run that then loads data for hours.
- * @param {import('../config.js').InstallConfig} config
- * @param {{ appFailed?: boolean }} opts
- * @returns {NextStep | null}
- */
-function deployAppStep(config, opts) {
-  const fa = config.fabricApp;
-  const sm = config.semanticModel;
-  if (config.target === 'azure' || !fa?.enabled || !sm?.enabled || !sm.id) return null;
-  if (fa.itemId && !opts.appFailed) return null;
-  // deploy-app needs the model connected to the Lakehouse; the installer connects it, and asks to share the app.
-  const connected = modelDeployed(config);
-  // With an app from before, the share card covers sharing.
-  const share = connected && !fa.itemId && !!config.access?.groupId && config.access.appShared !== true;
-  const group = config.access?.groupName ?? VIEWER_GROUP_NAME;
-  return {
-    id: 'deploy-app',
-    title: fa.itemId ? 'Deploy the Analytics Hub app again' : 'Deploy the Analytics Hub app',
-    why: fa.itemId
-      ? 'The app step above failed. Until the app is deployed again, viewers get it as it was last deployed.'
-      : "There's no app for viewers to open until it's deployed. The data and the models don't need it.",
-    who: 'You',
-    steps: [
-      'Fix the problem the app step shows.',
-      connected
-        ? `Run "${commandLine('deploy-app')}", or choose Redeploy the app on the installer's home page.`
-        : `Run the installer again. It connects ${sm.name ?? 'the semantic model'} to the Lakehouse, then deploys the app.`,
-      ...(share ? [`Share it with "${group}": run "${commandLine('access')}" and choose Share the app with the group.`] : []),
-    ],
-  };
-}
-
-/**
- * @param {import('../config.js').InstallConfig} config
- * @param {{ tenantId?: string }} user
- * @returns {NextStep | null}
- */
-function shareStep(config, user) {
-  if (!shareAppPending(config)) return null;
-  const group = config.access?.groupName ?? VIEWER_GROUP_NAME;
-  return {
-    id: 'share-app',
-    title: `Share the app with ${group}`,
-    why: `Once only. Until it's shared, people in the group get "no access" when they open the app. After that, give people access by adding them to the group${config.access?.groupId ? ` (${myGroupsUrl(config.access.groupId)})` : ''}.`,
-    who: 'You',
-    link: appItemUrl(config, user.tenantId),
-    linkText: 'Open the app item in Fabric',
-    steps: shareAppSteps(config, user.tenantId),
-  };
 }
 
 /**
@@ -230,54 +166,6 @@ function vivaQueryStep(config, user) {
         '',
         'Then send me the partition ID and the query ID. They look like 00000000-0000-0000-0000-000000000000.',
         `Guide: ${DATAFLOW_GUIDE}`,
-      ],
-      user.upn,
-    ),
-  };
-}
-
-/**
- * The Entra role the data collector app needs to see Copilot Studio agents in Resource Graph. Only a
- * Privileged Role Administrator can assign it. Shown until the install record says it's assigned.
- * @param {import('../config.js').InstallConfig} config
- * @param {{ upn?: string }} user
- * @returns {NextStep | null}
- */
-function entraRoleStep(config, user) {
-  if (config.target === 'azure' || !resourceGraphOn(config) || config.resourceGraph?.agents === false) return null;
-  if (/** @type {{ roleAssigned?: boolean } | undefined} */ (config.resourceGraph)?.roleAssigned === true) return null;
-  const app = config.app?.displayName ?? APP_NAME;
-  const appId = config.app?.appId;
-  const spId = config.app?.servicePrincipalId;
-  const principal = spId ?? (appId ? `$(az ad sp show --id ${appId} --query id -o tsv)` : undefined);
-  const roles = AGENT_DIRECTORY_ROLES.join(', ').replace(/, ([^,]*)$/, ' or $1');
-  const steps = [
-    'In the Microsoft Entra admin center, open Roles & admins and choose Global Reader.',
-    `Choose Add assignments, search for "${app}" and select it.`,
-    'Choose Add. With Privileged Identity Management, make it an active, permanent assignment.',
-  ];
-  const command = principal
-    ? `az rest --method POST --url https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments --body '{"principalId":"${principal}","roleDefinitionId":"${GLOBAL_READER_ROLE_ID}","directoryScopeId":"/"}'`
-    : undefined;
-  return {
-    id: 'entra-role',
-    title: `Ask for Global Reader for "${app}"`,
-    why: `Without one of ${roles}, Azure Resource Graph returns no Copilot Studio agents to the data collector, and the load says so. Global Reader is read-only. The installer can't assign Entra roles.`,
-    who: 'A Privileged Role Administrator',
-    link: ENTRA_ROLES_URL,
-    linkText: 'Roles & admins in Entra',
-    steps,
-    message: letter(
-      [
-        `Could you give the app "${app}" the Global Reader role in Microsoft Entra? Analytics Hub uses it to read Copilot Studio agents from Azure Resource Graph, which returns none until the app has one of ${roles}. Global Reader is read-only.`,
-        '',
-        `App: ${app}`,
-        ...(appId ? [`Application (client) ID: ${appId}`] : []),
-        ...(spId ? [`Object ID (enterprise application): ${spId}`] : []),
-        '',
-        ...numbered(steps),
-        `Roles & admins: ${ENTRA_ROLES_URL}`,
-        ...(command ? ['', 'Or in Azure Cloud Shell (Bash):', command] : []),
       ],
       user.upn,
     ),

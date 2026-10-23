@@ -240,9 +240,7 @@ export async function planConsumption(ctx, pre) {
   const { ui, config, api, sources } = ctx;
   const cc = config.consumption;
   ui.heading('Credit consumption');
-  if (config.target === 'azure') {
-    // The Azure path deploys its own copy of the model; the Fabric notes below don't apply.
-  } else if (!config.semanticModel.enabled) {
+  if (!config.semanticModel.enabled) {
     ui.note('The credit consumption model shares the main semantic model\'s connection, so it is only deployed with it.');
     ui.note('The notebooks still load the data; publish the credit consumption report ("Consumption Central - Fabric.pbit") yourself.');
   } else if (!sources.consumptionModelFile) {
@@ -379,8 +377,8 @@ const appPrincipal = (ctx) => ({
 });
 
 /**
- * Gives the app's service principal, or another principal such as the Azure jobs' managed identity,
- * read access to Azure costs and metrics in the chosen subscription.
+ * Gives the app's service principal, or another principal, read access to Azure costs and metrics
+ * in the chosen subscription.
  * @param {Ctx} ctx
  * @param {Principal} [principal]  Defaults to the app.
  * @returns {Promise<boolean>}  Whether the Azure AI pipeline can run.
@@ -504,7 +502,7 @@ export async function ensureConsumptionModel(ctx, opts = {}) {
   await deployModel(ctx, m, {
     signature: `${server.toLowerCase()};${database}`,
     definition: () =>
-      semanticModelDefinition(buildConsumptionModel(loadTemplateModel(file), { server, database, resourceGraph: config.dataSources?.resourceGraph === 'api', access: rlsSettings(config) }), PBISM),
+      semanticModelDefinition(buildConsumptionModel(loadTemplateModel(file), { server, database, access: rlsSettings(config) }), PBISM),
     force: opts.force,
   });
   if (!m.bound && config.semanticModel.connectionId) await bindModel(ctx, m);

@@ -8,7 +8,6 @@ import { notebooksFor, STUDIO_LANDING, VIVA_LANDING } from '../src/catalog.js';
 import { ROLES } from '../src/clients/azure.js';
 import { CONFIG_VERSION, CONSUMPTION_MODEL_NAME, emptyConfig, loadConfig } from '../src/config.js';
 import { refresh } from '../src/install.js';
-import { appModels } from '../src/steps/app.js';
 import { consumptionSummary, ensureAzureAiAccess, ensureConsumptionModel, ensureLandingFolders, planConsumption, policiesBySubscription } from '../src/steps/consumption.js';
 import { azureAiOn, consumptionModelDeployed, ensureNotebooks, notebookSettings, PAYG_FIND, pipelineSignature } from '../src/steps/fabric.js';
 import { ensureModelConnection, ensureSemanticModel } from '../src/steps/model.js';
@@ -106,7 +105,7 @@ const ids = {
   studioConsumption: 'nb-studio',
   vivaConsumption: 'nb-viva',
 };
-const modules = { orgData: true, m365Activity: false, agent365: false, productFeedback: false, consumption: true, agentEvaluator: false };
+const modules = { orgData: true, agent365: false, productFeedback: false, consumption: true };
 /** @param {any} doc */
 const names = (doc) => doc.properties.activities.map((/** @type {any} */ a) => a.name);
 
@@ -151,7 +150,7 @@ test('pipeline: without Azure access or a Consumption model, those steps are lef
   assert.ok(names(noModel).includes('Run_Consumption_Studio'));
   assert.ok(!names(noModel).includes(CONSUMPTION_REFRESH_ACTIVITY));
 
-  const off = buildPipeline(realSources().pipeline, { workspaceId: 'ws-1', notebookIds: ids, modules: { ...modules, consumption: false, agentEvaluator: false }, azureAi: true, consumptionModelId: 'cc-1' });
+  const off = buildPipeline(realSources().pipeline, { workspaceId: 'ws-1', notebookIds: ids, modules: { ...modules, consumption: false }, azureAi: true, consumptionModelId: 'cc-1' });
   assert.ok(!names(off).some((/** @type {string} */ n) => n.includes('Consumption')));
 
   const { studioConsumption, ...missing } = ids;
@@ -161,7 +160,7 @@ test('pipeline: without Azure access or a Consumption model, those steps are lef
 test('notebooks and signature: Azure AI only with access; existing installs keep their signature', () => {
   const config = emptyConfig();
   Object.assign(config.semanticModel, { enabled: true, id: 'model-1', bound: true });
-  assert.equal(pipelineSignature(config), 'core,orgData,m365Activity;model=model-1', 'no consumption parts without consumption');
+  assert.equal(pipelineSignature(config), 'core,orgData;model=model-1', 'no consumption parts without consumption');
 
   config.modules.consumption = true;
   assert.deepEqual(notebooksFor(config.modules, { semanticModel: true }).filter((n) => n.module === 'consumption').map((n) => n.key), ['studioConsumption', 'vivaConsumption']);
@@ -173,7 +172,7 @@ test('notebooks and signature: Azure AI only with access; existing installs keep
   Object.assign(config.consumption.model, { id: 'cc-1', bound: true });
   assert.equal(azureAiOn(config), true);
   assert.equal(consumptionModelDeployed(config), true);
-  assert.equal(pipelineSignature(config), 'core,orgData,m365Activity,consumption;model=model-1;azureAi;consumption=cc-1');
+  assert.equal(pipelineSignature(config), 'core,orgData,consumption;model=model-1;azureAi;consumption=cc-1');
 
   config.semanticModel.enabled = false;
   assert.equal(consumptionModelDeployed(config), false, 'it shares the ValueLens connection');
@@ -545,15 +544,6 @@ test('summary: Azure AI status and the Studio and Cowork upload steps', () => {
   consumptionSummary(on.ctx);
   assert.match(on.ui.text(), /PAYG: +Copilot Studio and Cowork pay-as-you-go billed to AI and Studio billing/);
   assert.match(on.ui.text(), new RegExp(`not ${HIDDEN} until ValueLens Data Collector has Cost Management Reader there`));
-});
-
-test('app: built with the cc alias when the Consumption model is deployed', () => {
-  const config = emptyConfig();
-  Object.assign(config.semanticModel, { enabled: true, id: 'model-1', bound: true });
-  assert.deepEqual(appModels(config), ['vl']);
-  config.modules.consumption = true;
-  Object.assign(config.consumption.model, { id: 'cc-1', bound: true });
-  assert.deepEqual(appModels(config), ['vl', 'cc']);
 });
 
 test('install record: older records gain the consumption defaults', () => {

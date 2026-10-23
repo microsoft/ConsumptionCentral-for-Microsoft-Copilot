@@ -1,5 +1,4 @@
-/* Analytics Hub installer wizard. Tokens are Analytics Hub's (app/src/global.css),
-   so the installer and the app it deploys read as one product. */
+/* Analytics Hub installer wizard. Tokens are Analytics Hub's (app/src/global.css). */
 
 :root {
   --bg: #fafafa;

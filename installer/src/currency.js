@@ -2,7 +2,6 @@
 /**
  * The reporting currency: the one currency the Value page shows value and cost in.
  * Licences and credits are billed in US dollars, so another currency needs a rate.
- * Keep CURRENCIES in step with `app/src/lib/currency.ts`.
  */
 
 export const DEFAULT_CURRENCY = 'USD';
@@ -32,7 +31,7 @@ export const CURRENCIES = [
 ];
 
 /**
- * The installer's choice, kept in the install record and passed to the app as its default.
+ * The installer's choice, kept in the install record.
  * @typedef {object} ReportingConfig
  * @property {string} currency  ISO 4217 code.
  * @property {number} [exchangeRate]  Units of the currency per US dollar. Never set for USD.
@@ -74,16 +73,4 @@ export function normaliseReporting(raw) {
   const rate = /** @type {any} */ (raw).exchangeRate;
   const exchangeRate = currency !== 'USD' && typeof rate === 'number' && rate > 0 && rate <= MAX_RATE ? rate : undefined;
   return exchangeRate === undefined ? { currency } : { currency, exchangeRate };
-}
-
-/**
- * The plan review's words for the Value page currency.
- * @param {ReportingConfig | undefined} reporting
- */
-export function describeReporting(reporting) {
-  const currency = reporting?.currency ?? DEFAULT_CURRENCY;
-  if (currency === DEFAULT_CURRENCY) return 'The Value page reports in US dollars.';
-  return reporting?.exchangeRate
-    ? `The Value page reports in ${currency}, at ${reporting.exchangeRate} to $1.`
-    : `The Value page reports in ${currency}; set its rate under Prices in the app.`;
 }

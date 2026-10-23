@@ -9,7 +9,6 @@ const SUBSCRIPTIONS_API = '2022-12-01';
 const AUTHORIZATION_API = '2022-04-01';
 const DEPLOYMENTS_API = '2022-09-01';
 const CONTAINER_APPS_API = '2024-03-01';
-const RESOURCE_GRAPH_API = '2022-10-01';
 const POLICY_API = '2023-04-01';
 
 export const ROLES = {
@@ -661,19 +660,6 @@ export function armApi(http, opts = {}) {
         throw err;
       }
     },
-
-    /**
-     * Runs a Resource Graph query as the signed-in user, across a management group or everything they can see.
-     * @param {string} query
-     * @param {string} [managementGroup]
-     * @returns {Promise<{ totalRecords?: number, data?: any[] }>}
-     */
-    resourceGraph: (query, managementGroup) =>
-      http.post(
-        '/providers/Microsoft.ResourceGraph/resources',
-        { query, ...(managementGroup ? { managementGroups: [managementGroup] } : {}), options: { resultFormat: 'objectArray' } },
-        { query: { 'api-version': RESOURCE_GRAPH_API } },
-      ),
   };
 }
 

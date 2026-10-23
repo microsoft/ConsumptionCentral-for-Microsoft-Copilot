@@ -147,12 +147,9 @@ test('what to collect: the essentials are ticked and locked, every extra has a d
   assert.deepEqual(choices.map((ch) => [ch.value, ch.checked, 'disabled' in ch ? ch.disabled : false]), [
     ['core', true, 'Always collected'],
     ['orgData', true, 'Always collected'],
-    ['m365Activity', true, false],
     ['agent365', false, false],
     ['productFeedback', false, false],
     ['consumption', false, false],
-    ['agentEvaluator', false, false],
-    ['defender', false, false],
   ]);
   for (const ch of choices) assert.match(ch.description, /^From .+\. (Shows|Adds|Lists) /, ch.value);
 
@@ -160,9 +157,9 @@ test('what to collect: the essentials are ticked and locked, every extra has a d
   const asked = ui.checkbox('Tick the data you want.', choices);
   const id = ui.history().at(-1)?.id;
   assert.deepEqual(ui.history().at(-1)?.choices?.slice(0, 2).map((/** @type {any} */ ch) => [ch.checked, ch.disabled]), [[true, 'Always collected'], [true, 'Always collected']]);
-  ui.answer(id, [6]);
-  assert.deepEqual(await asked, ['core', 'orgData', 'agentEvaluator']);
-  assert.equal(ui.history().at(-1)?.display, 'Copilot usage and licences, Org data, Agent Evaluator');
+  ui.answer(id, [4]);
+  assert.deepEqual(await asked, ['core', 'orgData', 'consumption']);
+  assert.equal(ui.history().at(-1)?.display, 'Copilot usage and licences, Org data, Credit consumption');
 
   const again = ui.checkbox('Tick the data you want.', choices);
   ui.answer(ui.history().at(-1)?.id, [0, 1]);
@@ -709,10 +706,9 @@ test('page: the stages and the finish it waits for are headings the installer pr
   // Done is last, so nothing ahead of it is skipped; each target-only stage is one of the stages.
   const stages = list('INSTALL_STAGES');
   assert.equal(stages.at(-1), 'Done');
-  assert.ok(!stages.includes('Where should Analytics Hub run?'), 'the target question comes first, so it slots in');
   const only = /const TARGET_STAGES = \{([\s\S]*?)\n\};/.exec(app)?.[1] ?? '';
   const tagged = [...only.matchAll(/'([^']+)'/g)].map((x) => x[1]);
-  assert.ok(tagged.includes('Fabric') && tagged.includes('Checking Azure'));
+  assert.ok(tagged.includes('Fabric'));
   assert.deepEqual(tagged.filter((s) => !stages.includes(s)), []);
 });
 
@@ -730,7 +726,7 @@ test('page: every command has a row, or for prerequisites its own panel; Check t
   assert.equal(describeRecord(config).can.check, true);
   config.history.days = 90;
   assert.equal(describeRecord(config).historyDays, 90, 'the installed view shows how much audit history is loaded');
-  assert.equal(describeRecord({ ...config, target: 'azure' }).target, 'azure', 'the page shows only that target\'s stages');
+  assert.equal(describeRecord(config).target, 'fabric', 'the home page is told the record\'s target');
   assert.match(app, /backfillDays/, 'the Run row can load more history');
 });
 

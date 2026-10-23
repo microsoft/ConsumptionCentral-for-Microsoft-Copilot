@@ -88,7 +88,7 @@ test('createTokenProvider: a sign-in can be given up on, and then it isn\'t trie
       return { token: 't', expiresOnTimestamp: Date.now() + 3_600_000 };
     },
   };
-  const scope = 'https://graph.microsoft.com/AppCatalog.ReadWrite.All';
+  const scope = 'https://contoso.crm.dynamics.com/.default';
   await createTokenProvider(credential)(scope);
   assert.deepEqual(requests, [[scope]], 'without a signal, the scope alone, as before');
   const abort = new AbortController();
@@ -271,16 +271,16 @@ test('what to collect: audit log, licensed users and org data are essential; the
   assert.deepEqual([...ESSENTIAL_MODULES], ['core', 'orgData']);
   assert.ok(!OPTIONAL_MODULES.some((id) => ESSENTIAL_MODULES.includes(/** @type {any} */ (id))));
   assert.equal(normaliseModules({ orgData: false }).orgData, true);
-  assert.deepEqual(collectedLabels(normaliseModules({ m365Activity: false, agentEvaluator: true })), ['Copilot usage and licences', 'Org data', 'Agent Evaluator']);
+  assert.deepEqual(collectedLabels(normaliseModules({ consumption: true })), ['Copilot usage and licences', 'Org data', 'Credit consumption']);
 });
 
 test('permissions follow the chosen modules', () => {
-  assert.deepEqual(permissionsFor({ orgData: false, m365Activity: false, agent365: false, productFeedback: false, consumption: false, agentEvaluator: false }), [
+  assert.deepEqual(permissionsFor({ orgData: false, agent365: false, productFeedback: false, consumption: false }), [
     'AuditLogsQuery.Read.All',
     'Reports.Read.All',
     'User.Read.All',
   ]);
-  assert.deepEqual(permissionsFor({ orgData: true, m365Activity: false, agent365: true, productFeedback: true, consumption: false, agentEvaluator: false }), [
+  assert.deepEqual(permissionsFor({ orgData: true, agent365: true, productFeedback: true, consumption: false }), [
     'Application.Read.All',
     'AuditLogsQuery.Read.All',
     'CopilotPackages.Read.All',
@@ -394,7 +394,7 @@ test('install record round-trips, fills defaults and refuses secrets', () => {
   const partial = loadConfig(file).config;
   assert.equal(partial.schedule.time, '05:00');
   assert.equal(partial.schedule.frequency, 'daily');
-  assert.deepEqual(partial.modules, { orgData: true, m365Activity: true, agent365: true, productFeedback: false, consumption: false, agentEvaluator: false, defender: false });
+  assert.deepEqual(partial.modules, { orgData: true, agent365: true, productFeedback: false, consumption: false });
   assert.deepEqual(partial.fabric.notebooks, {});
 
   const leaky = /** @type {any} */ (emptyConfig());
@@ -422,7 +422,6 @@ test('messages name the exe when it started the installer', () => {
   assert.equal(installerWindow({}), 'your terminal');
   assert.equal(installerWindow(exe), 'the installer window');
   assert.match(help(), /Usage: (valuelens-install|AnalyticsHubInstaller\.exe) \[command\] \[options\]/);
-  assert.match(help(), /deploy-app\s+Deploy the Analytics Hub app again/);
 });
 
 test('messages name the PowerShell command when install.ps1 started the installer', () => {
@@ -447,7 +446,7 @@ test('messages name the PowerShell command when install.ps1 started the installe
 test('messages keep -UseInstalledNode when install.ps1 ran the installer with the installed Node.js', () => {
   const installed = { [LAUNCHER_ENV]: 'pwsh', [INSTALLED_NODE_ENV]: '1' };
   assert.equal(INSTALLED_NODE_ENV, 'ANALYTICS_HUB_USE_INSTALLED_NODE');
-  assert.equal(bundled(installed), true, "the app is still the zip's prebuilt one");
+  assert.equal(bundled(installed), true, "the installer is still the zip's");
   assert.ok(reopenHint(installed).includes(`"$env:ANALYTICS_HUB_USE_INSTALLED_NODE = '1'; ${SCRIPT_COMMAND}" again`));
   assert.ok(updateHint('https://example.test/r', installed).includes(`"$env:ANALYTICS_HUB_USE_INSTALLED_NODE = '1'; ${SCRIPT_COMMAND}" again in PowerShell`));
   assert.doesNotMatch(reopenHint({ [LAUNCHER_ENV]: 'pwsh' }), /INSTALLED_NODE/);
@@ -466,7 +465,7 @@ test('in Azure Cloud Shell: noticed from its environment, with commands for its 
   assert.equal(inCloudShell({ [CLOUD_SHELL_ENV]: '1' }), true);
   assert.equal(inCloudShell({ [CLOUD_SHELL_ENV]: '0', ACC_CLOUD: 'PROD' }), false, 'the override wins');
   assert.equal(launcher(cs), 'cloudshell');
-  assert.equal(bundled(cs), false, 'it runs from source, so it builds the app');
+  assert.equal(bundled(cs), false, 'it runs from source');
   assert.equal(commandLine('status', cs), '~/.analytics-hub/analytics-hub status');
   assert.equal(installerWindow(cs), 'Cloud Shell');
   assert.match(reopenHint(cs), /~\/\.analytics-hub\/analytics-hub in Cloud Shell/);

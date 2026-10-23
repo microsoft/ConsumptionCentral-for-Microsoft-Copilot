@@ -92,7 +92,7 @@ test('script: -UseInstalledNode runs the installer with an installed Node.js and
   // The same Node.js check serves Cloud Shell and Windows.
   assert.equal(TEMPLATE.match(/Get-Command node /g)?.length, 1);
   assert.match(TEMPLATE.slice(TEMPLATE.indexOf('if ($CloudShell) {')), /\$sys = Get-SystemNode/);
-  assert.match(win, /\(\$sys\.Major -eq 22 -and \$sys\.Minor -ge 13\) -or \$sys\.Major -eq 24/, "rayfin supports Node.js 22 and 24");
+  assert.match(win, /\(\$sys\.Major -eq 22 -and \$sys\.Minor -ge 13\) -or \$sys\.Major -eq 24/, 'the installer needs Node.js 22.13 or later on 22.x, or 24.x');
   assert.match(win, /-p 'process\.arch'[\s\S]*\$arch -ne 'x64'/, 'the native packages in the zip are x64');
   // Same unpacked folder, install record and command, so either route finds the other's install.
   assert.equal(win.match(/\$Root = Join-Path \$AhHome \$Id/g)?.length, 1);

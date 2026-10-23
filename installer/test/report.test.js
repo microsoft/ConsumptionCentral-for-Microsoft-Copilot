@@ -27,7 +27,7 @@ function setup(o = {}) {
   return { ...made, fabric, ui, model };
 }
 
-for (const key of /** @type {const} */ (['modelFile', 'consumptionModelFile', 'agentEvaluatorModelFile'])) {
+for (const key of /** @type {const} */ (['modelFile', 'consumptionModelFile'])) {
   test(`the ${key} template's report is PBIR, without Desktop's copy of the AppSource visuals`, () => {
     const file = realSources()[key];
     assert.ok(file, `the checkout has ${key}`);
@@ -67,9 +67,7 @@ test('reportsWanted: off unless chosen with the model; the module reports come w
   assert.deepEqual(reportsWanted(t.ctx).map((w) => w.name), ['ValueLens']);
 
   t.config.modules.consumption = true;
-  t.config.modules.agentEvaluator = true;
-  t.config.agentEvaluator.environments = [{ url: 'https://org.crm.dynamics.com' }];
-  assert.deepEqual(reportsWanted(t.ctx).map((w) => w.name), ['ValueLens', 'Consumption Central', 'Agent Evaluator']);
+  assert.deepEqual(reportsWanted(t.ctx).map((w) => w.name), ['ValueLens', 'Consumption Central']);
   assert.equal(reportsWanted(t.ctx)[1].model, t.config.consumption.model);
 
   t.config.semanticModel.reports = undefined;
@@ -185,35 +183,29 @@ test('plan: report names are reserved and listed for review', async () => {
 });
 
 test('blockedSettings: the Power BI SDK visuals setting matters only with the reports', () => {
-  const settings = { CustomVisualsTenant: { enabled: false }, AppBackendTenant: { enabled: false } };
-  assert.deepEqual(blockedSettings(settings, { app: false }), []);
-  assert.deepEqual(blockedSettings(settings, { app: false, reports: true }).map((s) => s.name), ['CustomVisualsTenant']);
-  assert.deepEqual(blockedSettings({ CustomVisualsTenant: { enabled: false, delegateToCapacity: true } }, { app: true, reports: true }), []);
+  const settings = { CustomVisualsTenant: { enabled: false } };
+  assert.deepEqual(blockedSettings(settings, {}), []);
+  assert.deepEqual(blockedSettings(settings, { reports: true }).map((s) => s.name), ['CustomVisualsTenant']);
+  assert.deepEqual(blockedSettings({ CustomVisualsTenant: { enabled: false, delegateToCapacity: true } }, { reports: true }), []);
 });
 
 test('the Power BI choice: reports are offered by default, even to older installs, and each choice sets the record', () => {
   const config = emptyConfig();
-  assert.equal(powerBiChoice(config, true), 'all');
-  assert.equal(powerBiChoice(config, false), 'reports');
+  assert.equal(powerBiChoice(config), 'reports');
   config.semanticModel.enabled = true;
-  config.fabricApp.enabled = true;
-  assert.equal(powerBiChoice(config, true), 'all', 'an install from before the choice gets the reports offered');
+  assert.equal(powerBiChoice(config), 'reports', 'an install from before the choice gets the reports offered');
   config.semanticModel.reports = false;
-  assert.equal(powerBiChoice(config, true), 'both');
-  config.fabricApp.enabled = false;
-  assert.equal(powerBiChoice(config, true), 'model');
+  assert.equal(powerBiChoice(config), 'model');
   config.semanticModel.enabled = false;
-  assert.equal(powerBiChoice(config, true), 'none');
+  assert.equal(powerBiChoice(config), 'none');
 
-  for (const [choice, model, reports, app] of /** @type {const} */ ([
-    ['all', true, true, true],
-    ['reports', true, true, false],
-    ['both', true, false, true],
-    ['model', true, false, false],
-    ['none', false, false, false],
+  for (const [choice, model, reports] of /** @type {const} */ ([
+    ['reports', true, true],
+    ['model', true, false],
+    ['none', false, false],
   ])) {
     applyPowerBiChoice(config, choice);
-    assert.deepEqual([config.semanticModel.enabled, config.semanticModel.reports, config.fabricApp.enabled], [model, reports, app], choice);
-    assert.equal(powerBiChoice(config, true), choice);
+    assert.deepEqual([config.semanticModel.enabled, config.semanticModel.reports], [model, reports], choice);
+    assert.equal(powerBiChoice(config), choice);
   }
 });

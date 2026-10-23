@@ -97,8 +97,8 @@ export function launcher(env = process.env) {
 export const fromExe = (env = process.env) => launcher(env) === 'exe';
 
 /**
- * Whether the installer runs from the release download on Windows, with its own Node.js and the
- * app already built: through the exe or the PowerShell launcher.
+ * Whether the installer runs from the release download on Windows, with its own Node.js: through
+ * the exe or the PowerShell launcher.
  * @param {NodeJS.ProcessEnv} [env]
  */
 export const bundled = (env = process.env) => ['exe', 'pwsh'].includes(launcher(env));

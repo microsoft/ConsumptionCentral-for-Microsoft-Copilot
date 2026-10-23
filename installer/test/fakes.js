@@ -4,7 +4,6 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { emptyConfig } from '../src/config.js';
-import { TRANSCRIPT_ROLE } from '../src/clients/dataverse.js';
 import { fabricApi } from '../src/clients/fabric.js';
 import { createClient, HttpError } from '../src/http.js';
 import { loadSources } from '../src/sources.js';
@@ -12,7 +11,7 @@ import { createUi } from '../src/ui.js';
 
 /** @typedef {import('../src/clients/fabric.js').ItemRef} ItemRef */
 
-/** Where fake installs keep their record, so files written beside it (the Teams package) stay out of the repo. */
+/** Where fake installs keep their record, so it stays out of the repo. */
 const TEST_RECORD_DIR = mkdtempSync(join(tmpdir(), 'valuelens-installer-test-'));
 
 let sources;
@@ -299,12 +298,6 @@ export function fakeFabric() {
       calls.push(`createLakehouse ${name}`);
       return { id: add('Lakehouse', name, null, ref).id };
     },
-    /** @param {string} _ws @param {string} type @param {string} name @param {ItemRef} [ref] */
-    createItem: async (_ws, type, name, ref) => {
-      calls.push(`createItem ${type} ${name}`);
-      const item = add(type, name, null, ref);
-      return { id: item.id, type, displayName: name };
-    },
     /** @param {string} _ws @param {string} name @param {any} def @param {ItemRef} [ref] */
     createSemanticModel: async (_ws, name, def, ref) => {
       calls.push(`createSemanticModel ${name}`);
@@ -327,26 +320,8 @@ export function fakeFabric() {
     /** @param {string} _ws @param {string} id @param {any} def */
     updateReport: async (_ws, id, def) => {
       calls.push(`updateReport ${find(id).displayName}`);
+      fail('updateReport');
       find(id).content = def;
-      return null;
-    },
-    /** @param {string} _ws @param {string} name @param {any} def @param {ItemRef} [ref] */
-    createDataAgent: async (_ws, name, def, ref) => {
-      calls.push(`createDataAgent ${name}`);
-      fail('createDataAgent');
-      return { id: add('DataAgent', name, def, ref).id };
-    },
-    /** @param {string} _ws @param {string} id @param {any} def */
-    updateDataAgent: async (_ws, id, def) => {
-      calls.push(`updateDataAgent ${find(id).displayName}`);
-      fail('updateDataAgent');
-      find(id).content = def;
-      return null;
-    },
-    /** @param {string} _ws @param {string} id */
-    publishDataAgent: async (_ws, id) => {
-      calls.push(`publishDataAgent ${find(id).displayName}`);
-      fail('publishDataAgent');
       return null;
     },
     listRoleAssignments: async () => structuredClone(roles),
@@ -550,7 +525,7 @@ function armError(status, code, message, method, id, apiVersion) {
   });
 }
 
-/** Azure Resource Manager fake for the Azure installer path. */
+/** Azure Resource Manager fake. */
 export function fakeArm() {
   /** @type {string[]} */
   const calls = [];
@@ -816,7 +791,7 @@ export function fakeArm() {
   return { api, calls, resources, groups, executions, jobExecutions, jobTemplates, failures, restrictedSqlRegions, ai, regions, perms, deleteStates, inUse, locks };
 }
 
-/** Rich Graph fake for Azure app registration work. */
+/** Rich Graph fake for app registration work. */
 export function fakeAzureGraph() {
   let n = 0;
   /** @type {string[]} */
@@ -854,20 +829,6 @@ export function fakeAzureGraph() {
     graphServicePrincipal: async () => graphSp,
     findApplication: async (/** @type {string} */ appId) => applications.find((a) => a.appId === appId) ?? null,
     findServicePrincipal: async (/** @type {string} */ appId) => servicePrincipals.find((s) => s.appId === appId) ?? null,
-    createAzureWebApplication: async (/** @type {any} */ body) => {
-      calls.push(`createAzureWebApplication ${body.displayName}`);
-      const app = { id: `app-obj-${++n}`, appId: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, displayName: body.displayName, api: { oauth2PermissionScopes: [{ id: 'scope-access', value: 'access_as_user' }] }, appRoles: [] };
-      applications.push(app);
-      return app;
-    },
-    updateAzureWebApplication: async (/** @type {any} */ app, /** @type {any} */ body) => {
-      calls.push(`updateAzureWebApplication ${body.fqdn}`);
-      app.identifierUris = [`api://${body.fqdn}/${body.clientId}`];
-      app.spa = { redirectUris: [`https://${body.fqdn}/`, `https://${body.fqdn}/?host=teams&auth=popup`] };
-      app.api = { oauth2PermissionScopes: [{ id: 'scope-access', value: 'access_as_user' }], preAuthorizedApplications: body.teamsClientIds.map((id) => ({ appId: id })) };
-      app.appRoles = [{ id: 'role-user', value: 'AnalyticsHub.User' }, { id: 'role-admin', value: 'AnalyticsHub.Admin' }];
-      return 'scope-access';
-    },
     createApplication: async (/** @type {string} */ name) => {
       calls.push(`createApplication ${name}`);
       const app = { id: `app-obj-${++n}`, appId: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, displayName: name };
@@ -917,345 +878,6 @@ export function fakeAzureGraph() {
     },
   };
   return { api, calls, applications, servicePrincipals, siteGrantFailures, passwords, directoryRoles, failures };
-}
-
-/**
- * A package's manifest ID and version: from manifest.json in a stored zip, as the installer builds it,
- * or from the bytes as JSON.
- * @param {Uint8Array} zip
- * @returns {{ id: string, version: string }}
- */
-export function readManifest(zip) {
-  const buf = Buffer.from(zip);
-  if (buf.length < 4 || buf.readUInt32LE(0) !== 0x04034b50) return JSON.parse(buf.toString('utf8'));
-  for (let at = 0; at + 30 <= buf.length && buf.readUInt32LE(at) === 0x04034b50; ) {
-    const size = buf.readUInt32LE(at + 18);
-    const nameEnd = at + 30 + buf.readUInt16LE(at + 26);
-    const start = nameEnd + buf.readUInt16LE(at + 28);
-    if (buf.toString('utf8', at + 30, nameEnd) === 'manifest.json') return JSON.parse(buf.toString('utf8', start, start + size));
-    at = start + size;
-  }
-  throw new Error('The package has no manifest.json.');
-}
-
-/**
- * The org's Teams app catalog. What's published or updated is listed straight away, as published.
- * `failures` scripts errors for each method, in order. `manifest` reads a package's manifest ID and
- * version (readManifest by default).
- * @param {{ apps?: import('../src/clients/graph.js').TeamsCatalogApp[], manifest?: (zip: Uint8Array) => { id: string, version: string } }} [o]
- */
-export function fakeAppCatalog(o = {}) {
-  /** @type {string[]} */
-  const calls = [];
-  /** @type {import('../src/clients/graph.js').TeamsCatalogApp[]} */
-  const apps = structuredClone(o.apps ?? []);
-  /** @type {Record<string, Error[]>} */
-  const failures = {};
-  const manifest = o.manifest ?? readManifest;
-  let n = 0;
-  const fail = (/** @type {string} */ method) => {
-    const err = failures[method]?.shift();
-    if (err) throw err;
-  };
-  const notFound = (/** @type {string} */ method, /** @type {string} */ id) => new HttpError(`${method} /appCatalogs/teamsApps/${id} returned 404 NotFound`, { status: 404, method, url: `https://graph.microsoft.com/v1.0/appCatalogs/teamsApps/${id}`, code: 'NotFound' });
-  const api = {
-    signIn: async () => {
-      calls.push('signIn');
-      fail('signIn');
-    },
-    /** @param {string} externalId */
-    find: async (externalId) => {
-      calls.push(`find ${externalId}`);
-      fail('find');
-      return structuredClone(apps.filter((a) => a.externalId === externalId && a.distributionMethod === 'organization'));
-    },
-    /** @param {Uint8Array} zip */
-    publish: async (zip) => {
-      const m = manifest(zip);
-      calls.push(`publish ${m.id} ${m.version}`);
-      fail('publish');
-      const app = { id: `catalog-app-${++n}`, externalId: m.id, displayName: 'Analytics Hub', distributionMethod: 'organization', appDefinitions: [{ version: m.version, publishingState: 'published' }] };
-      apps.push(app);
-      return { id: app.id, externalId: app.externalId, displayName: app.displayName, distributionMethod: app.distributionMethod };
-    },
-    /** @param {string} id @param {Uint8Array} zip */
-    update: async (id, zip) => {
-      const m = manifest(zip);
-      calls.push(`update ${id} ${m.version}`);
-      fail('update');
-      const app = apps.find((a) => a.id === id);
-      if (!app) throw notFound('POST', id);
-      app.appDefinitions = [{ version: m.version, publishingState: 'published' }];
-    },
-    /** @param {string} id */
-    remove: async (id) => {
-      calls.push(`remove ${id}`);
-      fail('remove');
-      const at = apps.findIndex((a) => a.id === id);
-      if (at < 0) throw notFound('DELETE', id);
-      apps.splice(at, 1);
-    },
-  };
-  return { api: /** @type {import('../src/clients/graph.js').AppCatalogApi} */ (api), calls, apps, failures };
-}
-
-/**
- * The privileges Dataverse gives a new security role on its own, each at Organization depth, as a live test found.
- * Bot Transcript Viewer holds the same ones.
- */
-export const PLATFORM_PRIVILEGES = Object.freeze([
-  'prvReadSdkMessage',
-  'prvReadSdkMessageProcessingStep',
-  'prvReadSdkMessageProcessingStepImage',
-  'prvReadPluginType',
-  'prvReadPluginAssembly',
-  'prvReadSharePointDocument',
-  'prvReadSharePointData',
-  'prvWriteSharePointData',
-  'prvCreateSharePointData',
-]);
-
-/**
- * A security role in a fake environment.
- * @typedef {object} FakeRole
- * @property {string} roleid
- * @property {string} name
- * @property {string} [description]
- * @property {string} bu  Its business unit.
- * @property {string} [parent]  The role in the root business unit it's a copy of.
- * @property {Map<string, string>} privileges  Privilege ID to depth. A copy shares its parent's.
- */
-
-/**
- * One Dataverse environment's security roles, privileges and role assignments, and its conversation transcripts. Like
- * Dataverse, a role created in the root business unit comes with PLATFORM_PRIVILEGES at Organization depth, and has a
- * copy in each child business unit in `units` unless `copies` is false; deleting a role deletes its copies and takes
- * them from their users and teams; and a role or assignment that isn't there answers 404. Bot Transcript Viewer is
- * `viewer` in every business unit, or missing when that's null. `teamRoles` are the roles teams hold. A user can read the
- * transcripts once one of its roles holds ConversationTranscript read at Organization depth. Changes, and the lookups
- * of a role's copies and holders, are logged, with privileges by name.
- * @param {{ calls: string[], fail: (method: string) => void, userRoles: Record<string, string[]>, teamRoles?: Record<string, string[]>, root: string | null, viewer: string | null, units?: string[], copies?: boolean, roles?: FakeRole[], transcripts?: string[] }} o
- */
-export function fakeRoleStore(o) {
-  const { calls, fail, userRoles } = o;
-  const teamRoles = o.teamRoles ?? {};
-  /** Privilege names, by ID. @type {Map<string, string>} */
-  const privileges = new Map([
-    ['priv-transcript', 'prvReadconversationtranscript'],
-    ['priv-bot', 'prvReadbot'],
-    ...PLATFORM_PRIVILEGES.map((name, i) => /** @type {[string, string]} */ ([`priv-${i + 1}`, name])),
-  ]);
-  const label = (/** @type {string} */ id) => privileges.get(id) ?? id;
-  const same = (/** @type {string | undefined} */ a, /** @type {string | undefined} */ b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
-  /** @type {FakeRole[]} */
-  const roles = o.roles ?? [];
-  let n = 0;
-  const find = (/** @type {string} */ id) => {
-    const role = roles.find((r) => r.roleid.toLowerCase() === id.toLowerCase());
-    if (!role) throw httpError(404);
-    return role;
-  };
-  const api = {
-    /** @param {string} name @param {string} businessUnitId */
-    findRole: async (name, businessUnitId) => {
-      calls.push(`findRole ${name} ${businessUnitId}`);
-      fail('findRole');
-      if (name === TRANSCRIPT_ROLE) return o.viewer ?? undefined;
-      return roles.find((r) => r.name === name && r.bu === businessUnitId)?.roleid;
-    },
-    /** @param {string} name @param {string} businessUnitId */
-    rolesByName: async (name, businessUnitId) => {
-      fail('rolesByName');
-      return roles.filter((r) => r.name === name && r.bu === businessUnitId).map((r) => ({ roleid: r.roleid, description: r.description ?? null }));
-    },
-    /** @param {string} roleId */
-    roleCopies: async (roleId) => {
-      calls.push(`roleCopies ${roleId}`);
-      fail('roleCopies');
-      return { ids: roles.filter((r) => same(r.roleid, roleId) || same(r.parent, roleId)).map((r) => r.roleid), more: false };
-    },
-    /** @param {string} roleId @param {string} businessUnitId */
-    roleCopy: async (roleId, businessUnitId) => {
-      calls.push(`roleCopy ${roleId} ${businessUnitId}`);
-      fail('roleCopy');
-      return roles.find((r) => same(r.parent, roleId) && same(r.bu, businessUnitId))?.roleid;
-    },
-    /** @param {string} roleId */
-    roleHolders: async (roleId) => {
-      calls.push(`roleHolders ${roleId}`);
-      fail('roleHolders');
-      const has = (/** @type {string[]} */ ids) => ids.some((id) => same(id, roleId));
-      return { users: Object.keys(userRoles).filter((u) => has(userRoles[u])), teams: Object.keys(teamRoles).filter((t) => has(teamRoles[t])), more: false };
-    },
-    /** @param {{ name: string, businessUnitId: string, description: string }} role */
-    createRole: async (role) => {
-      calls.push(`createRole ${role.name} ${role.businessUnitId}`);
-      fail('createRole');
-      const made = { roleid: `read-${++n}`, name: role.name, description: role.description, bu: role.businessUnitId, privileges: new Map(PLATFORM_PRIVILEGES.map((_, i) => [`priv-${i + 1}`, 'Global'])) };
-      roles.push(made);
-      if (role.businessUnitId === o.root && o.copies !== false) {
-        for (const unit of o.units ?? []) roles.push({ ...made, roleid: `${made.roleid}-${unit}`, bu: unit, parent: made.roleid });
-      }
-      return made.roleid;
-    },
-    /** @param {string} roleId */
-    deleteRole: async (roleId) => {
-      calls.push(`deleteRole ${roleId}`);
-      fail('deleteRole');
-      const role = find(roleId);
-      const gone = new Set(roles.filter((r) => r === role || r.parent === role.roleid).map((r) => r.roleid));
-      roles.splice(0, roles.length, ...roles.filter((r) => !gone.has(r.roleid)));
-      for (const user of Object.keys(userRoles)) userRoles[user] = userRoles[user].filter((r) => !gone.has(r));
-      for (const team of Object.keys(teamRoles)) teamRoles[team] = teamRoles[team].filter((r) => !gone.has(r));
-      return null;
-    },
-    /** @param {readonly string[]} names */
-    findPrivileges: async (names) => {
-      fail('findPrivileges');
-      return [...privileges].filter(([, name]) => names.includes(name)).map(([privilegeid, name]) => ({ privilegeid, name, canbeglobal: true }));
-    },
-    /** @param {string} roleId */
-    rolePrivileges: async (roleId) => {
-      fail('rolePrivileges');
-      return [...find(roleId).privileges].map(([id, depth]) => ({ id, name: privileges.get(id), depth }));
-    },
-    /** @param {string} roleId @param {readonly string[]} ids @param {string} businessUnitId */
-    addPrivileges: async (roleId, ids, businessUnitId) => {
-      calls.push(`addPrivileges ${roleId} ${ids.map(label).join(' ')} ${businessUnitId}`);
-      fail('addPrivileges');
-      const role = find(roleId);
-      for (const id of ids) role.privileges.set(id, 'Global');
-      return null;
-    },
-    /** @param {string} roleId @param {string} privilegeId */
-    removePrivilege: async (roleId, privilegeId) => {
-      calls.push(`removePrivilege ${roleId} ${label(privilegeId)}`);
-      fail('removePrivilege');
-      find(roleId).privileges.delete(privilegeId);
-      return null;
-    },
-    firstTranscript: async () => {
-      fail('firstTranscript');
-      return o.transcripts?.[0];
-    },
-    /** @param {string} userId @param {string} target */
-    principalAccess: async (userId, target) => {
-      fail('principalAccess');
-      if (!o.transcripts?.some((id) => target === `conversationtranscripts(${id})`)) throw httpError(404);
-      const reads = (userRoles[userId] ?? []).some((id) => roles.find((r) => r.roleid === id)?.privileges.get('priv-transcript') === 'Global');
-      return reads ? 'ReadAccess' : 'None';
-    },
-    /** @param {string} userId */
-    userRoleIds: async (userId) => [...(userRoles[userId] ?? [])],
-    /** @param {string} userId @param {string} roleId */
-    assignRole: async (userId, roleId) => {
-      calls.push(`assignRole ${userId} ${roleId}`);
-      fail('assignRole');
-      (userRoles[userId] ??= []).push(roleId);
-      return null;
-    },
-    /** @param {string} userId @param {string} roleId */
-    removeRole: async (userId, roleId) => {
-      calls.push(`removeRole ${userId} ${roleId}`);
-      fail('removeRole');
-      if (!userRoles[userId]?.includes(roleId)) throw httpError(404);
-      userRoles[userId] = userRoles[userId].filter((r) => r !== roleId);
-      return null;
-    },
-  };
-  /** What a role holds, as privilege name:depth, sorted. @param {string} roleId */
-  const holds = (roleId) => [...find(roleId).privileges].map(([id, depth]) => `${label(id)}:${depth}`).sort();
-  return { api, roles, holds };
-}
-
-/**
- * One Dataverse environment's application users and their roles, for the transcript reader. `failures` scripts an
- * error for each call of a method, in order. Like Dataverse, it deletes only a deactivated user, and answers 404 for a
- * user or role assignment that isn't there. `softDeletes` is how many deletes of a user only soft-delete it, as
- * Dataverse's first one does: the user stays, deactivated, with no role and deletedstate 1. Its roles are a
- * fakeRoleStore's.
- * @param {{ bu?: string | null, role?: string | null, users?: { systemuserid: string, applicationid: string, isdisabled?: boolean, deletedstate?: number, _businessunitid_value?: string }[], userRoles?: Record<string, string[]>, teamRoles?: Record<string, string[]>, units?: string[], copies?: boolean, roles?: FakeRole[], transcripts?: string[], softDeletes?: number }} [o]
- */
-export function fakeTranscriptEnvironment(o = {}) {
-  /** @type {string[]} */
-  const calls = [];
-  /** @type {Record<string, Error[]>} */
-  const failures = {};
-  const users = structuredClone(o.users ?? []);
-  /** @type {Record<string, string[]>} */
-  const userRoles = structuredClone(o.userRoles ?? {});
-  /** @type {Record<string, string[]>} */
-  const teamRoles = structuredClone(o.teamRoles ?? {});
-  /** Deletes so far, by user. @type {Record<string, number>} */
-  const deletes = {};
-  const bu = o.bu === undefined ? 'bu-root' : o.bu;
-  const role = o.role === undefined ? 'role-btv' : o.role;
-  let n = 0;
-  const fail = (/** @type {string} */ method) => {
-    const err = failures[method]?.shift();
-    if (err) throw err;
-  };
-  const find = (/** @type {string} */ userId) => {
-    const user = users.find((u) => u.systemuserid === userId);
-    if (!user) throw httpError(404);
-    return user;
-  };
-  const store = fakeRoleStore({ calls, fail, userRoles, teamRoles, root: bu, viewer: role, units: o.units, copies: o.copies, roles: structuredClone(o.roles ?? []), transcripts: o.transcripts });
-  const api = {
-    ...store.api,
-    /** @param {string} appId */
-    findAppUser: async (appId) => {
-      calls.push(`findAppUser ${appId}`);
-      fail('findAppUser');
-      return users.find((u) => u.applicationid.toLowerCase() === appId.toLowerCase());
-    },
-    rootBusinessUnit: async () => bu ?? undefined,
-    /** @param {string} appId @param {string} businessUnitId */
-    createAppUser: async (appId, businessUnitId) => {
-      calls.push(`createAppUser ${appId} ${businessUnitId}`);
-      fail('createAppUser');
-      const user = { systemuserid: `user-${++n}`, applicationid: appId, _businessunitid_value: businessUnitId };
-      users.push(user);
-      return user.systemuserid;
-    },
-    /** @param {string} userId */
-    disableUser: async (userId) => {
-      calls.push(`disableUser ${userId}`);
-      fail('disableUser');
-      find(userId).isdisabled = true;
-      return null;
-    },
-    /** @param {string} userId */
-    enableUser: async (userId) => {
-      calls.push(`enableUser ${userId}`);
-      fail('enableUser');
-      find(userId).isdisabled = false;
-      return null;
-    },
-    /** @param {string} userId */
-    deleteUser: async (userId) => {
-      calls.push(`deleteUser ${userId}`);
-      fail('deleteUser');
-      const user = find(userId);
-      if (!user.isdisabled) throw httpError(400, 'Only an inactive application user can be deleted.');
-      deletes[userId] = (deletes[userId] ?? 0) + 1;
-      if (deletes[userId] <= (o.softDeletes ?? 0)) {
-        user.deletedstate = 1;
-        userRoles[userId] = [];
-        return null;
-      }
-      users.splice(users.indexOf(user), 1);
-      delete userRoles[userId];
-      return null;
-    },
-    /** @param {string} userId */
-    getUser: async (userId) => {
-      calls.push(`getUser ${userId}`);
-      fail('getUser');
-      return users.find((u) => u.systemuserid === userId);
-    },
-  };
-  return { api, calls, failures, users, userRoles, teamRoles, roles: store.roles, holds: store.holds };
 }
 
 /** Power BI refreshes. `states` scripts what each poll of a refresh returns. */
@@ -1342,7 +964,7 @@ export function fakePowerBi() {
 }
 
 /**
- * @param {{ ui?: import('../src/ui.js').Ui, fabric?: any, graph?: any, oneLake?: any, arm?: any, keyVault?: any, powerBi?: any, discovery?: any, powerPlatform?: any, flow?: any, connections?: any, appCatalog?: any, dataverse?: (url: string) => any, dataLake?: (account: string) => any, runner?: import('../src/steps/app.js').Runner, sources?: import('../src/sources.js').Sources, config?: import('../src/config.js').InstallConfig, now?: Date }} [o]
+ * @param {{ ui?: import('../src/ui.js').Ui, fabric?: any, graph?: any, oneLake?: any, arm?: any, keyVault?: any, powerBi?: any, discovery?: any, powerPlatform?: any, flow?: any, connections?: any, dataverse?: (url: string) => any, dataLake?: (account: string) => any, sources?: import('../src/sources.js').Sources, config?: import('../src/config.js').InstallConfig, now?: Date }} [o]
  */
 export function fakeCtx(o = {}) {
   const config = o.config ?? emptyConfig();
@@ -1378,11 +1000,9 @@ export function fakeCtx(o = {}) {
         dataLake: o.dataLake,
         flow: o.flow,
         connections: o.connections,
-        appCatalog: o.appCatalog,
       },
       user: { id: 'user-1', upn: 'admin@contoso.com', tenantId: 'tenant-1' },
       sources: o.sources ?? realSources(),
-      runner: o.runner,
       sleep: async (/** @type {number} */ ms) => {
         sleeps.push(ms);
       },

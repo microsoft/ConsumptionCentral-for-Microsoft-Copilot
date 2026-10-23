@@ -4,14 +4,14 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { APP_CATALOG_SCOPE, checkTokens, createCredential, createTokenProvider, decodeJwt, GRAPH_CLI_APP_ID } from './auth.js';
+import { checkTokens, createCredential, createTokenProvider, decodeJwt } from './auth.js';
 import { notebooksFor, permissionsFor } from './catalog.js';
 import { armApi, keyVaultApi } from './clients/azure.js';
 import { connectionsApi, POWERAPPS_URL } from './clients/connections.js';
 import { dataverseApi, dataverseScope, DISCOVERY_URL, discoveryApi, orgUrl } from './clients/dataverse.js';
 import { FLOW_URL, flowApi } from './clients/flow.js';
 import { fabricApi, scheduleBody } from './clients/fabric.js';
-import { appCatalogApi, CONSENT_ROLES, graphApi } from './clients/graph.js';
+import { CONSENT_ROLES, graphApi } from './clients/graph.js';
 import { dataLakeApi, dataLakeUrl, ONELAKE_URL, oneLakeApi } from './clients/onelake.js';
 import { powerBiApi } from './clients/powerbi.js';
 import { POWER_PLATFORM_URL, powerPlatformApi } from './clients/powerplatform.js';
@@ -19,14 +19,9 @@ import { saveConfig, secretMode } from './config.js';
 import { createClient, defaultSleep } from './http.js';
 import { commandLine } from './launch.js';
 import { ensureConsent, ensureApp, ensureKeyVault, newSecret, notebookSecretDays } from './steps/identity.js';
-import {
-  agentEvaluatorModelWanted, agentEvaluatorSummary, ensureAgentEvaluatorModel, ensureTranscriptAccess, fabricReadRoleWanted, removeFabricReadRoles,
-} from './steps/agent-evaluator.js';
-import { appDeployedSince, deployApp, ensureAppName, ensureFabricApp } from './steps/app.js';
 import { COWORK_DATAFLOW_NAME, consumptionModelWanted, consumptionSummary, ensureAzureAiAccess, ensureConsumptionModel, ensureCoworkDataflow, ensureLandingFolders } from './steps/consumption.js';
 import { coworkDataflowDefinition, isVivaId } from './transform/dataflow.js';
 import {
-  agentEvaluatorModelDeployed,
   consumptionModelDeployed,
   describeSchedule,
   ensureLakehouse,
@@ -44,23 +39,19 @@ import { ensureModelConnection, ensureSemanticModel, modelUrl, pendingReloads, r
 import { confirmPlan, plan, preflight } from './steps/plan.js';
 import { checkPrereqs } from './prereqs.js';
 import { ensureReports, reportsOn, reportsSummary } from './steps/report.js';
-import { dataAgentSummary, dataAgentWanted, ensureDataAgent } from './steps/data-agent.js';
-import { azureUploadError, dataSourcesSummary, ensureUploads, uploadCommand } from './steps/data-sources.js';
+import { dataSourcesSummary, ensureUploads, uploadCommand } from './steps/data-sources.js';
 import { ensureFlows, FLOW_FILES, flowDefinitions, flowsSummary, flowsWanted, offerStudioRun } from './steps/flows.js';
-import { ensureAppResourceGraphAccess, resourceGraphOn } from './steps/resource-graph.js';
 import { routerWanted } from './uploads.js';
 import { checkData, chooseLoad, coworkSkipForFirstLoad, runDataCheck, runPipeline, status, TERMINAL } from './steps/run.js';
 import { loadCoworkNow, rerunFailed } from './steps/rerun.js';
 import { prepareNotebook, serialiseNotebook } from './transform/notebook.js';
 import { rlsOn, rlsSettings } from './transform/access.js';
-import { buildAgentEvaluatorModel, buildConsumptionModel, buildModel, loadTemplateModel } from './transform/model.js';
+import { buildConsumptionModel, buildModel, loadTemplateModel } from './transform/model.js';
 import { buildPipeline } from './transform/pipeline.js';
 import { c } from './ui.js';
 import { fabricUninstall } from './steps/fabric-uninstall.js';
-import { askTarget, azureRefresh, azureRotateSecret, azureRun, azureStatus, azureUninstall, azureUpdate, azureViewerModels, confirmAzurePlan, installAzure, planAzure } from './steps/azure/index.js';
-import { accessCommand, ensureViewerGroup, grantModelAccess, myGroupsUrl, shareApp } from './steps/access.js';
+import { accessCommand, ensureViewerGroup, grantModelAccess, myGroupsUrl } from './steps/access.js';
 import { nextSteps, stepsLeftTitle } from './steps/next-steps.js';
-import { ensureOrgAccess, verifyOrgAccess } from './steps/org-access.js';
 import { reviewSetup } from './setup.js';
 
 /**
@@ -68,7 +59,6 @@ import { reviewSetup } from './setup.js';
  * @property {import('./clients/fabric.js').FabricApi} fabric
  * @property {import('./clients/graph.js').GraphApi} graph
  * @property {import('./clients/graph.js').GraphApi} [graphRoles]  Graph with the role management scope, asked for only when it's used.
- * @property {import('./clients/graph.js').AppCatalogApi} [appCatalog]  The org's Teams app catalog, through a second sign-in asked for only when the Azure path publishes the Teams app.
  * @property {import('./clients/azure.js').ArmApi} arm
  * @property {import('./clients/azure.js').KeyVaultApi} keyVault
  * @property {import('./clients/onelake.js').OneLakeApi} oneLake
@@ -100,10 +90,7 @@ import { reviewSetup } from './setup.js';
  * @property {boolean} [runFirstLoad]
  * @property {boolean} [advanced]  The plan's "Change the advanced settings?" answer. With false, those settings keep their saved value or default.
  * @property {number} [reloadHistoryDays]  Repair or change: reload this many days of audit history after setup.
- * @property {import('./steps/azure/regions.js').RegionCheck} [azureRegions]  Azure: what the region preflight found, for placing the Ask model.
  * @property {{ sp: any, roles: { id: string, value: string }[] }} [graphRoles]
- * @property {import('./steps/azure/teams-catalog.js').CatalogAccess} [teamsCatalog]  Azure: whether this run can publish the Teams app to the org's app catalog, and why not.
- * @property {import('./steps/app.js').Runner} [runner]  Runs the app's build tools; tests replace it.
  * @property {import('./staging.js').PendingUpload[]} [pendingUploads]  Exports to upload to the drop folder during the install.
  * @property {string[]} [csvFiles]  Exports named with --csv.
  * @property {string} [configFile]  The install record's path.
@@ -145,17 +132,6 @@ export async function connect(opts) {
   };
   if (opts.checkTokens) await checkTokens(getToken);
   const claims = decodeJwt(await getToken('graph'));
-  if (opts.method !== 'azure-cli') {
-    // The app the installer signs in with can't ask for the app catalog scope, so publishing the
-    // Teams app signs in once more with Microsoft Graph Command Line Tools, the first time it's used.
-    const catalogToken = createTokenProvider(
-      createCredential({ tenantId: opts.tenantId || claims.tid, method: opts.method, clientId: GRAPH_CLI_APP_ID, print: (m) => opts.ui.line(m) }),
-      { debug: opts.debug },
-    );
-    /** @param {{ abortSignal?: AbortSignal }} [o] */
-    const token = (o) => catalogToken(APP_CATALOG_SCOPE, o);
-    api.appCatalog = appCatalogApi(createClient({ baseUrl: 'https://graph.microsoft.com/v1.0', getToken: token, debug: opts.debug }), token);
-  }
   const me = await api.graph.me();
   return { api, user: { id: me.id, upn: me.userPrincipalName, displayName: me.displayName, tenantId: claims.tid }, getToken };
 }
@@ -290,8 +266,7 @@ export async function rewindable(ctx, fn) {
  * @param {Ctx} ctx
  * @param {{ wait: boolean }} opts
  * @returns {Promise<boolean>} false when a step failed and the install carried on, or the first load or model refresh it
- *   waited for didn't leave a working model. An app deployed meanwhile, by deploy-app, makes up for its own step only
- *   when that was the only failure.
+ *   waited for didn't leave a working model.
  */
 export async function install(ctx, opts) {
   const { ui, config } = ctx;
@@ -300,20 +275,15 @@ export async function install(ctx, opts) {
   let pre;
   if (ui.web) {
     go = await reviewSetup(ctx);
-    if (go && config.target !== 'azure') pre = await preflight(ctx);
+    if (go) pre = await preflight(ctx);
   }
   else {
-    const wasAzure = config.target === 'azure';
-    await askTarget(ctx);
-    // The CLI stops --csv on an Azure install before signing in, but a new install only chooses its target here.
-    if (config.target === 'azure' && ctx.csvFiles?.length) throw azureUploadError(config, '--csv', !wasAzure);
     pre = await preflight(ctx);
     const checked = pre;
     go = await rewindable(ctx, async () => {
-      if (config.target === 'azure') await planAzure(ctx, checked);
-      else await plan(ctx, checked);
+      await plan(ctx, checked);
       ctx.save();
-      return config.target === 'azure' ? confirmAzurePlan(ctx) : confirmPlan(ctx, checked);
+      return confirmPlan(ctx, checked);
     });
   }
   if (!go) {
@@ -321,21 +291,12 @@ export async function install(ctx, opts) {
     return true;
   }
 
-  if (config.target === 'azure') return installAzure(ctx, opts);
-
   const sm = config.semanticModel;
   const withModel = !!sm.enabled;
-  const withApp = withModel && !!config.fabricApp.enabled;
   const withConsumption = !!config.modules.consumption;
-  // Unticked, the step still takes away the read roles the installer gave the app.
-  const withAgentEvaluator = !!config.modules.agentEvaluator || !!config.fabric.transcriptAccess?.length;
   const withUploads = routerWanted(config.dataSources) || !!ctx.pendingUploads?.length || flowsWanted(config).length > 0;
-  const withResourceGraph = resourceGraphOn(config);
   const withReports = reportsOn(config);
-  const withDataAgent = dataAgentWanted(ctx);
   const withAccess = withModel && !!config.access;
-  // Once, straight after the app is deployed and before the long first load.
-  const withShare = withApp && withAccess && config.access?.appShared !== true;
   const titles = [
     'Key Vault',
     'App registration',
@@ -343,15 +304,10 @@ export async function install(ctx, opts) {
     'Workspace and Lakehouse',
     ...(withModel ? ['Semantic model'] : []),
     ...(withConsumption ? ['Credit consumption'] : []),
-    ...(withAgentEvaluator ? ['Copilot Studio transcripts'] : []),
-    ...(withResourceGraph ? ['Resource Graph access'] : []),
     ...(withReports ? ['Power BI reports'] : []),
-    ...(withDataAgent ? ['Ask data agent'] : []),
     ...(withUploads ? ['Data uploads'] : []),
     'Notebooks, pipeline and schedule',
     ...(withAccess ? ['Viewer access'] : []),
-    ...(withApp ? ['Analytics Hub app'] : []),
-    ...(withShare ? ['Share the app'] : []),
     ...(ctx.runFirstLoad ? ['First load'] : ctx.reloadHistoryDays ? ['Reload audit history'] : withModel ? ['Model refresh'] : []),
   ];
   let n = 0;
@@ -376,23 +332,11 @@ export async function install(ctx, opts) {
     step('Credit consumption');
     await consumptionSteps(ctx);
   }
-  if (withAgentEvaluator) {
-    step('Copilot Studio transcripts');
-    await agentEvaluatorSteps(ctx);
-  }
-  if (withResourceGraph) {
-    step('Resource Graph access');
-    await ensureAppResourceGraphAccess(ctx);
-  }
   // A step that fails and lets the install carry on leaves it partly set up. One that only warns doesn't.
   let stepsOk = true;
   if (withReports) {
     step('Power BI reports');
     stepsOk = (await ensureReports(ctx)) && stepsOk;
-  }
-  if (withDataAgent) {
-    step('Ask data agent');
-    stepsOk = (await ensureDataAgent(ctx)) && stepsOk;
   }
   if (withUploads) {
     step('Data uploads');
@@ -405,24 +349,9 @@ export async function install(ctx, opts) {
   await ensureSparkSettings(ctx);
   await ensurePipeline(ctx);
   await ensureSchedule(ctx);
-  // Before the first load or refresh, so the models open to viewers as soon as they have data.
-  if ((await ensureOrgAccess(ctx, { refresh: false })) === false) stepsOk = false;
   if (withAccess) {
     step('Viewer access');
     if (await ensureViewerGroup(ctx)) await grantModelAccess(ctx, fabricViewerModels(config));
-  }
-  let appDeployed = true;
-  /** @type {{ since: number, workspaceId?: string, deployedAt?: string } | undefined} */
-  let appFailure;
-  if (withApp) {
-    step('Analytics Hub app');
-    const since = ctx.now().getTime();
-    appDeployed = await tryDeployApp(ctx);
-    if (!appDeployed) appFailure = { since, workspaceId: config.fabric.workspaceId, deployedAt: config.fabricApp.deployedAt };
-  }
-  if (withShare) {
-    step('Share the app');
-    await shareApp(ctx);
   }
 
   // A Studio flow that's on but hasn't loaded its six months yet: run it now, before the pipeline.
@@ -480,17 +409,8 @@ export async function install(ctx, opts) {
   }
   const reloads = await settleReloads(ctx, { wait: opts.wait, load, reachable: fabricReachable(config) });
   if (!reloads.ok) notFinished(ctx, 'install');
-  /** @type {string | undefined} */
-  let appLate;
-  if (appFailure) {
-    // The step says to run deploy-app, which people do while the first load runs: saving merges its record in.
-    ctx.save();
-    appLate = appDeployedSince(config, appFailure);
-  }
-  // A late app makes up for its own step, so only when nothing else failed.
-  const appOk = appDeployed || !!appLate;
-  ok = reloads.ok && ok && stepsOk && appOk;
-  await summary(ctx, { ok, pending: reloads.pending, appFailed: !appDeployed && !appLate, appLate });
+  ok = reloads.ok && ok && stepsOk;
+  await summary(ctx, { ok, pending: reloads.pending });
   return ok;
 }
 
@@ -520,20 +440,6 @@ async function consumptionSteps(ctx, opts = {}) {
 }
 
 /**
- * Access to the chosen environments' transcripts, and the Agent Evaluator model. First, the read role the installer
- * gave the app is taken away where it's no longer wanted: environments no longer chosen, or every one when the module
- * is unticked.
- * @param {Ctx} ctx
- * @param {{ force?: boolean }} [opts]
- */
-async function agentEvaluatorSteps(ctx, opts = {}) {
-  await removeFabricReadRoles(ctx, (t) => fabricReadRoleWanted(ctx.config, t));
-  if (!ctx.config.modules.agentEvaluator) return;
-  await ensureTranscriptAccess(ctx);
-  if (agentEvaluatorModelWanted(ctx)) await ensureAgentEvaluatorModel(ctx, opts);
-}
-
-/**
  * The deployed models that read the Lakehouse, ValueLens's first.
  * @param {import('./config.js').InstallConfig} config
  * @returns {{ name: string, id?: string }[]}
@@ -543,7 +449,6 @@ function deployedModels(config) {
   return [
     config.semanticModel,
     ...(consumptionModelDeployed(config) ? [config.consumption.model] : []),
-    ...(agentEvaluatorModelDeployed(config) ? [config.agentEvaluator.model] : []),
   ];
 }
 
@@ -558,7 +463,7 @@ const joinNames = (names) => (names.length < 3 ? names.join(' and ') : `${names.
 export function fabricViewerModels(config) {
   const ws = config.fabric.workspaceId;
   if (!ws || !config.semanticModel.enabled) return [];
-  return [config.semanticModel, config.modules.consumption && config.consumption.model, config.modules.agentEvaluator && config.agentEvaluator.model]
+  return [config.semanticModel, config.modules.consumption && config.consumption.model]
     .filter((m) => m && m.id)
     .map((m) => ({ workspaceId: ws, datasetId: /** @type {string} */ (/** @type {any} */ (m).id), name: /** @type {any} */ (m).name }));
 }
@@ -604,30 +509,12 @@ function fabricReachable(config) {
 }
 
 /**
- * The app is the last thing before the data load, so a failure here shouldn't stop that.
- * @param {Ctx} ctx
- * @param {{ force?: boolean }} [opts]
- * @returns {Promise<boolean>} Whether the app deployed.
- */
-async function tryDeployApp(ctx, opts = {}) {
-  try {
-    await (opts.force ? deployApp(ctx) : ensureFabricApp(ctx));
-    return true;
-  } catch (err) {
-    ctx.ui.fail(`The app wasn't deployed: ${/** @type {Error} */ (err).message}`);
-    ctx.ui.info(`Fix the problem, then run "${commandLine('deploy-app')}".`);
-    return false;
-  }
-}
-
-/**
  * Pushes the notebooks and pipeline from this checkout over the deployed ones.
  * @param {Ctx} ctx
  * @param {{ wait?: boolean }} [opts]
  */
 export async function update(ctx, opts = {}) {
   const { ui, config } = ctx;
-  if (config.target === 'azure') return azureUpdate(ctx);
   if (!config.fabric.workspaceId || !config.fabric.lakehouseId) throw new Error('Nothing is installed yet. Run the installer first.');
   const sm = config.semanticModel;
   ui.heading('Updating Analytics Hub');
@@ -643,23 +530,15 @@ export async function update(ctx, opts = {}) {
     await ensureModelConnection(ctx);
   }
   if (config.modules.consumption) await consumptionSteps(ctx, { force: true });
-  if (config.modules.agentEvaluator || config.fabric.transcriptAccess?.length) await agentEvaluatorSteps(ctx, { force: true });
-  if (resourceGraphOn(config)) await ensureAppResourceGraphAccess(ctx);
   // As in install: a step that fails and lets the update carry on leaves it unfinished.
   let stepsOk = true;
   if (reportsOn(config)) stepsOk = (await ensureReports(ctx)) && stepsOk;
-  stepsOk = (await ensureDataAgent(ctx)) && stepsOk;
   if (routerWanted(config.dataSources)) stepsOk = (await ensureUploads(ctx)) && stepsOk;
   await ensureFlows(ctx);
   await ensureNotebooks(ctx, { force: true });
   await ensureSparkSettings(ctx);
   await ensurePipeline(ctx, { force: true });
   await ensureSchedule(ctx);
-  if ((await ensureOrgAccess(ctx, { refresh: false })) === false) stepsOk = false;
-  if (sm.enabled && config.fabricApp.enabled) {
-    if (await ui.confirm('Rebuild and redeploy the Analytics Hub app too?', true)) stepsOk = (await tryDeployApp(ctx, { force: true })) && stepsOk;
-    else await ensureAppName(ctx);
-  }
   return finishUpdate(ctx, { ...opts, failed: !stepsOk });
 }
 
@@ -680,7 +559,6 @@ export async function finishUpdate(ctx, opts = {}) {
     const refreshed = await refreshModels(ctx, { wait });
     if (!refreshed.ok) ok = false;
     else if (wait && !(await verifyModel(ctx)).ok) return false;
-    else if (wait) await verifyOrgAccess(ctx);
   }
   const reloads = await settleReloads(ctx, { wait, load: modelDeployed(config) ? 'refreshed' : 'none', reachable: fabricReachable(config) });
   if (!ok || !reloads.ok) {
@@ -718,7 +596,6 @@ function notFinished(ctx, what) {
  * @param {{ backfillDays?: number, wait: boolean }} opts
  */
 export async function run(ctx, opts) {
-  if (ctx.config.target === 'azure') return azureRun(ctx, opts);
   await offerStudioRun(ctx, { pipelineNext: true });
   const load = await chooseLoad(ctx, opts);
   const result = await runPipeline(ctx, { ...load, skipCowork: !!load.first && (await coworkSkipForFirstLoad(ctx)) });
@@ -739,7 +616,6 @@ export { status };
  * @param {{ wait: boolean }} opts
  */
 export async function refresh(ctx, opts) {
-  if (ctx.config.target === 'azure') return azureRefresh(ctx);
   if (!ctx.config.semanticModel.id) throw new Error('There is no semantic model yet. Run the installer and choose to deploy it.');
   if (deployedModels(ctx.config).length < 2) return refreshModel(ctx, opts);
   return refreshModels(ctx, opts);
@@ -762,7 +638,7 @@ export async function showPrereqs(ctx) {
  * @param {Ctx} ctx
  * @param {string} command
  * @param {{ wait: boolean, backfillDays?: number, files?: string[], run?: boolean }} opts
- * @returns {Promise<boolean>} false when a run, refresh or resource group delete it waited for didn't succeed.
+ * @returns {Promise<boolean>} false when a run or refresh it waited for didn't succeed.
  */
 export async function runCommand(ctx, command, opts) {
   switch (command) {
@@ -780,26 +656,20 @@ export async function runCommand(ctx, command, opts) {
       return !(await loadCoworkNow(ctx)).failed.length;
     case 'check': {
       const checked = !!(await checkData(ctx));
-      if (ctx.config.target === 'azure' || !modelDeployed(ctx.config)) return checked;
+      if (!modelDeployed(ctx.config)) return checked;
       return (await verifyModel(ctx)).ok && checked;
     }
     case 'refresh': {
       const result = await refresh(ctx, opts);
       return !opts.wait || result.ok;
     }
-    case 'deploy-app':
-      await deployAppNow(ctx);
-      return true;
     case 'status':
-      if (ctx.config.target === 'azure') await azureStatus(ctx);
-      else await status(ctx);
+      await status(ctx);
       return true;
     case 'rotate-secret':
-      if (ctx.config.target === 'azure') await azureRotateSecret(ctx);
-      else await rotateSecret(ctx);
+      await rotateSecret(ctx);
       return true;
     case 'uninstall':
-      if (ctx.config.target === 'azure') return azureUninstall(ctx, { wait: opts.wait });
       await fabricUninstall(ctx);
       return true;
     case 'upload':
@@ -807,39 +677,12 @@ export async function runCommand(ctx, command, opts) {
     case 'prereqs':
       await showPrereqs(ctx);
       return true;
-    case 'access': {
-      const azure = ctx.config.target === 'azure';
-      const before = ctx.config.access?.groupId;
-      // Turning org-scoped access on or off runs an update; one that didn't finish fails the command.
-      let finished = true;
-      await accessCommand(ctx, azure ? azureViewerModels(ctx.config) : fabricViewerModels(ctx.config), async (c2) => {
-        const ok = await update(c2);
-        if (ok === false) finished = false;
-        return ok;
-      });
-      const after = ctx.config.access?.groupId;
-      if (after && after !== before) {
-        ctx.ui.note(azure
-          ? `Run "${commandLine('install')}" so the web app lets the group in and shows who to ask for access.`
-          : `Run "${commandLine('deploy-app')}" so the app shows who to ask for access and links to the group.`);
-      }
-      return finished;
-    }
+    case 'access':
+      await accessCommand(ctx, fabricViewerModels(ctx.config));
+      return true;
     default:
       throw new Error(`Unknown command "${command}".`);
   }
-}
-
-/**
- * Builds and deploys the Analytics Hub app on its own.
- * @param {Ctx} ctx
- */
-export async function deployAppNow(ctx) {
-  const { config, ui } = ctx;
-  if (!modelDeployed(config)) throw new Error('The app needs the semantic model. Run the installer and choose "Semantic model and the Analytics Hub app".');
-  ui.heading('Deploying the Analytics Hub app');
-  await deployApp(ctx);
-  if (config.fabricApp.url) ui.info(config.fabricApp.url);
 }
 
 /** @param {Ctx} ctx */
@@ -878,9 +721,8 @@ export async function rotateSecret(ctx) {
 /**
  * Prints where everything is and what to do next.
  * @param {Ctx} ctx
- * @param {{ ok?: boolean, pending?: string[], appFailed?: boolean, appLate?: string }} [opts]  ok false when a step above failed, so the heading doesn't say it is all set up;
- *   pending: models still reloading after their update; appFailed: the app step failed, so a card says how to deploy it;
- *   appLate: when the app was deployed after its step failed, by deploy-app or Redeploy run meanwhile.
+ * @param {{ ok?: boolean, pending?: string[] }} [opts]  ok false when a step above failed, so the heading doesn't say it is all set up;
+ *   pending: models still reloading after their update.
  */
 export async function summary(ctx, opts = {}) {
   const { ui, config, api } = ctx;
@@ -900,8 +742,7 @@ export async function summary(ctx, opts = {}) {
   } else {
     ui.heading('Analytics Hub is set up');
   }
-  if (opts.appLate) ui.ok(`The app step above failed, but the app was deployed afterwards (${new Date(opts.appLate).toISOString().slice(0, 16).replace('T', ' ')} UTC).`);
-  const left = nextSteps(config, ctx.user, { appFailed: opts.appFailed });
+  const left = nextSteps(config, ctx.user);
   if (left.length) ui.nextSteps(stepsLeftTitle(left), left);
   ui.info(`Workspace:  ${f.workspaceName}  ${c.dim(`https://app.fabric.microsoft.com/groups/${ws}`)}`);
   ui.info(`Lakehouse:  ${f.lakehouseName}`);
@@ -914,24 +755,20 @@ export async function summary(ctx, opts = {}) {
   if (config.keyVault.private) ui.info(`            ${c.dim('Private vault, reached through a managed private endpoint. Spark sessions take a few minutes longer to start.')}`);
 
   const sm = config.semanticModel;
-  const fa = config.fabricApp;
   if (sm.enabled && sm.id) {
     ui.info(`Model:      ${sm.name}  ${c.dim(modelUrl(ws, sm.id))}`);
     if (sm.connectionName) ui.info(`            ${c.dim(`Reads the Lakehouse through "${sm.connectionName}"${sm.secretExpires ? `, whose secret expires ${sm.secretExpires.slice(0, 10)}` : ''}.`)}`);
-    if (fa.enabled && fa.itemId) ui.info(`App:        ${fa.name}  ${c.dim(fa.url ?? '')}`);
     reportsSummary(ctx);
-    dataAgentSummary(ctx);
 
     const group = config.access?.groupId ? config.access : undefined;
     ui.heading('Next steps');
     if (group) {
-      // Sharing the app item itself is asked before the first load, and is a card above until it's done.
-      ui.info(`1. Give people access by adding them to "${group.groupName}": run "${commandLine('access')}", use Share in the app,`);
+      ui.info(`1. Give people access by adding them to "${group.groupName}": run "${commandLine('access')}",`);
       ui.info(`   or open ${myGroupsUrl(/** @type {string} */ (group.groupId))}. The group already has Build on the models. Keep viewers off workspace roles.`);
       if (reportsOn(config)) ui.info(`   Share the reports with "${group.groupName}" once: open them in the workspace, choose Share, and add the group.`);
     } else {
-      const shared = [...(reportsOn(config) ? ['reports'] : []), ...(fa.enabled ? ['app'] : [])].join(' and ') || 'reports you publish';
-      ui.info(`1. Share the ${shared}: open ${shared === 'app' ? 'it' : 'them'} in the workspace, choose Share, and add people or a group.`);
+      const shared = reportsOn(config) ? 'reports' : 'reports you publish';
+      ui.info(`1. Share the ${shared}: open them in the workspace, choose Share, and add people or a group.`);
       ui.info(`   They also need Build on ${sm.name} (its Manage permissions page), or Viewer on the workspace.`);
     }
     if (secretMode(config) === 'notebook') {
@@ -943,7 +780,6 @@ export async function summary(ctx, opts = {}) {
     }
     ui.info(`3. Keep ${c.bold('valuelens-install.json')}. It holds no secrets; re-run the installer with it to change or repair the set-up.`);
     if (config.modules.consumption) consumptionSummary(ctx);
-    if (config.modules.agentEvaluator) agentEvaluatorSummary(ctx);
     dataSourcesSummary(ctx);
     flowsSummary(ctx);
     return;
@@ -971,7 +807,6 @@ export async function summary(ctx, opts = {}) {
   }
   ui.info(`4. Keep ${c.bold('valuelens-install.json')}. It holds no secrets; re-run the installer with it to change or repair the set-up.`);
   if (config.modules.consumption) consumptionSummary(ctx);
-  if (config.modules.agentEvaluator) agentEvaluatorSummary(ctx);
   dataSourcesSummary(ctx);
   flowsSummary(ctx);
 }
@@ -990,9 +825,6 @@ export function preview(o) {
   const cc = config.consumption;
   const withConsumptionModel = withModel && !!config.modules.consumption && !!sources.consumptionModelFile;
   const withAzureAi = !!config.modules.consumption && !!cc.azureSubscriptionId;
-  const ae = config.agentEvaluator;
-  const withTranscripts = !!config.modules.agentEvaluator && ae.environments.length > 0;
-  const withAgentEvaluatorModel = withModel && withTranscripts && !!sources.agentEvaluatorModelFile;
   const withDataflow = !!config.modules.consumption && config.dataSources.coworkCredits === 'api' && isVivaId(cc.vivaPartition) && isVivaId(cc.vivaQuery);
   /** @type {Ctx} */
   const ctx = /** @type {any} */ ({
@@ -1009,14 +841,13 @@ export function preview(o) {
       },
       semanticModel: withModel ? { ...sm, id: sm.id ?? fake(4), bound: true } : { ...sm, enabled: false },
       consumption: { ...cc, model: { ...cc.model, id: cc.model.id ?? fake(5), bound: true } },
-      agentEvaluator: { ...ae, model: { ...ae.model, id: ae.model.id ?? fake(6), bound: true } },
     },
     user: { tenantId: config.tenantId ?? fake(0) },
   });
 
   mkdirSync(join(out, 'notebooks'), { recursive: true });
   let n = 10;
-  for (const nb of notebooksFor(config.modules, { semanticModel: withModel, azureAi: withAzureAi, dataverse: withTranscripts, access: rlsOn(ctx.config), dataSources: config.dataSources })) {
+  for (const nb of notebooksFor(config.modules, { semanticModel: withModel, azureAi: withAzureAi, access: rlsOn(ctx.config), dataSources: config.dataSources })) {
     const prepared = prepareNotebook(sources.notebooks[nb.key], notebookSettings(ctx, nb));
     writeFileSync(join(out, 'notebooks', `${nb.displayName}.ipynb`), serialiseNotebook(prepared), 'utf8');
     ctx.config.fabric.notebooks[nb.key] = ctx.config.fabric.notebooks[nb.key] ?? fake(n++);
@@ -1029,10 +860,7 @@ export function preview(o) {
     semanticModelId: withModel ? ctx.config.semanticModel.id : undefined,
     azureAi: withAzureAi,
     consumptionModelId: withConsumptionModel ? ctx.config.consumption.model.id : undefined,
-    agentTranscripts: withTranscripts,
-    agentEvaluatorModelId: withAgentEvaluatorModel ? ctx.config.agentEvaluator.model.id : undefined,
     coworkDataflowId: withDataflow ? cc.dataflowId ?? fake(7) : undefined,
-    resourceGraph: config.dataSources.resourceGraph === 'api',
     access: rlsOn(ctx.config),
   });
   writeFileSync(join(out, 'pipeline-content.json'), `${JSON.stringify(pipeline, null, 2)}\n`, 'utf8');
@@ -1063,7 +891,6 @@ export function preview(o) {
       server: sm.server ?? 'your-endpoint.datawarehouse.fabric.microsoft.com',
       database: /** @type {string} */ (ctx.config.fabric.lakehouseName),
       modules: config.modules,
-      resourceGraph: config.dataSources.resourceGraph === 'api',
       access: rlsSettings(ctx.config),
     });
     writeFileSync(join(out, 'model.bim'), `${JSON.stringify(bim, null, 2)}\n`, 'utf8');
@@ -1072,21 +899,12 @@ export function preview(o) {
     const bim = buildConsumptionModel(loadTemplateModel(/** @type {string} */ (sources.consumptionModelFile)), {
       server: sm.server ?? 'your-endpoint.datawarehouse.fabric.microsoft.com',
       database: /** @type {string} */ (ctx.config.fabric.lakehouseName),
-      resourceGraph: config.dataSources.resourceGraph === 'api',
       access: rlsSettings(ctx.config),
     });
     writeFileSync(join(out, 'consumption-model.bim'), `${JSON.stringify(bim, null, 2)}\n`, 'utf8');
   }
-  if (withAgentEvaluatorModel) {
-    const bim = buildAgentEvaluatorModel(loadTemplateModel(/** @type {string} */ (sources.agentEvaluatorModelFile)), {
-      server: sm.server ?? 'your-endpoint.datawarehouse.fabric.microsoft.com',
-      database: /** @type {string} */ (ctx.config.fabric.lakehouseName),
-      access: rlsSettings(ctx.config),
-    });
-    writeFileSync(join(out, 'agent-evaluator-model.bim'), `${JSON.stringify(bim, null, 2)}\n`, 'utf8');
-  }
 
-  const models = [withModel ? 'model.bim' : '', withConsumptionModel ? 'consumption-model.bim' : '', withAgentEvaluatorModel ? 'agent-evaluator-model.bim' : ''].filter(Boolean);
+  const models = [withModel ? 'model.bim' : '', withConsumptionModel ? 'consumption-model.bim' : ''].filter(Boolean);
   ui.heading('Preview written');
   ui.info(out);
   ui.note(`Notebooks, pipeline-content.json, schedule.json${models.map((m) => `, ${m}`).join('')} and graph-permissions.txt, with placeholder IDs where none are known yet.`);

@@ -7,7 +7,7 @@ import { notebooksFor } from '../src/catalog.js';
 import { emptyConfig } from '../src/config.js';
 import { modelDeployed, notebookSettings, pipelineSignature } from '../src/steps/fabric.js';
 import { prepareNotebook } from '../src/transform/notebook.js';
-import { AUDIT_TABLE, buildAgentEvaluatorModel, buildModel, datasourcePath, decodeText, loadTemplateModel, mParameter, mString, readTemplateModel, setMParameter } from '../src/transform/model.js';
+import { AUDIT_TABLE, buildModel, datasourcePath, decodeText, loadTemplateModel, mParameter, mString, readTemplateModel, setMParameter } from '../src/transform/model.js';
 import { buildPipeline, findActivity, REFRESH_ACTIVITY } from '../src/transform/pipeline.js';
 import { listZip, readZipEntry } from '../src/transform/zip.js';
 import { fakeCtx, realSources } from './fakes.js';
@@ -54,7 +54,7 @@ function makeZip(files) {
 
 const MODEL_FILE = /** @type {string} */ (realSources().modelFile);
 const template = loadTemplateModel(MODEL_FILE);
-const settings = { server: 'abc.datawarehouse.fabric.microsoft.com', database: 'ValueLens', modules: { orgData: true, m365Activity: false, agent365: false, productFeedback: true, consumption: false, agentEvaluator: false } };
+const settings = { server: 'abc.datawarehouse.fabric.microsoft.com', database: 'ValueLens', modules: { orgData: true, agent365: false, productFeedback: true, consumption: false } };
 
 test('zip: stored and deflated entries read back; a missing entry or non-zip fails', () => {
   const text = Buffer.from('hello '.repeat(200));
@@ -97,13 +97,10 @@ test('the real template: source parameters filled, optional pages switched, temp
   assert.ok(bim.model.tables.find((t) => t.name === AUDIT_TABLE)?.refreshPolicy, 'the audit table keeps its incremental refresh policy');
 });
 
-test('the Fabric, Azure and Agent Evaluator models rename Department to Organization only when Organization is missing', () => {
+test('the Fabric model renames Department to Organization only when Organization is missing', () => {
   const guard = 'if colDepartment <> null and not Table.HasColumns(RenamedPersonId, "Organization") then';
-  const agentEvaluator = loadTemplateModel(/** @type {string} */ (realSources().agentEvaluatorModelFile));
   const models = {
     fabric: buildModel(template, settings),
-    azure: buildModel(template, { ...settings, server: 'sql-valuelens.database.windows.net', database: 'valuelens' }),
-    agentEvaluator: buildAgentEvaluatorModel(agentEvaluator, { server: settings.server, database: settings.database }),
   };
   for (const [name, bim] of Object.entries(models)) {
     const org = bim.model.tables.find((t) => t.name === 'Chat + Agent Org Data');
@@ -160,7 +157,7 @@ test('pipeline: no model, no refresh; a model without the notebook is an error',
 });
 
 test('the refresh notebook is deployed only with a connected model, with its IDs filled in', () => {
-  const modules = { orgData: true, m365Activity: false, agent365: false, productFeedback: false, consumption: false, agentEvaluator: false };
+  const modules = { orgData: true, agent365: false, productFeedback: false, consumption: false };
   assert.ok(!notebooksFor(modules).some((nb) => nb.key === 'refreshModel'));
   const nb = notebooksFor(modules, { semanticModel: true }).find((n) => n.key === 'refreshModel');
   assert.ok(nb);

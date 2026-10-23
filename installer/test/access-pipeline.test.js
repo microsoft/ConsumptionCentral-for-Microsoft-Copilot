@@ -18,8 +18,8 @@ const setRls = (config, enabled) => {
   return config;
 };
 
-const ids = { auditIngester: 'nb-a', licensedUsers: 'nb-b', processor: 'nb-c', orgData: 'nb-d', m365Activity: 'nb-m', refreshModel: 'nb-r', workdayLander: 'nb-w', accessScope: 'nb-acc' };
-const modules = { orgData: true, m365Activity: true, agent365: false, productFeedback: false, consumption: false, agentEvaluator: false };
+const ids = { auditIngester: 'nb-a', licensedUsers: 'nb-b', processor: 'nb-c', orgData: 'nb-d', productFeedback: 'nb-p', refreshModel: 'nb-r', workdayLander: 'nb-w', accessScope: 'nb-acc' };
+const modules = { orgData: true, agent365: false, productFeedback: true, consumption: false };
 
 test('access notebook: deployed only with org-scoped access on, and it ships', () => {
   const ds = defaultDataSources();
@@ -66,7 +66,7 @@ test('pipeline: the access step runs after org data and before the model refresh
   const step = findActivity(doc.properties.activities, ACCESS_ACTIVITY);
   assert.equal(step.typeProperties.notebookId, 'nb-acc');
   assert.deepEqual(step.dependsOn, [{ activity: 'Conditionally_Run_Org_Data', dependencyConditions: ['Completed'] }]);
-  assert.deepEqual(findActivity(doc.properties.activities, 'Conditionally_Run_M365_Activity').dependsOn, [{ activity: ACCESS_ACTIVITY, dependencyConditions: ['Completed'] }]);
+  assert.deepEqual(findActivity(doc.properties.activities, 'Conditionally_Run_Product_Feedback').dependsOn, [{ activity: ACCESS_ACTIVITY, dependencyConditions: ['Completed'] }]);
   assert.ok(findActivity(doc.properties.activities, REFRESH_ACTIVITY).dependsOn.some((/** @type {any} */ d) => d.activity === ACCESS_ACTIVITY));
 
   const workday = buildPipeline(sources.pipeline, { ...base, access: true, workday: true });

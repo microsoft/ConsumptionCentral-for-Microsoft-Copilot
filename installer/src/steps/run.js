@@ -7,10 +7,10 @@ import { isTransientNetworkError } from '../auth.js';
 import { commandLine } from '../launch.js';
 import { failedCards, fillRerun, loadCards, VIVA_ACTIVITY } from '../loads.js';
 import { DATA_CHECK_FILE } from '../transform/notebook.js';
-import { AGENT_EVALUATOR_ACTIVITY, COWORK_DATAFLOW_ACTIVITY, COWORK_WRAPPER_ACTIVITY, firstRunParameters, REFRESH_ACTIVITY, SKIP_COWORK_PARAMETER } from '../transform/pipeline.js';
-import { c, formatDuration } from '../ui.js';
+import { COWORK_DATAFLOW_ACTIVITY, COWORK_WRAPPER_ACTIVITY, firstRunParameters, REFRESH_ACTIVITY, SKIP_COWORK_PARAMETER } from '../transform/pipeline.js';
+import { formatDuration } from '../ui.js';
 import { coworkConnections, coworkNextStep, coworkSignInSteps, VIVA_LOAD_FILE } from './consumption.js';
-import { agentEvaluatorOn, coworkDataflowOn, modelDeployed } from './fabric.js';
+import { coworkDataflowOn, modelDeployed } from './fabric.js';
 import { modelRefreshes } from './model.js';
 
 /** @typedef {import('../install.js').Ctx} Ctx */
@@ -331,14 +331,13 @@ export async function activityRuns(ctx, jobId, job) {
 
 /**
  * Whether a run loaded the history: the audit log and its processor succeeded, and so did the model
- * refresh and the transcripts when they are installed.
+ * refresh when it is installed.
  * @param {import('../config.js').InstallConfig} config
  * @param {Map<string, any>} runs
  */
 export function loadedBy(config, runs) {
   const needed = ['Run_Audit_Log_Ingester', 'Run_Audit_Log_Processor'];
   if (modelDeployed(config)) needed.push(REFRESH_ACTIVITY);
-  if (agentEvaluatorOn(config)) needed.push(AGENT_EVALUATOR_ACTIVITY);
   return needed.every((name) => runs.get(name)?.status === 'Succeeded');
 }
 
@@ -457,7 +456,6 @@ const TABLE_LABELS = /** @type {const} */ ({
   licensed: 'Licensed users',
   audit: 'Copilot interactions',
   org: 'Org data',
-  m365: 'Microsoft 365 activity',
   agents: 'Agents',
 });
 
@@ -568,19 +566,8 @@ export async function status(ctx) {
   ui.info(`Pipeline:  ${f.pipelineName ?? f.pipelineId}`);
   const sm = config.semanticModel;
   const cm = config.consumption?.model;
-  const am = config.agentEvaluator?.model;
   if (sm?.id) ui.info(`Model:     ${sm.name}${sm.bound ? '' : ' (not connected to the Lakehouse yet)'}`);
   if (cm?.id) ui.info(`Model:     ${cm.name}${cm.bound ? '' : ' (not connected to the Lakehouse yet)'}`);
-  if (am?.id) ui.info(`Model:     ${am.name}${am.bound ? '' : ' (not connected to the Lakehouse yet)'}`);
-  if (config.modules.agentEvaluator && config.agentEvaluator.environments.length) {
-    const envs = config.agentEvaluator.environments;
-    const waiting = envs.filter((e) => !e.access || !e.readAll).length;
-    ui.info(
-      `Agents:    ${envs.length - waiting} of ${envs.length} environment(s) readable` +
-        `${waiting ? c.dim(' (the rest are waiting for an admin to add the app, or give it the role that reads every transcript)') : ''}`,
-    );
-  }
-  if (config.fabricApp?.itemId) ui.info(`App:       ${config.fabricApp.name}  ${c.dim(config.fabricApp.url ?? '')}`);
   expiry(ctx, 'Client secret', config.app.secretExpires);
   if (sm?.connectionId) expiry(ctx, 'Model connection secret', sm.secretExpires);
 
@@ -620,7 +607,7 @@ export async function status(ctx) {
     }
   }
 
-  for (const m of [sm, cm, am]) {
+  for (const m of [sm, cm]) {
     if (!m?.id) continue;
     const refreshes = await modelRefreshes(ctx, m).catch(() => null);
     if (refreshes) {

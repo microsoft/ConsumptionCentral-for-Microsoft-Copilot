@@ -109,8 +109,6 @@ test('data check gets a summary cell that saves JSON to the Lakehouse', () => {
   assert.match(last, /notebookutils\.notebook\.exit\(_json\.dumps\(_summary\)\)/);
   assert.ok(last.includes("_summary['identity'] = globals().get('overlap_summary')"));
   assert.ok(last.includes("_summary['auditExcluded'] = globals().get('audit_excluded')"));
-  assert.ok(last.includes("_tables['m365'] = _resolve('m365_activity_daily')"));
-  assert.match(last, /_pick\(_df, \['ActivityDate'\]\)/);
   assert.ok(last.includes("_summary['tables']['org']['withDepartment']"));
   const earlier = nb.cells.slice(0, -1).map(cellText).join('\n');
   for (const name of ['def _resolve', 'def _pick', 'DATE_NAMES', 'resolved =', 'overlap_summary = {', 'audit_excluded = None']) assert.ok(earlier.includes(name), name);

@@ -9,13 +9,10 @@ import {
   AGENT365_FALLBACK,
   AGENT365_LANDER,
   AGENT365_REGISTRY,
-  AGENT_EVALUATOR_ACTIVITY,
-  AGENT_EVALUATOR_REFRESH_ACTIVITY,
   CONSUMPTION_REFRESH_ACTIVITY,
   COWORK_DATAFLOW_ACTIVITY,
   COWORK_WRAPPER_ACTIVITY,
   REFRESH_ACTIVITY,
-  RESOURCE_GRAPH_ACTIVITY,
   STATUS_ACTIVITY,
   UPLOAD_ROUTER_ACTIVITY,
   WORKDAY_ACTIVITY,
@@ -34,17 +31,12 @@ export const LOAD_LABELS = /** @type {Record<string, string>} */ ({
   Run_Org_Data_Ingester: 'Org data (Entra ID)',
   [WORKDAY_ACTIVITY]: 'Org data (Workday export)',
   [ACCESS_ACTIVITY]: 'Who sees which orgs (org-scoped access)',
-  Run_M365_Activity_Ingester: 'Microsoft 365 activity',
   Run_ProductFeedback_Ingester: 'Product feedback',
   Run_Consumption_Azure_AI: 'Azure AI spend',
   Run_Consumption_Studio: 'Copilot Studio credits',
   [COWORK_DATAFLOW_ACTIVITY]: 'Cowork credits (Viva Insights)',
   Run_Consumption_Viva: 'Cowork credits (load)',
   [CONSUMPTION_REFRESH_ACTIVITY]: 'Consumption model refresh',
-  [AGENT_EVALUATOR_ACTIVITY]: 'Agent transcripts',
-  [AGENT_EVALUATOR_REFRESH_ACTIVITY]: 'Agent Evaluator model refresh',
-  [RESOURCE_GRAPH_ACTIVITY]: 'Agent configuration and Foundry (Resource Graph)',
-  Run_Defender_Ingester: 'Shadow AI and agent risk (Defender)',
   [STATUS_ACTIVITY]: 'Load status record',
 });
 
@@ -103,16 +95,13 @@ export const REASONS = [
  * Loads that write a status table saying what they couldn't read. They succeed either way, so the
  * Record_Load_Status notebook reads the table and marks a load that ran but loaded nothing, or wasn't
  * allowed to read part of its source, as a Warning. Each load replaces its table every run.
+ * @type {{ activity: string, table: string, item: string, status: string }[]}
  */
-export const STATUS_TABLES = [
-  { activity: RESOURCE_GRAPH_ACTIVITY, table: 'arg_status', item: 'Probe', status: 'Status' },
-  { activity: 'Run_Defender_Ingester', table: 'defender_status', item: 'Probe', status: 'Status' },
-  { activity: AGENT_EVALUATOR_ACTIVITY, table: 'evaluator_status', item: 'Environment', status: 'Status' },
-];
+export const STATUS_TABLES = [];
 
 /**
  * Why a load that succeeded is a warning, tested in order against its status table's rows. `all`
- * means every row must be empty or skipped. `{items}` is filled with the probes or environments.
+ * means every row must be empty or skipped. `{items}` is filled with the status table's items.
  */
 export const WARNINGS = [
   {
@@ -138,7 +127,7 @@ export const WARNINGS = [
     statuses: ['empty'],
     all: true,
     text: 'It ran, but found nothing to load in {items}.',
-    fix: 'Check the source has data for the period it reads. For Agent transcripts, choose the environments that hold your Copilot Studio agents with Repair or change in the installer.',
+    fix: 'Check the source has data for the period it reads.',
   },
 ];
 

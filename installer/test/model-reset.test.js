@@ -697,22 +697,16 @@ test('a change that may not have finished is applied again before anything count
   assert.equal(t.sm.reload, undefined);
 });
 
-test('a Consumption model kept while credit consumption is off, or in Azure demo mode, is owed no reload until it is used again', () => {
+test('a Consumption model kept while credit consumption is off is owed no reload until it is used again', () => {
   const { config } = fakeCtx();
   const reload = { since: '2026-06-01T12:00:00.000Z', unsettled: true };
   Object.assign(config.semanticModel, { id: 'vl-1', reload: { ...reload } });
   Object.assign(config.consumption.model, { id: 'cc-1', reload: { ...reload } });
   const owed = () => pendingReloads(config).map((m) => m.id);
-  for (const target of /** @type {const} */ (['fabric', 'azure'])) {
-    config.target = target;
-    config.modules.consumption = true;
-    assert.deepEqual(owed(), ['vl-1', 'cc-1'], target);
-    config.modules.consumption = false;
-    assert.deepEqual(owed(), ['vl-1'], `${target}, unticked`);
-  }
   config.modules.consumption = true;
-  /** @type {any} */ (config.azure).sampleData = true;
-  assert.deepEqual(owed(), ['vl-1'], 'demo mode publishes no credit tables');
+  assert.deepEqual(owed(), ['vl-1', 'cc-1']);
+  config.modules.consumption = false;
+  assert.deepEqual(owed(), ['vl-1'], 'unticked');
 });
 
 test('--allow-model-reset: only with install, update or access, and not with --ui', () => {
