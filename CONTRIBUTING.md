@@ -75,3 +75,47 @@ the loading path, test with:
 
 A useful check: on a small file, count the rows. A join that fans out doubles your credits, and on a
 large file doubled credits look entirely plausible.
+
+---
+
+## Installer asset manifest
+
+[`installer-assets.json`](installer-assets.json) is the one list of what the Consumption Central
+installer deploys: the four templates, the Fabric notebooks and the [app](app/). The installer and
+its exe build read every path from it rather than hard-coding them, so **if you add, rename or move a
+template or notebook, update the manifest in the same change.**
+[`test_installer_assets.py`](docs/scripts/test_installer_assets.py) runs in CI and fails until you do.
+
+**`templates`**: one entry per shipped `.pbit` (`fabric`, `vivaDirect`, `localCsv`, `dataverse`).
+
+| Field | Meaning |
+|---|---|
+| `path` | The template, relative to the repo root |
+| `parameters` | The parameters the installer may set. Each must exist in the template; the template can have more. |
+
+**`notebooks`**: every `.ipynb` in `2. Fabric/notebooks`, in the order a pipeline should run them.
+
+| Field | Meaning |
+|---|---|
+| `key` | The id the installer uses. `azureAi`, `studioConsumption` and `vivaConsumption` match the Analytics Hub installer's catalog. |
+| `name` | The notebook's name in Fabric: its file name without `.ipynb` |
+| `path` | The file, relative to the repo root |
+| `credentials` | `true` if the installer sets `TENANT_ID`, `CLIENT_ID` and `CLIENT_SECRET` from an app registration |
+| `values` | Settings the installer writes as Python strings: `NAME = '...'` |
+| `expressions` | Settings the installer writes as raw Python, such as a number, `None` or a `getSecret(...)` call |
+| `patches` | Exact text the installer replaces. Each occurs exactly once in the notebook. |
+| `secret` | `null`, or `{kind, name}`: `kind` is `clientSecret` or `githubPat`, and `name` is the Key Vault secret name the notebook expects (`null` where the installer chooses it) |
+| `reads` | Lakehouse tables the notebook reads if they exist, written by another notebook or a Dataflow |
+| `writes` | The Delta tables it writes |
+| `landing` | The `Files/landing/...` folder it reads uploaded exports from, or `null` |
+| `loadSummary` | A JSON file the notebook writes describing what it loaded, or `null` |
+| `run` | `pipeline` (safe unattended), `once` (a one-off, such as reading commercial terms) or `interactive` (needs a person signed in) |
+| `exclusiveGroup` | Notebooks in the same group write the same tables from different sources; deploy one of them. `null` otherwise. |
+
+Unlike the Analytics Hub catalog, `values` and `expressions` list names only: the installer supplies
+the values. Each of those names, and each credential, appears exactly once as a top-level
+`NAME = ...` line, which is what the Analytics Hub installer's `installer/src/transform/notebook.js`
+edits. A pipeline run passes no parameters, so the shipped defaults must be safe as they stand:
+`READ_API_FILES = False`, `PAYG_SUBSCRIPTION_IDS = []`, `ALLOW_EMPTY_LANDING = True` and so on.
+The test pins those, and checks that every table the Fabric template reads is written by a listed
+notebook with the columns the template needs.

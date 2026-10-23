@@ -153,6 +153,9 @@ jobs:
       - name: Fabric ingestion tests
         run: python docs/scripts/test_fabric_ingestion.py
 
+      - name: Installer asset manifest contracts
+        run: python docs/scripts/test_installer_assets.py
+
       - name: Cowork task ingestion and model regressions
         run: python docs/scripts/test_cowork_tasks.py
 
