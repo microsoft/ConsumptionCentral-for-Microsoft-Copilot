@@ -70,7 +70,7 @@ TEMPLATES = (
     (REPO / "1. Local CSV" / "Consumption Central - Local CSV.pbit", False),
     (REPO / "2. Fabric" / "Consumption Central - Fabric.pbit", True),
     (REPO / "3. Viva Direct" / "Consumption Central - Viva Direct.pbit", False),
-    (REPO / "4. Power Automate + Dataverse"
+    (REPO / "archive" / "4. Power Automate + Dataverse"
      / "Consumption Central - Power Automate + Dataverse.pbit", True),
 )
 

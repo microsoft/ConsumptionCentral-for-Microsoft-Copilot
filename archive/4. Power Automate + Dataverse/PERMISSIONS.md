@@ -56,4 +56,4 @@ Vault Secrets User** role on the vault.
 Copilot Studio **per-user** consumption has no API. No permission here will get
 it. That page is fed by a manual `StudioPerUser.csv` export from the Power
 Platform admin centre, as described in
-[docs/DATA-SOURCES.md](../docs/DATA-SOURCES.md).
+[docs/DATA-SOURCES.md](../../docs/DATA-SOURCES.md).

@@ -15,7 +15,7 @@ TEMPLATES = [
     ROOT / directory / f"Consumption Central - {name}.pbit"
     for directory, name in (
         ("1. Local CSV", "Local CSV"), ("2. Fabric", "Fabric"), ("3. Viva Direct", "Viva Direct"),
-        ("4. Power Automate + Dataverse", "Power Automate + Dataverse"))
+        ("archive/4. Power Automate + Dataverse", "Power Automate + Dataverse"))
 ]
 
 

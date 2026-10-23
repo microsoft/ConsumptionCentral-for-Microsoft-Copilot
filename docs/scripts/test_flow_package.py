@@ -1,4 +1,4 @@
-"""Offline tests for `4. Power Automate + Dataverse/scripts/Build-FlowPackage.py`.
+"""Offline tests for `archive/4. Power Automate + Dataverse/scripts/Build-FlowPackage.py`.
 
 These pin the parts of the generated flows that were wrong in a way nothing
 would have reported: a token the licensing API refuses, a response shape that
@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PATH4 = ROOT / "4. Power Automate + Dataverse"
+PATH4 = ROOT / "archive" / "4. Power Automate + Dataverse"
 SCRIPT = PATH4 / "scripts" / "Build-FlowPackage.py"
 SCHEMA_FILE = PATH4 / "dataverse-schema.json"
 

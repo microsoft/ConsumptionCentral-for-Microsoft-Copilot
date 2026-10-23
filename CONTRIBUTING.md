@@ -81,12 +81,13 @@ large file doubled credits look entirely plausible.
 ## Installer asset manifest
 
 [`installer-assets.json`](installer-assets.json) is the one list of what the Consumption Central
-installer deploys: the four templates, the Fabric notebooks and the [app](app/). The installer and
+installer deploys: the three templates, the Fabric notebooks and the [app](app/). The installer and
 its exe build read every path from it rather than hard-coding them, so **if you add, rename or move a
 template or notebook, update the manifest in the same change.**
 [`test_installer_assets.py`](docs/scripts/test_installer_assets.py) runs in CI and fails until you do.
 
-**`templates`**: one entry per shipped `.pbit` (`fabric`, `vivaDirect`, `localCsv`, `dataverse`).
+**`templates`**: one entry per shipped `.pbit` (`fabric`, `vivaDirect`, `localCsv`). Archived templates
+under `archive/` are not shipped and have no entry.
 
 | Field | Meaning |
 |---|---|

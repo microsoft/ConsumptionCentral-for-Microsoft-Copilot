@@ -13,10 +13,6 @@
     "localCsv": {
       "path": "1. Local CSV/Consumption Central - Local CSV.pbit",
       "parameters": ["DataFolder", "BillingPeriodWeeks", "CreditRate", "PrepaidCreditRate", "PrepaidCreditBalance", "GitHubBusinessSeatPrice", "GitHubEnterpriseSeatPrice"]
-    },
-    "dataverse": {
-      "path": "4. Power Automate + Dataverse/Consumption Central - Power Automate + Dataverse.pbit",
-      "parameters": ["DataverseServer", "DataverseDatabase", "DataversePrefix", "BillingPeriodWeeks", "CreditRate", "PrepaidCreditRate", "PrepaidCreditBalance", "GitHubBusinessSeatPrice", "GitHubEnterpriseSeatPrice"]
     }
   },
   "notebooks": [

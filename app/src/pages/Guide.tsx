@@ -139,7 +139,7 @@ export function Guide({ view }: { view: string }) {
       )}
       <Sections page={page} />
       {page.id === 'intro' && (
-        <Panel title="About this app edition">
+        <Panel title="About this app">
           <dl className="defs defs-grid">
             {NOTES.map((n) => (
               <div key={n.title}>

@@ -3,10 +3,10 @@
 **This is not a setup step.** Every path in this repo still loads Copilot Studio
 data from the manual admin-centre export described in its own README.
 
-The one place the licensing API *is* supported is
-[4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse), where
-the flow calls it through a connection the API already trusts. The scripts here
-call it as their own client and are expected to be refused; they are kept
+The one route that reached the licensing API was the
+[Power Automate + Dataverse](../archive/4.%20Power%20Automate%20%2B%20Dataverse/README.md) route, where
+the flow calls it through a connection the API already trusts. That route is now archived and
+unsupported. The scripts here call it as their own client and are expected to be refused; they are kept
 visible and reviewable rather than sitting in a branch.
 
 ## What it would replace
@@ -35,9 +35,9 @@ one-line check below. That is useful on its own: it separates "my tenant or
 account is wrong" from "this specific route is refusing me".
 
 That last row is the one `pull_studio.py` depends on for per-day, per-agent
-figures. It is now understood — see below — and there is a working route for it
-in [4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse).
-It still blocks the scripts in this folder.
+figures. It is now understood — see below — and the archived
+[Power Automate + Dataverse](../archive/4.%20Power%20Automate%20%2B%20Dataverse/README.md) route had a
+working, now unsupported, way round it. It still blocks the scripts in this folder.
 
 ### Resolved: the client has to be pre-authorised for the licensing scopes
 
@@ -81,8 +81,9 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 you see on `/resources` is the scope/client issue above rather than anything
 you have misconfigured. Verified 2026-09-28.
 
-That is now implemented and is a supported setup step — see
-[4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse).
+The flows that use that connection are in the
+[Power Automate + Dataverse](../archive/4.%20Power%20Automate%20%2B%20Dataverse/README.md) route,
+which is now archived and unsupported.
 
 The consequence for everything else in this folder: `pull_studio.py` and the
 Fabric `Ingest_Studio_Consumption` notebook authenticate as their own client,

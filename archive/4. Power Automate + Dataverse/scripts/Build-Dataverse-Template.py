@@ -39,7 +39,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve()
 PATH4 = HERE.parents[1]
-ROOT = HERE.parents[2]
+ROOT = HERE.parents[3]
 
 SOURCE = ROOT / "2. Fabric" / "Consumption Central - Fabric.pbit"
 TARGET = PATH4 / "Consumption Central - Power Automate + Dataverse.pbit"

@@ -9,7 +9,7 @@
 | Local CSV | `CoworkWeeklyMetrics.csv` beneath `DataFolder`, with `PeopleMetaData.csv` in the same export directory |
 | Viva Direct | The same optional CSV route through `DataFolder`; the existing custom Viva query is unchanged |
 | Fabric | `dbo.cowork_tasks_weekly`; the Viva ingestion notebook can now ingest task-only exports |
-| Power Automate + Dataverse | The corresponding optional `cowork_tasks_weekly` contract; no automatic task-export API or new flow is assumed |
+| Power Automate + Dataverse (archived) | The corresponding optional `cowork_tasks_weekly` contract; no automatic task-export API or new flow is assumed |
 
 For CSV paths, keep exports in separate subfolders when they contain different files named `PeopleMetaData.csv`. Do not overwrite legacy people metadata with task metadata. The file loader chooses the shallowest task export, then the most recently modified file; it does not sum multiple overlapping snapshots. Without a task file, Local CSV retains its original legacy metadata search anywhere beneath `DataFolder` (shallowest, then newest), even without a metrics file. When tasks are present, keep legacy metadata beside the selected legacy metrics file; each task export uses only its own companion.
 

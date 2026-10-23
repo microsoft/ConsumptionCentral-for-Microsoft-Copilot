@@ -30,7 +30,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 TEMPLATE = ROOT / "2. Fabric" / "Consumption Central - Fabric.pbit"
 OUTPUT = Path(__file__).resolve().parents[1] / "dataverse-schema.json"
 

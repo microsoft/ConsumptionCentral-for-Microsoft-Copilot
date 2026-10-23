@@ -30,7 +30,7 @@ from pbit_to_pbip import Failure as ConversionFailure
 SPEC = importlib.util.spec_from_file_location("pbit_to_pbip", ROOT / "docs" / "scripts" / "pbit_to_pbip.py")
 converter = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(converter)
-SPEC = importlib.util.spec_from_file_location("dataverse_schema", ROOT / "4. Power Automate + Dataverse" / "scripts" / "generate_dataverse_schema.py")
+SPEC = importlib.util.spec_from_file_location("dataverse_schema", ROOT / "archive" / "4. Power Automate + Dataverse" / "scripts" / "generate_dataverse_schema.py")
 dataverse = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(dataverse)
 
@@ -216,7 +216,7 @@ class ModelContractTests(unittest.TestCase):
         for profile, directory, name in (("csv", "1. Local CSV", "Local CSV"),
                                          ("fabric", "2. Fabric", "Fabric"),
                                          ("viva", "3. Viva Direct", "Viva Direct"),
-                                         ("dataverse", "4. Power Automate + Dataverse", "Power Automate + Dataverse")):
+                                         ("dataverse", "archive/4. Power Automate + Dataverse", "Power Automate + Dataverse")):
             with self.subTest(profile=profile), tempfile.TemporaryDirectory() as folder:
                 source = ROOT / directory / f"Consumption Central - {name}.pbit"
                 project = prepare_offline_export.prepare(source, Path(folder), profile, "x")
@@ -316,7 +316,7 @@ class ModelContractTests(unittest.TestCase):
             "csv": ROOT / "1. Local CSV" / "Consumption Central - Local CSV.pbit",
             "fabric": ROOT / "2. Fabric" / "Consumption Central - Fabric.pbit",
             "viva": ROOT / "3. Viva Direct" / "Consumption Central - Viva Direct.pbit",
-            "dataverse": ROOT / "4. Power Automate + Dataverse" / "Consumption Central - Power Automate + Dataverse.pbit",
+            "dataverse": ROOT / "archive" / "4. Power Automate + Dataverse" / "Consumption Central - Power Automate + Dataverse.pbit",
         }
         for profile, path in paths.items():
             with self.subTest(profile=profile):

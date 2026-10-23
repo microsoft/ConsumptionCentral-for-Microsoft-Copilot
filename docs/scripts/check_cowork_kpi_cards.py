@@ -30,7 +30,7 @@ TEMPLATES = (
     ROOT / "1. Local CSV" / "Consumption Central - Local CSV.pbit",
     ROOT / "2. Fabric" / "Consumption Central - Fabric.pbit",
     ROOT / "3. Viva Direct" / "Consumption Central - Viva Direct.pbit",
-    ROOT / "4. Power Automate + Dataverse"
+    ROOT / "archive" / "4. Power Automate + Dataverse"
     / "Consumption Central - Power Automate + Dataverse.pbit",
 )
 

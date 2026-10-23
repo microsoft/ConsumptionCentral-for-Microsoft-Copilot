@@ -78,9 +78,10 @@ refresh cannot authenticate to that API at all** — the permission it needs
 exists only as a delegated one, so there is no way to run it unattended here.
 It is kept for interactive use only; see [experimental/](../experimental/README.md).
 
-If you want the licensing API on a schedule, use
-[4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse), where
-the flow runs as its admin owner and that delegated sign-in is available.
+The one route that ran the licensing API on a schedule was
+[Power Automate + Dataverse](../archive/4.%20Power%20Automate%20%2B%20Dataverse/README.md), where the
+flow signs in as its admin owner and that delegated sign-in is available. That route is now archived
+and unsupported.
 
 `Ingest_Azure_AI` needs an Entra app registration and Key Vault secret before it will run —
 **[setup →](../docs/ADVANCED-SETUP.md#azure-ingestion-in-fabric)**. Leave it out and the Foundry page
