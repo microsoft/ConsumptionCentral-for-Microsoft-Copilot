@@ -96,7 +96,8 @@ exports, no real data.
 
 ## App Edition
 
-Prefer an app to a Power BI report? **[`app/`](app/)** is a Copilot Managed App with the same
+Prefer an app to a Power BI report? **[`app/`](app/)** is a web app, deployable as a Fabric App in your
+Fabric workspace or as a Copilot Managed App, with the same
 measures, charts and tables, using the same DAX definitions. It replaces the 24 report pages with six
 simpler tabs: Overview, Cowork & Work IQ, Copilot Studio, GitHub Copilot, Azure AI Foundry and Guide.
 Drop in the Local CSV exports and everything is calculated in your browser. No data leaves your
