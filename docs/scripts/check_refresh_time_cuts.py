@@ -14,9 +14,9 @@ Checks, for every current template:
    CALCULATE.
 3. Group By's Usage Intensity rows (Studio and GitHub) find each percentile
    cut once with TOPN.
-4. Fabric and Power Automate + Dataverse buffer the seven tables Normalize
-   reads column by column. Local CSV and Viva Direct read none of them
-   through GetTable.
+4. Fabric and Power Automate + Dataverse buffer the seven tables their
+   queries read column by column, through Normalize or Table.Column. Local
+   CSV and Viva Direct read none of them through GetTable.
 5. The UnappliedChanges copy of each query the cuts touch, and Desktop's
    last-loaded copy of it, match the model, so the template opens with
    nothing pending.

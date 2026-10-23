@@ -431,7 +431,7 @@ class ShippedTemplates(unittest.TestCase):
             model, pending = parts(raw)
             for member, queries in ((F.SCHEMA, model_queries(model)), (F.UNAPPLIED, pending_queries(pending))):
                 with self.subTest(template=name, member=member):
-                    # Unbuffered, Normalize's Table.Column calls each send their own query to the SQL endpoint.
+                    # Unbuffered, each column read, through Normalize or Table.Column, is its own SQL query.
                     read = {query_name: text for query_name, text in queries.items()
                             if "GetTable(" in text and ("Normalize" in text or "Table.Column(Raw" in text)}
                     self.assertEqual(sorted(read), sorted(F.BUFFERED_TABLES) if buffered else [])
