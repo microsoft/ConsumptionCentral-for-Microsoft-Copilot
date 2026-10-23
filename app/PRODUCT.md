@@ -2,7 +2,7 @@
 # Consumption Central — App Edition
 
 ## Platform
-A web app hosted as a Copilot **Managed App** (Copilot Managed Runtime). It is designed desktop first, for 1280–1600px, and works down to 390px.
+A web app that ships two ways: as a single self-contained HTML file that runs offline in Edge or Chrome, and as a Copilot **Managed App** (Copilot Managed Runtime). It is designed desktop first, for 1280–1600px, and works down to 390px.
 
 ## Users
 - **FinOps and finance owners.** They track what Copilot credits cost across products, reconcile against the bill, and plan next year's budget.
