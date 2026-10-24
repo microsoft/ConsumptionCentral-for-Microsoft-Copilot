@@ -80,7 +80,7 @@ These were open or planned in Analytics Hub when the port was made.
 
 ## The No Fabric route
 
-The No Fabric route, "No Fabric: SharePoint + PAX", is ported from the ValueLens installer in [microsoft/ValueLens-for-Microsoft-Copilot](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot): its pull request [ValueLens-for-Microsoft-Copilot#216](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot/pull/216) at commit [`5910a84`](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot/tree/5910a8422b07bf3a521f71c9f742d94551eb89fa/installer), and that pull request's next commit, `3f26af1`. The route's wiring (`f0a2e04`, with `1e355b0`'s wording) and packaging (`6ea4f0e`) are earlier commits of the same pull request, unchanged at `5910a84`.
+The No Fabric route, "No Fabric: SharePoint + PAX", is ported from the ValueLens installer in [microsoft/ValueLens-for-Microsoft-Copilot](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot): its pull request [ValueLens-for-Microsoft-Copilot#216](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot/pull/216) at commit [`5910a84`](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot/tree/5910a8422b07bf3a521f71c9f742d94551eb89fa/installer), and that pull request's next two commits, `3f26af1` and [`521ab22`](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot/tree/521ab227aa696108ceb6d1a7cfb8abb3d541fc38/installer). The route's wiring (`f0a2e04`, with `1e355b0`'s wording) and packaging (`6ea4f0e`) are earlier commits of the same pull request, unchanged at `5910a84`.
 
 ### How the route was ported
 
@@ -92,8 +92,9 @@ The pull request that added the route built it in steps, so each change from Val
 4. **The org file only.** The `userInfo` mode described below.
 5. **`3f26af1`.** A resumed load carries on exactly where it stopped.
 6. **Tests, wiring and packaging.** The runner's Python tests; the CLI, prerequisites and page, from `f0a2e04`; the exe and zip, from `6ea4f0e`; the JavaScript tests; the docs.
+7. **`521ab22`.** Each date window after the first starts a day early, to cover PAX's time-zone seams. The org file reads no dates, so it has no windows and no early day. It's the last commit, so it can be dropped on its own.
 
-To bring a ValueLens change across, diff it against `3f26af1`, then apply it to the files the [No Fabric file map](#no-fabric-file-map) lists.
+To bring a ValueLens change across, diff it against `521ab22`, then apply it to the files the [No Fabric file map](#no-fabric-file-map) lists.
 
 ### What changed for Consumption Central
 
@@ -108,14 +109,14 @@ To bring a ValueLens change across, diff it against `3f26af1`, then apply it to 
 
 ### Kept as they were
 
-- ValueLens's audit mode stays in the runner, the wrapper scripts and `src/steps/pax/` as it was ported, with its date windows, rollups, Agent 365 file and history reload. Consumption Central doesn't run it, but keeping it means ValueLens's fixes port as they are.
+- ValueLens's audit mode stays in the runner, the wrapper scripts and `src/steps/pax/` as it was ported, with its date windows and their early day, rollups, Agent 365 file and history reload. Consumption Central doesn't run it, but keeping it means ValueLens's fixes port as they are.
 - The runner's tests keep ValueLens's fixtures and names.
 
 ### No Fabric file map
 
 Paths are relative to `installer/`. A path that starts with `/` is relative to the root of the ValueLens repo.
 
-**Verbatim (17).** Unchanged from `3f26af1`: `src/managed-app/cli.js`, `src/managed-app/errors.js`, `src/managed-app/steps.js`, `src/seats.js`, `src/steps/pax/publish.js`, `src/steps/pax/runner/credential.ps1`, `src/steps/pax/runner/task.ps1`, `src/steps/pax/site.js`, `src/steps/pax/upload.js`, `src/transform/template.js`, `test/pax-site.test.js`, and `test/python/fixtures/pax_runner/` (was `/tests/fixtures/pax_runner/`) `ast-dump.ps1`, `harness.ps1`, `stub-credential.ps1`, `stub-upload.ps1`, `task-check.ps1` and `task-harness.ps1`.
+**Verbatim (17).** Unchanged from `521ab22`: `src/managed-app/cli.js`, `src/managed-app/errors.js`, `src/managed-app/steps.js`, `src/seats.js`, `src/steps/pax/publish.js`, `src/steps/pax/runner/credential.ps1`, `src/steps/pax/runner/task.ps1`, `src/steps/pax/site.js`, `src/steps/pax/upload.js`, `src/transform/template.js`, `test/pax-site.test.js`, and `test/python/fixtures/pax_runner/` (was `/tests/fixtures/pax_runner/`) `ast-dump.ps1`, `harness.ps1`, `stub-credential.ps1`, `stub-upload.ps1`, `task-check.ps1` and `task-harness.ps1`.
 
 **Renamed (4).** Changed only by the product's name: `managed-cli/package-lock.json`, `managed-cli/package.json`, `test/pax-fakes.js` and `test/pax-upload.test.js`.
 
@@ -126,7 +127,6 @@ Paths are relative to `installer/`. A path that starts with `/` is relative to t
 ### ValueLens changes to follow
 
 - **Follow:** later fixes to the PAX route in ValueLens: `src/steps/pax/`, its runner, `4. SharePoint/scripts/` and the app step (`src/managed-app/`). If ValueLens's audit mode comes to keep older Interactions rows on a reload, replacing them only from the reload's first day, take that too, so the audit path stays as ValueLens has it.
-- **`521ab22`,** the next commit of ValueLens-for-Microsoft-Copilot#216: each date window after the first starts a day early, to cover PAX's time-zone seams. Only the audit mode reads date windows.
 - **Skip,** because they change ValueLens's Fabric and Azure loads, not the PAX route: `f8ebea6`, "Fabric backfill keeps older parsed rows", and `0cb3b5e`, "Azure AI tables keep older rows on reload".
 
 ### Changes to offer back to ValueLens

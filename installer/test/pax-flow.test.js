@@ -1183,6 +1183,26 @@ test('pax flow: a reload is refused even when a run would stop part way, and sta
   assert.doesNotMatch(await status(), /History:/, 'a one-window load finishes in one run');
 });
 
+test('pax flow: status warns while a history load reads its days without the day before', { timeout: 10_000 }, async () => {
+  const s = await installed({ by: { [Q.signIn]: 'set' } });
+  const status = async () => {
+    s.ui.out.length = 0;
+    assert.equal(await paxStatus(s.ctx), true, plain(s.ui.text()));
+    return plain(s.ui.text());
+  };
+  // As above, the load is written here, as a run that stopped part way would leave it.
+  s.pax.finishRun('partial', undefined, 120);
+  assert.doesNotMatch(await status(), /without the day before/);
+  const state = /** @type {any} */ (readState(s.pax.host));
+  state.progress.noOverlap = true;
+  s.pax.writeState(state);
+  const text = await status();
+  assert.ok(text.includes(
+    "! The history load reads its days without the day before, because a run that read one day with the day before didn't finish inside the task's time limit. So each day can miss the activity between midnight UTC and midnight in this PC's time zone.",
+  ), text);
+  assert.match(text, /^ +History: +loading 120 days of activity/m, 'the load still shows how far it has got');
+});
+
 test('pax flow: a run that worked says the org file is in SharePoint, even when state.json says a load stopped part way', { timeout: 10_000 }, async () => {
   const s = await installed({ by: { [Q.signIn]: 'set' } });
   rmSync(paxPaths(s.pax.host).state);
