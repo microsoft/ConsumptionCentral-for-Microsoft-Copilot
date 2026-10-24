@@ -17,7 +17,7 @@ export const DEFAULT_CONFIG_FILE = RECORD_FILE;
  * @typedef {object} InstallConfig
  * @property {number} version
  * @property {string} product  Which installer made the record: always RECORD_PRODUCT.
- * @property {'fabric'} [target]
+ * @property {'fabric' | 'pax'} [target]  The route: Fabric, or no Fabric (SharePoint + PAX). Fabric when absent.
  * @property {string} [tenantId]
  * @property {import('./uploads.js').DataSourceModes} dataSources  How each source arrives: API, uploaded CSV, or skipped.
  * @property {UploadsConfig} uploads
@@ -32,7 +32,12 @@ export const DEFAULT_CONFIG_FILE = RECORD_FILE;
  * @property {SemanticModelConfig} semanticModel
  * @property {AccessConfig} [access]  Who can view Consumption Central. Absent until the installer has set it up.
  * @property {ConsumptionConfig} consumption
- * @property {{ completed: string[], runFirstLoad?: boolean, baseRevision?: string, approved?: boolean, uploads?: { token?: string, name: string }[] }} [setup] Browser setup draft progress; never contains secrets. runFirstLoad is kept only in the draft, never in the install record.
+ * @property {SharePointConfig} [sharePoint]  The PAX route: the SharePoint folder the refresh writes to and the report reads.
+ * @property {PaxConfig} [pax]  The PAX route: the scheduled refresh on this PC.
+ * @property {PowerBiConfig} [powerBi]  The PAX route: how the report was published and is refreshed. Its workspace is in `fabric`.
+ * @property {ManagedAppConfig} [managedApp]  The PAX route: the app, deployed as a Copilot managed app and shared with the viewer group.
+ * @property {{ days: number }} [history]  How many days of history the PAX route's files hold. The org file is a whole snapshot, so Consumption Central's records leave it unset.
+ * @property {{ completed: string[], runFirstLoad?: boolean, reloadHistoryDays?: number, baseRevision?: string, approved?: boolean, uploads?: { token?: string, name: string }[] }} [setup] Browser setup draft progress; never contains secrets. runFirstLoad and reloadHistoryDays are kept only in the draft, never in the install record.
  */
 
 /**
@@ -63,7 +68,16 @@ export const DEFAULT_CONFIG_FILE = RECORD_FILE;
  * @property {string} [contact]  Who people ask for access. Defaults to the installer.
  * @property {string} [requestUrl]  Optional link for access requests, e.g. a My Access package or a form.
  * @property {string[]} [grantedModels]  Semantic model IDs the group has Build (ReadExplore) on.
- * @property {string} [reportShared]  The report ID the user said they shared with the group. The API can't, so they do it by hand; until then the Done page reminds them and Repair asks again.
+ * @property {RetiredGroup[]} [retiredGroups]  Groups that were the viewer group, until the installer has taken away the Build it gave them.
+ * @property {string | true} [reportShared]  The user said they shared the report with the group. The API can't, so they do it by hand; until then the Done page reminds them and Repair asks again. On the Fabric route it's the report's ID, so a report published again is asked about again. On the PAX route it's true, and publishing a different report clears it.
+ */
+
+/**
+ * A group that was the viewer group, and the models it still has the installer's Build on.
+ * @typedef {object} RetiredGroup
+ * @property {string} groupId
+ * @property {string} [groupName]
+ * @property {string[]} datasets  Semantic model IDs.
  */
 
 /**
@@ -203,6 +217,92 @@ export const flowIdentity = (config) => (config.uploads?.flowIdentity === 'app' 
 export const MODEL_NAME = `${PRODUCT_NAME} Model`;
 export const REPORT_NAME = PRODUCT_NAME;
 
+/**
+ * The PAX route's SharePoint folder. The refresh writes the org file there and the report reads it.
+ * @typedef {object} SharePointConfig
+ * @property {string} folderUrl  The folder's address, each part encoded, e.g. https://contoso.sharepoint.com/sites/Analytics/Shared%20Documents/Consumption%20Central.
+ * @property {string} siteUrl  The site's address, e.g. https://contoso.sharepoint.com/sites/Analytics.
+ * @property {string} sitePath  Graph's path form of the site, e.g. contoso.sharepoint.com:/sites/Analytics, or the host for the root site.
+ * @property {string} library  The document library's name in the address, e.g. Shared Documents.
+ * @property {string} folderPath  The folder in the library, e.g. /Consumption Central, or / for the library itself.
+ * @property {string} [siteId]  Graph's ID for the site, once the installer could read it.
+ * @property {boolean} [granted]  The PAX app can write to the site.
+ * @property {string} [grantId]  The site permission the installer added, which uninstall removes.
+ * @property {boolean} [pendingAdminGrant]  A SharePoint or Global Administrator still has to give the app write access to the site.
+ * @property {RetiredGrant[]} [retiredGrants]  Sites the folder moved away from, where the app may still have access, until it's taken back.
+ */
+
+/**
+ * A site the app had access to before the folder moved.
+ * @typedef {object} RetiredGrant
+ * @property {string} siteUrl
+ * @property {string} sitePath
+ * @property {string} [siteId]
+ * @property {string} [grantId]
+ */
+
+/**
+ * The PAX route's scheduled refresh on this PC.
+ * @typedef {object} PaxConfigFields
+ * @property {string} [version]  The PAX release the refresh runs, e.g. purview-v1.11.15.
+ * @property {string} [workRoot]  The local folder that holds refresh.json, the scripts and the data.
+ * @property {string} [credentialTarget]  The Windows Credential Manager entry that holds the app's client secret.
+ * @property {string} [secretSetAt]  When the installer last wrote the secret there.
+ * @property {string} [secretExpires]
+ * @property {PaxTask} [task]  The scheduled task.
+ * @property {boolean} [agent365]  Also export the Agent 365 registry. Only for an audit refresh; Consumption Central's refresh reads the org file alone.
+ * @property {number} [seedDays]  How many days the first audit refresh asks PAX for.
+ * @property {string} [scriptsHash]  What the installed scripts were copied from.
+ * @property {PaxFirstRun} [firstRun]  The first refresh, from when the installer starts it until a refresh succeeds.
+ * @property {boolean} [deployApp]  Deploy the app. On when absent.
+ * @typedef {PaxConfigFields & import('./steps/secrets.js').SecretSlot} PaxConfig
+ */
+
+/**
+ * The scheduled task that runs the refresh.
+ * @typedef {object} PaxTask
+ * @property {string} name
+ * @property {string} at  When it starts each day, HH:mm on this PC's clock.
+ * @property {string} [registeredAt]
+ * @property {string} [logonType]  As Task Scheduler last reported it. Interactive: it runs only while the user is signed in.
+ */
+
+/**
+ * The PAX route's first refresh. The installer starts it and checks on it rather than waiting.
+ * @typedef {object} PaxFirstRun
+ * @property {string} startedAt
+ * @property {string} [finishedAt]
+ * @property {'no-data' | 'failed'} [result]  How it ended, when it didn't succeed.
+ * @property {string} [error]
+ * @property {string} [log]  Its log file on this PC.
+ */
+
+/**
+ * The PAX route's report in the Power BI service. Its workspace is in `fabric`, and the model and
+ * report in `semanticModel`.
+ * @typedef {object} PowerBiConfig
+ * @property {'api' | 'desktop'} [publishedBy]  The installer published it, or handed the template to Power BI Desktop.
+ * @property {string} [desktopPending]  The template handed to Power BI Desktop and not yet found published, by its hash.
+ * @property {string} [desktopFile]  Where that template is on this PC.
+ * @property {string} [desktopName]  The name to publish that template under: the install's own model's, or one nothing in the workspace had, so Desktop never replaces a model the installer didn't publish.
+ * @property {'set' | 'later'} [credentials]  The model has been signed in to SharePoint, or the user chose to do it later.
+ * @property {string} [refreshAt]  The model's first daily refresh, HH:mm. Set once the refreshes are scheduled.
+ * @property {string} [timeZone]  The schedule's Windows time zone ID.
+ */
+
+/**
+ * The app, deployed with the `ms` CLI as a Copilot managed app and shared with the viewer group.
+ * @typedef {object} ManagedAppConfig
+ * @property {string} [appId]
+ * @property {string} [url]  Where people open it.
+ * @property {string} [environmentId]  The Power Platform environment it's deployed to, or the one chosen for it.
+ * @property {string} [deployedAt]
+ * @property {string} [buildHash]  A hash of the build that was deployed.
+ * @property {string[]} [sharedWith]  The groups it's shared with.
+ * @property {('createApps' | 'externalArtifacts')[]} [missing]  The tenant settings the last attempt found turned off.
+ * @property {{ why: string, steps: string[] }} [skipped]  Why the last attempt didn't deploy it, and what to do.
+ */
+
 /** @returns {InstallConfig} */
 export function emptyConfig() {
   return {
@@ -256,7 +356,9 @@ function normaliseConfig(raw, file) {
   const foreign = foreignRecord(raw, file);
   if (foreign) throw new Error(foreign);
   if (raw.version !== CONFIG_VERSION) throw new Error(`${file} has version ${raw.version}; this installer reads version ${CONFIG_VERSION}.`);
-  if (raw.target !== undefined && raw.target !== 'fabric') throw new Error(`${file} is for the ${raw.target} target; this installer installs only on Fabric.`);
+  if (raw.target !== undefined && raw.target !== 'fabric' && raw.target !== 'pax') {
+    throw new Error(`${file} is for the ${raw.target} target; this installer installs on Fabric, or with SharePoint and PAX.`);
+  }
   const base = emptyConfig();
   /** @type {InstallConfig} */
   const config = {
@@ -273,13 +375,22 @@ function normaliseConfig(raw, file) {
     semanticModel: { ...base.semanticModel, ...(raw.semanticModel ?? {}) },
     ...(raw.access
       ? {
-          access: { ...raw.access, grantedModels: [...(raw.access.grantedModels ?? [])] },
+          access: {
+            ...raw.access,
+            grantedModels: [...(raw.access.grantedModels ?? [])],
+            ...(raw.access.retiredGroups ? { retiredGroups: raw.access.retiredGroups.map((/** @type {any} */ g) => ({ ...g, datasets: [...(g.datasets ?? [])] })) } : {}),
+          },
         }
       : {}),
     consumption: { ...(raw.consumption ?? {}) },
     ...(raw.prices ? { prices: { ...raw.prices } } : {}),
     ...(raw.github ? { github: { ...raw.github } } : {}),
     ...(raw.commercialTerms ? { commercialTerms: { ...raw.commercialTerms } } : {}),
+    ...(raw.sharePoint ? { sharePoint: { ...raw.sharePoint } } : {}),
+    ...(raw.pax ? { pax: { ...raw.pax, ...(raw.pax.task ? { task: { ...raw.pax.task } } : {}) } } : {}),
+    ...(raw.powerBi ? { powerBi: { ...raw.powerBi } } : {}),
+    ...(raw.managedApp ? { managedApp: { ...raw.managedApp } } : {}),
+    ...(raw.history ? { history: { ...raw.history } } : {}),
   };
   assertNoSecrets(config);
   return config;

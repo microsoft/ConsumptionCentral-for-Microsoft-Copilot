@@ -604,7 +604,7 @@ test('a run stopped moments ago: waits for the item Fabric is still creating, ra
   let lists = 0;
   /** @type {any} */
   let ours;
-  fabric.api.listItems = async (/** @type {string} */ ws, /** @type {string} */ type) => {
+  fabric.api.listItems = async (/** @type {string} */ ws, /** @type {string | undefined} */ type) => {
     if (type === 'DataPipeline' && ++lists === 3) ours = fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', 'half-made', 'Consumption Central daily load. (ref ee55)');
     return list(ws, type);
   };
@@ -736,7 +736,7 @@ test("a stopped run's create that Fabric gave an operation for: asked about, not
   const lag = await setup('Succeeded');
   const lagList = lag.fabric.api.listItems;
   let lagLists = 0;
-  lag.fabric.api.listItems = async (/** @type {string} */ ws, /** @type {string} */ type) => {
+  lag.fabric.api.listItems = async (/** @type {string} */ ws, /** @type {string | undefined} */ type) => {
     if (type === 'DataPipeline' && ++lagLists === 3) lag.fabric.add('DataPipeline', 'ConsumptionCentral_Pipeline', 'half-made', 'Consumption Central daily load. (ref ee55)');
     return lagList(ws, type);
   };

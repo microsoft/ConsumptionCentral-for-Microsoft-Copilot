@@ -7,7 +7,10 @@
  * Shared with the AI in One and ValueLens installers: `<Product>Installer.exe`, the npm package and
  * command `<product>-installer`, the record `<product>-setup.json` and release tags
  * `<product>-installer-v*`.
+ *
+ * PRODUCT, at the end, holds the same names in ValueLens's shape, for the code ported from it.
  */
+import { priceParameters } from './prices.js';
 
 /** The name people see. */
 export const PRODUCT_NAME = 'Consumption Central';
@@ -85,3 +88,105 @@ export const FLOWS_DIR = `Files/${PRODUCT_SNAKE}_flows`;
 export const UPLOAD_LOG_TABLE = `dbo.${PRODUCT_SNAKE}_upload_log`;
 /** On every notebook the pipeline runs, so they share Spark sessions. */
 export const SESSION_TAG = PRODUCT_SNAKE;
+
+/**
+ * Freezes an object and every object in it.
+ * @template T
+ * @param {T} o
+ * @returns {T}
+ */
+function deepFreeze(o) {
+  for (const v of Object.values(/** @type {Record<string, unknown>} */ (o))) if (v && typeof v === 'object') deepFreeze(v);
+  return Object.freeze(o);
+}
+
+/**
+ * The Viva Direct template's values from the install record: the prices, and the Viva Insights
+ * query the report reads Cowork credits from. Each one unset keeps the template's own.
+ * @param {import('./config.js').InstallConfig} config
+ * @returns {Record<string, unknown>}
+ */
+function vivaDirectValues(config) {
+  const cc = config.consumption;
+  return {
+    ...priceParameters(config.prices, 'vivaDirect'),
+    ...(cc?.vivaPartition ? { VivaPartitionId: cc.vivaPartition } : {}),
+    ...(cc?.vivaQuery ? { VivaQueryId: cc.vivaQuery } : {}),
+  };
+}
+
+/**
+ * The names above in the shape the ValueLens installer keeps them in, for the code ported from it
+ * (steps/pax, managed-app and target.js), which reads them from here unchanged.
+ */
+export const PRODUCT = deepFreeze({
+  id: PRODUCT_ID,
+  name: PRODUCT_NAME,
+  repo: REPO,
+  command: COMMAND,
+  recordFile: RECORD_FILE,
+  tagPrefix: TAG_PREFIX,
+  exe: EXE_NAME,
+  zip: ZIP_NAME,
+  /**
+   * The folder under %LOCALAPPDATA% that holds the unpacked installer, the command install.ps1
+   * leaves behind, and the scheduled PAX refresh's scripts and files.
+   */
+  home: HOME_FOLDER,
+  shim: SHIM,
+  workFolder: DOCUMENTS_FOLDER,
+  userAgent: USER_AGENT,
+  docs: DOCS_URL,
+  installer: INSTALLER_TITLE,
+  adminPack: ADMIN_PACK_FILE,
+  viewerGroup: VIEWER_GROUP,
+  fabric: {
+    /** The app registration the Fabric route's notebooks sign in with. */
+    app: APP_REGISTRATION,
+    workspace: WORKSPACE_NAME,
+    lakehouse: LAKEHOUSE_NAME,
+  },
+  pax: {
+    /** The app registration the scheduled PAX refresh signs in with. */
+    app: `${PRODUCT_NAME} (PAX)`,
+    task: `${PRODUCT_NAME} - PAX refresh`,
+    /** The PAX refresh's scripts and files go in this folder under `home`. */
+    folder: 'pax',
+    /** Windows Credential Manager target for the PAX app's secret, followed by the tenant ID. */
+    credentialPrefix: `PAX-${PRODUCT_TOKEN}-`,
+    /**
+     * What the refresh asks PAX for. `userInfo`: the directory only, one whole snapshot each run,
+     * replaced whole. The report reads Viva Insights and the other products itself.
+     */
+    mode: /** @type {'audit' | 'userInfo'} */ ('userInfo'),
+    /** The Power BI workspace the SharePoint report is published to. */
+    workspace: PRODUCT_NAME,
+    /**
+     * The model and report share a name, because Power BI Desktop names both after the .pbix
+     * file. A Desktop publish then lands on the same names as the API's.
+     */
+    model: PRODUCT_NAME,
+    report: PRODUCT_NAME,
+    /** The file the refresh keeps at the top of the SharePoint folder, where the template looks for the org data. */
+    files: { users: 'entra_org.csv' },
+    /** Files the refresh writes only while the install record's `pax` switch of this name is on. None here. */
+    optionalFiles: {},
+    /**
+     * The Viva Direct template's parameters: `site` takes the site's address and `folder` the
+     * folder's. The template finds its files in the folder by name.
+     */
+    parameters: { site: 'SharePointSiteUrl', folder: 'DataFolder' },
+    values: vivaDirectValues,
+    /** The template reads a local folder as shipped. This reads the SharePoint one instead. */
+    expressions: { SourceFiles: { file: 'SourceFiles.SharePoint.m' } },
+    privacyLevel: 'Organizational',
+  },
+  /** The app, deployed with the `ms` CLI as a Copilot managed app. */
+  managedApp: {
+    /** What people see in the managed apps portal. */
+    name: PRODUCT_NAME,
+    description: 'Microsoft Copilot consumption, cost and forecast across Cowork, Copilot Studio, GitHub Copilot and Azure AI.',
+    /** The folder under `home` that holds the build the installer deploys, and its ms.config.json. */
+    folder: 'app',
+  },
+});

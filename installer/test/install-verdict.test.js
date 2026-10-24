@@ -4,12 +4,13 @@
  * warns, or recovers when it's tried again, doesn't.
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { loadConfig, saveConfig } from '../src/config.js';
 import { createCtx, install, update } from '../src/install.js';
+import { THE_APP } from '../src/managed-app/flow.js';
 import { COWORK_DATAFLOW_ACTIVITY } from '../src/transform/pipeline.js';
 import { fakeAzureGraph, fakeFabric, fakePowerBi, fakeUi, httpError, realSources } from './fakes.js';
 
@@ -36,6 +37,7 @@ const unsigned = { status: 'Failed', error: { errorCode: 'JobInstanceFailed', me
  *   connections, so the first load refreshes it too.
  * @property {Record<string, { status: string, error?: object }[]>} [loads]  Loads that don't simply succeed: each one's
  *   attempts in the pipeline run, in order. The run itself completes.
+ * @property {boolean} [app]  The installer has a build of the app, and a managed apps CLI that records each call.
  */
 
 /**
@@ -94,6 +96,13 @@ async function runInstall(t, o = {}) {
   // The data check is the first query after the load; the model's probe follows it.
   if (o.query) powerBi.failures.executeQueries = [o.query];
   const ui = fakeUi();
+  /** @type {string[][]} */
+  const appCalls = [];
+  const appDist = join(dir, 'app-dist');
+  if (o.app) {
+    mkdirSync(appDist);
+    writeFileSync(join(appDist, 'index.html'), '<!doctype html><title>Consumption Central</title>');
+  }
   let sleeps = 0;
   const ctx = createCtx({
     ui: ui.ui,
@@ -127,12 +136,22 @@ async function runInstall(t, o = {}) {
       powerPlatform: { billingPolicies: async () => [] },
     }),
     user: { id: 'user-1', upn: 'admin@contoso.com', tenantId: 'tenant-1' },
-    sources: realSources(),
+    sources: o.app ? { ...realSources(), appDist } : realSources(),
     sleep: async () => {
       if (++sleeps > 300) throw new Error('The install is stuck waiting.');
     },
     now: () => new Date('2026-06-01T12:00:00Z'),
   });
+  if (o.app) {
+    ctx.appDeps = {
+      run: async (args) => {
+        appCalls.push([...args]);
+        return { ok: false, exitCode: 1, data: undefined, error: 'The Fabric route has no app step.', stdout: '', stderr: '' };
+      },
+      nodeVersion: 'v24.11.0',
+      distDir: appDist,
+    };
+  }
   ctx.runFirstLoad = true;
   ctx.csvFiles = csvFiles;
   const ok = await install(ctx, { wait: true });
@@ -142,7 +161,7 @@ async function runInstall(t, o = {}) {
     assert.match(text, /✓ Created Dataflow /);
     assert.doesNotMatch(text, /left out of this first load/, 'the run refreshed the Dataflow');
   }
-  return { ok, text, ctx, ui, fabric, config };
+  return { ok, text, ctx, ui, fabric, config, appCalls };
 }
 
 /** @param {{ ok: boolean, text: string }} run */
@@ -240,4 +259,17 @@ test('update: a step that fails leaves it not finished, never "Up to date"', asy
   assert.match(since(), /✗ The Consumption Central report wasn't published: Report update failed/);
   assert.match(since(), /✗ The update isn't finished: a step above failed\. Fix what it says, then run ".*update" again\./);
   assert.doesNotMatch(since(), /Up to date|Updated\./);
+});
+
+test('CC: install: the Fabric route stays report-only: neither its install nor its update runs the app step, even with a build of the app', async (t) => {
+  const run = await runInstall(t, { app: true });
+  setUp(run);
+  assert.match(run.text, /\[\d+\/\d+\] Power BI report/);
+  assert.doesNotMatch(run.text, /\[\d+\/\d+\] The app\b/);
+  assert.ok(!run.text.includes(THE_APP), run.text);
+  const from = run.ui.text().length;
+  assert.equal(await update(run.ctx, { wait: true }), true);
+  assert.ok(!run.ui.text().slice(from).includes(THE_APP), run.ui.text().slice(from));
+  assert.deepEqual(run.appCalls, [], 'the managed apps CLI never ran');
+  assert.equal(run.config.managedApp, undefined, 'the record keeps no app');
 });

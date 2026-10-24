@@ -3,10 +3,10 @@ name: installer
 # Tests the Consumption Central installer and builds ConsumptionCentralInstaller.exe, the download
 # that runs it without a clone of this repo or a terminal, and install.ps1 with
 # ConsumptionCentralInstaller.zip, which run the same payload from PowerShell for organisations that
-# block downloaded exes. The payload is the installer and the Fabric files it deploys, as
-# installer-assets.json lists them (see installer/packaging/payload.js). A tag such as
-# consumption-central-installer-v0.1.0 also drafts a release with them, to publish by hand: this
-# workflow never publishes one.
+# block downloaded exes. The payload is the installer, the Fabric and Viva Direct files it deploys,
+# as installer-assets.json lists them, the app (built here) and the managed apps CLI that deploys it
+# (see installer/packaging/payload.js). A tag such as consumption-central-installer-v0.1.0 also
+# drafts a release with them, to publish by hand: this workflow never publishes one.
 #
 # Signing: the exe and install.ps1 aren't code-signed yet. Analytics Hub signs its exe with ESRP from
 # an internal pipeline, which follows here once this repo is onboarded (see installer/UPSTREAM.md).
@@ -24,11 +24,14 @@ on:
     tags: ['consumption-central-installer-v*']
     paths:
       - 'installer/**'
-      # What the payload carries and the tests read: the manifest, and the Fabric notebooks and
-      # template it lists.
+      # What the payload carries and the tests read: the manifest, the Fabric notebooks and
+      # template, the Viva Direct template with the query the PAX route swaps in, and the app.
       - 'installer-assets.json'
       - '2. Fabric/notebooks/**'
       - '2. Fabric/Consumption Central - Fabric.pbit'
+      - '3. Viva Direct/Consumption Central - Viva Direct.pbit'
+      - '3. Viva Direct/SourceFiles.SharePoint.m'
+      - 'app/**'
       # The install guide, whose commands and links the tests check.
       - 'docs/INSTALL.md'
       - '.github/workflows/installer.yml'
@@ -39,6 +42,9 @@ on:
       - 'installer-assets.json'
       - '2. Fabric/notebooks/**'
       - '2. Fabric/Consumption Central - Fabric.pbit'
+      - '3. Viva Direct/Consumption Central - Viva Direct.pbit'
+      - '3. Viva Direct/SourceFiles.SharePoint.m'
+      - 'app/**'
       - 'docs/INSTALL.md'
       - '.github/workflows/installer.yml'
   release:
@@ -70,9 +76,38 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run typecheck
-      # The notebooks that ship with the installer (assets/). Some tests run Node.js, so after npm ci.
-      - name: Test the installer's notebooks
+      # The PAX scripts' tests run them with PowerShell 7, and skip without it.
+      - name: Check that PowerShell 7 is available
+        run: pwsh -NoProfile -NonInteractive -Command 'if ($PSVersionTable.PSVersion.Major -lt 7) { throw "PowerShell 7 is required" }'
+      # The notebooks that ship with the installer (assets/) and the PAX scripts. Some tests run
+      # Node.js, so after npm ci.
+      - name: Test the installer's notebooks and PAX scripts
         run: python -m unittest discover -s test/python -p "test_*.py"
+
+  test-windows:
+    name: Test the PAX scripts on Windows
+    if: github.event_name != 'release'
+    # The PAX route's refresh, scheduled task and credential scripts run on Windows, and some of
+    # their tests skip elsewhere.
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: 'installer'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Check that PowerShell 7 can run the scripts
+        # The tests skip, rather than bypass, an execution policy that blocks local scripts.
+        shell: pwsh
+        run: |
+          if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 is required' }
+          $policy = Get-ExecutionPolicy
+          if ($policy -in 'Restricted', 'AllSigned') { throw "The execution policy is $policy, so the PAX script tests would skip." }
+      - name: Test the PAX scripts
+        run: python -B -m unittest discover -s test/python -p "test_*pax*.py"
 
   build:
     name: Build the installer exe
@@ -81,6 +116,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The managed apps CLI needs Node.js 24.11 or later, and the exe ships the Node.js that builds it.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
@@ -94,10 +130,14 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if ($env:TAG -ne "consumption-central-installer-v$version") { throw "Tag $env:TAG doesn't match the installer's version $version." }
 
-      # The lock file may resolve through Microsoft's internal mirror of npm, which runners can't reach.
+      # The lock files may resolve through Microsoft's internal mirror of npm, which runners can't reach.
       - name: Use the public npm registry
         working-directory: 'installer'
-        run: node packaging/public-registry.js package-lock.json
+        run: node packaging/public-registry.js "../app/package-lock.json" package-lock.json managed-cli/package-lock.json
+
+      - name: Install the app's dependencies
+        working-directory: 'app'
+        run: npm ci --no-audit --no-fund
 
       - name: Install the installer's dependencies
         working-directory: 'installer'
@@ -128,6 +168,13 @@ jobs:
             if (-not (Test-Path -LiteralPath (Join-Path $preview $f))) { throw "preview wrote no $f." }
           }
           if (-not (Get-ChildItem -LiteralPath (Join-Path $preview 'notebooks') -Filter '*.ipynb')) { throw 'preview wrote no notebooks.' }
+          # The PAX route: the scheduled task's settings and the scripts it runs.
+          $pax = Join-Path $env:RUNNER_TEMP 'preview-pax'
+          & $exe preview --target pax --config (Join-Path $env:RUNNER_TEMP 'smoke-pax.json') --out $pax
+          if ($LASTEXITCODE) { throw "preview --target pax failed with exit code $LASTEXITCODE." }
+          foreach ($f in 'refresh.json', 'scripts\refresh.ps1', 'scripts\Run-PAX-AIBV.ps1') {
+            if (-not (Test-Path -LiteralPath (Join-Path $pax $f))) { throw "preview --target pax wrote no $f." }
+          }
 
       # Unpacks into its own LOCALAPPDATA, so it doesn't reuse what the exe unpacked above.
       - name: Smoke-test install.ps1
@@ -190,7 +237,7 @@ jobs:
 
   release:
     name: Draft the release
-    needs: [test, build]
+    needs: [test, test-windows, build]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/consumption-central-installer-v')
     runs-on: ubuntu-latest
     permissions:

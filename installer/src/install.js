@@ -20,7 +20,7 @@ import { saveConfig, secretMode } from './config.js';
 import { createClient, defaultSleep } from './http.js';
 import { commandLine } from './launch.js';
 import { priceParameters } from './prices.js';
-import { ENV, LAKEHOUSE_NAME, PRODUCT_NAME, RECORD_FILE } from './product.js';
+import { ENV, LAKEHOUSE_NAME, PRODUCT, PRODUCT_NAME, RECORD_FILE } from './product.js';
 import { ensureGithubToken, ensureIdentity, newSecret, notebookSecretDays } from './steps/identity.js';
 import { COWORK_DATAFLOW_NAME, consumptionSummary, ensureAzureAiAccess, ensureCoworkDataflow, ensureLandingFolders } from './steps/consumption.js';
 import { coworkDataflowDefinition, isVivaId } from './transform/dataflow.js';
@@ -58,7 +58,11 @@ import { fabricUninstall } from './steps/fabric-uninstall.js';
 import { accessCommand, ensureViewerGroup, grantModelAccess, myGroupsUrl, shareReport, shareReportPending } from './steps/access.js';
 import { askGithubToken, githubSecretName, tokenLine, TOKENS_URL } from './steps/github.js';
 import { nextSteps, stepsLeftTitle } from './steps/next-steps.js';
+import { paxCommand, paxInstall } from './steps/pax/flow.js';
+import { refreshConfig, scriptFiles } from './steps/pax/local.js';
+import { confirmPaxPlan, paxPlan, paxPreflight } from './steps/pax/plan.js';
 import { reviewSetup } from './setup.js';
+import { askTarget, holdTarget, isPax, requiredPermissions, ROUTE_NAMES } from './target.js';
 
 /**
  * @typedef {object} Apis
@@ -103,6 +107,11 @@ import { reviewSetup } from './setup.js';
  * @property {(resource: import('./auth.js').Resource) => Promise<string>} [getToken]  The signed-in user's tokens, for tools the installer runs.
  * @property {string} [setupSection] Open this settings category directly after a failure.
  * @property {boolean} [setupRetry] Revalidate saved choices without reopening every question.
+ * @property {boolean} [targetChosen]  --target was given, so the route isn't asked about.
+ * @property {number} [reloadHistoryDays]  Repair or change on the PAX route's audit mode: reload this many days of history after setup. Never in the install record.
+ * @property {import('./steps/pax/local.js').PaxHost} [paxHost]  This machine, for the PAX route's local steps.
+ * @property {import('./managed-app/flow.js').AppDeps} [appDeps]  What the app step runs the `ms` CLI with, and where. Tests pass fakes.
+ * @property {string} [environmentId]  --environment-id: the Power Platform environment for the app.
  */
 
 /**
@@ -141,7 +150,7 @@ export async function connect(opts) {
 }
 
 /**
- * @param {{ ui: import('./ui.js').Ui, config: import('./config.js').InstallConfig, file: string, api: Apis, user: User, sources: import('./sources.js').Sources, sleep?: (ms: number) => Promise<void>, now?: () => Date, getToken?: (resource: import('./auth.js').Resource) => Promise<string> }} o
+ * @param {{ ui: import('./ui.js').Ui, config: import('./config.js').InstallConfig, file: string, api: Apis, user: User, sources: import('./sources.js').Sources, sleep?: (ms: number) => Promise<void>, now?: () => Date, getToken?: (resource: import('./auth.js').Resource) => Promise<string>, paxHost?: import('./steps/pax/local.js').PaxHost }} o
  * @returns {Ctx}
  */
 export function createCtx(o) {
@@ -161,6 +170,7 @@ export function createCtx(o) {
     now: o.now ?? (() => new Date()),
     configFile: o.file,
     ...(o.getToken ? { getToken: o.getToken } : {}),
+    ...(o.paxHost ? { paxHost: o.paxHost } : {}),
   };
 }
 
@@ -239,7 +249,7 @@ export async function rewindable(ctx, fn) {
   // save() writes this object, so it's put back in place rather than replaced.
   const config = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (ctx.config));
   const snapshot = structuredClone(config);
-  const { pendingSecret, pendingGithubToken, runFirstLoad, pendingUploads } = ctx;
+  const { pendingSecret, pendingGithubToken, runFirstLoad, reloadHistoryDays, pendingUploads } = ctx;
   const real = ctx.api;
   ctx.api = memoApi(real);
   ctx.liveApi = real;
@@ -255,6 +265,7 @@ export async function rewindable(ctx, fn) {
         ctx.pendingSecret = pendingSecret;
         ctx.pendingGithubToken = pendingGithubToken;
         ctx.runFirstLoad = runFirstLoad;
+        ctx.reloadHistoryDays = reloadHistoryDays;
         ctx.pendingUploads = pendingUploads;
       }
     }
@@ -266,6 +277,27 @@ export async function rewindable(ctx, fn) {
 }
 
 /**
+ * Set-up on the "No Fabric: SharePoint + PAX" route: its checks and questions, then its steps.
+ * The browser asks the same questions as the terminal; the settings page is the Fabric route's.
+ * @param {Ctx} ctx
+ * @param {{ wait: boolean }} opts
+ * @returns {Promise<boolean>}
+ */
+async function installPax(ctx, opts) {
+  const pre = await paxPreflight(ctx);
+  const go = await rewindable(ctx, async () => {
+    await paxPlan(ctx, pre);
+    ctx.save();
+    return confirmPaxPlan(ctx, pre);
+  });
+  if (!go) {
+    ctx.ui.warn('Stopped before changing anything. Your answers are saved for next time.');
+    return true;
+  }
+  return paxInstall(ctx, pre, { wait: opts.wait });
+}
+
+/**
  * Full set-up, or a repair when the install record already has IDs.
  * @param {Ctx} ctx
  * @param {{ wait: boolean }} opts
@@ -273,6 +305,8 @@ export async function rewindable(ctx, fn) {
  *   waited for didn't leave a working model.
  */
 export async function install(ctx, opts) {
+  await askTarget(ctx);
+  if (isPax(ctx.config)) return installPax(ctx, opts);
   const { ui, config } = ctx;
   let go;
   /** @type {import('./steps/plan.js').Preflight | undefined} */
@@ -604,13 +638,28 @@ export async function showPrereqs(ctx) {
  * Runs one command against a signed-in context.
  * @param {Ctx} ctx
  * @param {string} command
- * @param {{ wait: boolean, files?: string[], run?: boolean }} opts
+ * @param {{ wait: boolean, files?: string[], run?: boolean, folder?: string, acceptDrop?: boolean }} opts
  * @returns {Promise<boolean>} false when a run or refresh it waited for didn't succeed.
  */
 export async function runCommand(ctx, command, opts) {
+  if (command !== 'install' && command !== 'prereqs') holdTarget(ctx);
+  if (command !== 'install' && command !== 'prereqs' && isPax(ctx.config)) {
+    if (command === 'upload' && opts.run) {
+      throw new Error(`--run loads uploaded exports on the ${ROUTE_NAMES.fabric} route. On this route the report reads the SharePoint folder each time it refreshes, so leave out --run. To refresh it after the upload, run: ${commandLine('refresh')}`);
+    }
+    if (command === 'load-cowork') {
+      throw new Error(`load-cowork is for the ${ROUTE_NAMES.fabric} route, where a Dataflow loads the Cowork credits. On this route the report reads Viva Insights itself each time it refreshes. To refresh it now, run: ${commandLine('refresh')}`);
+    }
+    if (command === 'github-token') {
+      throw new Error(`github-token is for the ${ROUTE_NAMES.fabric} route, where a notebook reads GitHub's Copilot billing with the token. This route has no notebooks.`);
+    }
+    return paxCommand(ctx, command, { wait: opts.wait, files: opts.files, folder: opts.folder, acceptDrop: opts.acceptDrop });
+  }
   switch (command) {
     case 'install':
       return install(ctx, opts);
+    case 'deploy-app':
+      throw new Error(`deploy-app is for the ${ROUTE_NAMES.pax} route. On the ${ROUTE_NAMES.fabric} route the installer sets up the report, not the app.`);
     case 'update':
       return (await update(ctx, opts)) !== false;
     case 'run': {
@@ -866,6 +915,7 @@ export async function summary(ctx, opts = {}) {
 export function preview(o) {
   const { ui, config, sources } = o;
   const out = resolve(o.outDir);
+  if (isPax(config)) return previewPax(o, out);
   const fake = (/** @type {number} */ n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
   const ds = config.dataSources;
   const f = config.fabric;
@@ -940,4 +990,37 @@ export function preview(o) {
   ui.heading('Preview written');
   ui.info(out);
   ui.note(`Notebooks, pipeline-content.json, schedule.json${withModel ? ', model.bim' : ''} and graph-permissions.txt, with placeholder IDs where none are known yet.`);
+}
+
+/**
+ * The PAX route's preview: the scheduled task's refresh.json and scripts, and the app's permissions.
+ * @param {{ ui: import('./ui.js').Ui, config: import('./config.js').InstallConfig, sources: import('./sources.js').Sources }} o
+ * @param {string} out
+ */
+function previewPax(o, out) {
+  const { ui, config, sources } = o;
+  const fake = (/** @type {number} */ n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
+  const sharePoint = config.sharePoint ?? {
+    folderUrl: `https://your-tenant.sharepoint.com/sites/your-site/Shared%20Documents/${encodeURIComponent(PRODUCT.name)}`,
+    siteUrl: 'https://your-tenant.sharepoint.com/sites/your-site',
+    sitePath: 'your-tenant.sharepoint.com:/sites/your-site',
+    library: 'Shared Documents',
+    folderPath: `/${PRODUCT.name}`,
+  };
+  const placeholder = { ...config, tenantId: config.tenantId ?? fake(0), app: { ...config.app, appId: config.app.appId ?? fake(1) }, sharePoint };
+  const scripts = join(out, 'scripts');
+  mkdirSync(scripts, { recursive: true });
+  for (const f of scriptFiles(sources.paxScripts ?? [])) writeFileSync(join(scripts, f.name), f.body);
+  writeFileSync(join(out, 'refresh.json'), `${JSON.stringify(refreshConfig(placeholder), null, 2)}\n`, 'utf8');
+  writeFileSync(
+    join(out, 'graph-permissions.txt'),
+    `Microsoft Graph application permissions for the app registration:\n${requiredPermissions(config).map((p) => `  ${p}\n`).join('')}Sites.Selected reaches only the site the installer grants it.\n`,
+    'utf8',
+  );
+
+  ui.heading('Preview written');
+  ui.info(out);
+  ui.note(
+    `refresh.json, the scripts the scheduled task runs${sources.paxScripts ? '' : ' (this checkout has no PAX scripts, so only the runner\'s)'} and graph-permissions.txt, with placeholder IDs where none are known yet.`,
+  );
 }

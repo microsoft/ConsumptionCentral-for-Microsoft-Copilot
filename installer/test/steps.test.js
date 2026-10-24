@@ -5,6 +5,7 @@ import { notebooksFor } from '../src/catalog.js';
 import { emptyConfig } from '../src/config.js';
 import { runCommand } from '../src/install.js';
 import { commandLine } from '../src/launch.js';
+import { PRODUCT_NAME } from '../src/product.js';
 import { ensureLakehouse, ensureNotebooks, ensurePipeline, ensureSchedule, freeName } from '../src/steps/fabric.js';
 import { ensureConsent } from '../src/steps/identity.js';
 import { connectionName } from '../src/steps/model.js';
@@ -388,27 +389,52 @@ test('schedule: created, unchanged on re-run, updated when the time changes, ado
 
 /**
  * @param {string[]} have  App role IDs already assigned.
+ * @param {{ revoke?: (assignmentId: string) => void }} [o]  Runs before an assignment is removed, and can throw.
  */
-function fakeGraph(have) {
+function fakeGraph(have, o = {}) {
   /** @type {string[]} */
   const granted = [];
+  /** @type {string[]} App role IDs whose assignment was removed. */
+  const revoked = [];
   const graphSp = {
     id: 'graph-sp',
     appRoles: [
       { id: 'r-audit', value: 'AuditLogsQuery.Read.All' },
       { id: 'r-reports', value: 'Reports.Read.All' },
       { id: 'r-users', value: 'User.Read.All' },
+      { id: 'r-org', value: 'Organization.Read.All' },
+      { id: 'r-sites', value: 'Sites.Selected' },
+      { id: 'r-apps', value: 'Application.Read.All' },
+      { id: 'r-packages', value: 'CopilotPackages.Read.All' },
     ],
   };
   const api = {
     graphServicePrincipal: async () => graphSp,
-    appRoleAssignments: async () => [...have, ...granted].map((appRoleId) => ({ resourceId: 'graph-sp', appRoleId })),
+    appRoleAssignments: async () =>
+      [...have, ...granted].filter((appRoleId) => !revoked.includes(appRoleId)).map((appRoleId) => ({ id: `a-${appRoleId}`, resourceId: 'graph-sp', appRoleId })),
     /** @param {string} _r @param {string} _p @param {string} role */
     grantAppRole: async (_r, _p, role) => {
       granted.push(role);
     },
+    /** @param {string} resourceId @param {string} assignmentId */
+    revokeAppRole: async (resourceId, assignmentId) => {
+      assert.equal(resourceId, 'graph-sp');
+      o.revoke?.(assignmentId);
+      revoked.push(assignmentId.replace(/^a-/, ''));
+    },
   };
-  return { api, granted };
+  return { api, granted, revoked };
+}
+
+/**
+ * A PAX install's context, with an app the installer made.
+ * @param {any} graph
+ * @param {import('../src/ui.js').Ui} [ui]
+ */
+function paxConsentCtx(graph, ui) {
+  const made = fakeCtx({ graph, ui });
+  made.config.target = 'pax';
+  return made;
 }
 
 test('consent: an admin grants only what the chosen sources need', async () => {
@@ -452,6 +478,89 @@ test('consent: without admin rights the user gets a link, and can check again', 
   const skip = fakeCtx({ graph: fakeGraph([]).api, ui: fakeUi({ answers: ['skip'] }).ui });
   skip.config.dataSources.orgData = 'api';
   assert.equal(await ensureConsent(skip.ctx, { canConsent: false }), false);
+});
+
+// Consumption Central's Fabric route needs one Graph permission at most, so the PAX route's app,
+// which needs three, shows an admin granting only the ones missing.
+test('consent: an admin grants only what is missing', async () => {
+  const graph = fakeGraph(['r-users']);
+  const { ctx } = paxConsentCtx(graph.api);
+  assert.equal(await ensureConsent(ctx, { canConsent: true }), true);
+  assert.deepEqual(graph.granted, ['r-org', 'r-sites']);
+
+  const ui = fakeUi();
+  const again = paxConsentCtx(graph.api, ui.ui);
+  assert.equal(await ensureConsent(again.ctx, { canConsent: true }), true);
+  assert.deepEqual(graph.granted, ['r-org', 'r-sites']);
+  assert.deepEqual(graph.revoked, []);
+  assert.match(ui.text(), /Admin consent is in place \(Organization\.Read\.All, Sites\.Selected, User\.Read\.All\)/);
+});
+
+test('consent: an app the installer made loses the consent for permissions it no longer uses', async () => {
+  // On the PAX route, Application.Read.All and CopilotPackages.Read.All are for the Agent 365 file and
+  // AuditLogsQuery.Read.All is for PAX's audit mode; Consumption Central runs PAX for the org file only.
+  const used = ['r-org', 'r-sites', 'r-users'];
+  const tookBack = (/** @type {string} */ names, /** @type {string} */ them) => `Took back admin consent for ${names}, as ${PRODUCT_NAME} no longer uses ${them}`;
+
+  const graph = fakeGraph([...used, 'r-apps', 'r-packages']);
+  const ui = fakeUi();
+  assert.equal(await ensureConsent(paxConsentCtx(graph.api, ui.ui).ctx, { canConsent: true }), true);
+  assert.deepEqual(graph.revoked, ['r-apps', 'r-packages']);
+  assert.deepEqual(graph.granted, []);
+  assert.ok(ui.text().includes(tookBack('Application.Read.All, CopilotPackages.Read.All', 'them')), ui.text());
+  assert.match(ui.text(), /Admin consent is in place/);
+  assert.doesNotMatch(ui.text(), /still has admin consent/);
+
+  // Missing roles are still granted in the same run.
+  const both = fakeGraph(['r-users', 'r-audit']);
+  const mixed = fakeUi();
+  assert.equal(await ensureConsent(paxConsentCtx(both.api, mixed.ui).ctx, { canConsent: true }), true);
+  assert.deepEqual(both.revoked, ['r-audit']);
+  assert.deepEqual(both.granted, ['r-org', 'r-sites']);
+  assert.ok(mixed.text().includes(tookBack('AuditLogsQuery.Read.All', 'it')), mixed.text());
+
+  // An app the user brought keeps what it has.
+  const theirs = fakeGraph([...used, 'r-packages']);
+  const brought = paxConsentCtx(theirs.api, fakeUi().ui);
+  brought.config.app.existing = true;
+  assert.equal(await ensureConsent(brought.ctx, { canConsent: true }), true);
+  assert.deepEqual(theirs.revoked, []);
+
+  // So does the Fabric route's app: Consumption Central's Fabric route has no choice that drops a permission.
+  const fabric = fakeGraph(['r-users', 'r-audit', 'r-reports']);
+  const fabricUi = fakeUi();
+  const onFabric = fakeCtx({ graph: fabric.api, ui: fabricUi.ui });
+  onFabric.config.dataSources.orgData = 'api';
+  assert.equal(await ensureConsent(onFabric.ctx, { canConsent: true }), true);
+  assert.deepEqual(fabric.revoked, []);
+  assert.doesNotMatch(fabricUi.text(), /Took back|still has admin consent/);
+
+  // Without the rights to, it says what's left and where an admin removes it.
+  const stays = fakeGraph([...used, 'r-packages']);
+  const told = fakeUi();
+  assert.equal(await ensureConsent(paxConsentCtx(stays.api, told.ui).ctx, { canConsent: false }), true);
+  assert.deepEqual(stays.revoked, []);
+  assert.ok(told.text().includes(`The app still has admin consent for CopilotPackages.Read.All, which ${PRODUCT_NAME} no longer uses.`), told.text());
+  assert.match(told.text(), /CallAnAPI\/appId\/app-1/);
+
+  // An assignment already gone counts as taken back; another refusal is left with the link.
+  const gone = fakeGraph([...used, 'r-packages'], { revoke: () => { throw httpError(404); } });
+  const goneUi = fakeUi();
+  assert.equal(await ensureConsent(paxConsentCtx(gone.api, goneUi.ui).ctx, { canConsent: true }), true);
+  assert.ok(goneUi.text().includes(tookBack('CopilotPackages.Read.All', 'it')), goneUi.text());
+  assert.doesNotMatch(goneUi.text(), /still has admin consent/);
+
+  const refused = fakeGraph([...used, 'r-apps', 'r-packages'], { revoke: (id) => { if (id === 'a-r-apps') throw httpError(403, 'Forbidden'); } });
+  const refusedUi = fakeUi();
+  assert.equal(await ensureConsent(paxConsentCtx(refused.api, refusedUi.ui).ctx, { canConsent: true }), true);
+  assert.deepEqual(refused.revoked, ['r-packages']);
+  assert.ok(refusedUi.text().includes(tookBack('CopilotPackages.Read.All', 'it')), refusedUi.text());
+  assert.ok(refusedUi.text().includes(`The app still has admin consent for Application.Read.All, which ${PRODUCT_NAME} no longer uses.`), refusedUi.text());
+  assert.match(refusedUi.text(), /CallAnAPI\/appId\/app-1/);
+
+  // Anything that isn't Graph refusing is a bug, and stops the run.
+  const broken = fakeGraph([...used, 'r-packages'], { revoke: () => { throw new TypeError('boom'); } });
+  await assert.rejects(ensureConsent(paxConsentCtx(broken.api, fakeUi().ui).ctx, { canConsent: true }), /boom/);
 });
 
 test('waitForJob polls until the job ends', async () => {

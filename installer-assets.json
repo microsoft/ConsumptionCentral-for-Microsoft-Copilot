@@ -8,7 +8,7 @@
     },
     "vivaDirect": {
       "path": "3. Viva Direct/Consumption Central - Viva Direct.pbit",
-      "parameters": ["BillingPeriodWeeks", "VivaPartitionId", "VivaQueryId", "CoworkRatePerCredit", "CoworkPrepaidRatePerCredit", "StudioRatePerCredit", "StudioPrepaidRatePerCredit", "CapacityPackCredits", "GitHubRatePerCredit", "GitHubBusinessSeatPrice", "GitHubEnterpriseSeatPrice", "GitHubAllowanceChangeDate", "GitHubBusinessStandardCredits", "GitHubEnterpriseStandardCredits", "DataFolder"]
+      "parameters": ["BillingPeriodWeeks", "VivaPartitionId", "VivaQueryId", "CoworkRatePerCredit", "CoworkPrepaidRatePerCredit", "StudioRatePerCredit", "StudioPrepaidRatePerCredit", "CapacityPackCredits", "GitHubRatePerCredit", "GitHubBusinessSeatPrice", "GitHubEnterpriseSeatPrice", "GitHubAllowanceChangeDate", "GitHubBusinessStandardCredits", "GitHubEnterpriseStandardCredits", "SharePointSiteUrl", "DataFolder"]
     },
     "localCsv": {
       "path": "1. Local CSV/Consumption Central - Local CSV.pbit",

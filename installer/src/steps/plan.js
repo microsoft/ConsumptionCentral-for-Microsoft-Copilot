@@ -13,6 +13,7 @@ import { inCloudShell } from '../launch.js';
 import { consumptionLoaded, holdsOtherInstall, otherInstallIn, warnConsumptionLoaded, workspaceTaken } from '../other-installs.js';
 import { askPrices, describePrices } from '../prices.js';
 import { APP_REGISTRATION, ENV, KEY_VAULT_PREFIX, LAKEHOUSE_NAME, PRODUCT_NAME, RESOURCE_GROUP, WORKSPACE_NAME } from '../product.js';
+import { isPax } from '../target.js';
 import { loadTemplateModel } from '../transform/model.js';
 import { c, listJoin } from '../ui.js';
 import { flowIdentity, MODEL_NAME, secretMode } from '../config.js';
@@ -95,6 +96,7 @@ export const runsFabric = (capacity) => !/^(PP|A|EM)\d/i.test(String(capacity.sk
  * @property {boolean} canConsent
  * @property {boolean | undefined} canCreateApps  undefined when the policy can't be read.
  * @property {Record<string, { enabled?: boolean, delegateToCapacity?: boolean }>} [tenantSettings]  Only for Fabric administrators.
+ * @property {number} [seats]  Assigned Microsoft 365 Copilot seats; undefined when they can't be read. Only the PAX route reads them.
  */
 
 /**
@@ -774,6 +776,47 @@ async function confirmNotebookMode(ctx, byDefault = false) {
   return true;
 }
 
+/** The audit history a PAX first load can pull, and how long each takes. */
+export const HISTORY_CHOICES = [
+  { name: '30 days (quickest; you can load more later)', value: 30 },
+  { name: '90 days (a few hours; longer on a large tenant)', value: 90 },
+  { name: '180 days (the most the audit log keeps by default; many hours)', value: 180 },
+];
+
+/**
+ * Repair or change, once the history has loaded: offers to reload more of it after setup. Only
+ * more than is loaded is offered. The answer goes on `ctx.reloadHistoryDays`; the install record
+ * keeps the old number until the reload has started.
+ * @param {Ctx} ctx
+ * @param {(days: number) => string} describe  Each reload choice's description.
+ */
+export async function askMoreHistory(ctx, describe) {
+  const { ui, config } = ctx;
+  delete ctx.reloadHistoryDays;
+  const current = config.history?.days ?? 0;
+  const more = HISTORY_CHOICES.filter((ch) => ch.value > current);
+  if (!more.length) {
+    ui.ok(`Audit history: ${current} days loaded, the most the installer loads`);
+    return;
+  }
+  const days = await ui.select(
+    `Load more audit history? ${current} days are loaded now.`,
+    [
+      { name: `Keep ${current} days (the usual runs carry on from here)`, value: 0 },
+      ...more.map((ch) => ({
+        name: `Reload ${ch.value} days after setup`,
+        value: ch.value,
+        description: describe(ch.value),
+      })),
+    ],
+    0,
+  );
+  if (days) ctx.reloadHistoryDays = days;
+}
+
+/** @param {number} days */
+export const reloadLine = (days) => `Reload ${days} days of history after setup`;
+
 /**
  * Asks for the client ID of an app the user brought, and checks it has what the install needs
  * before anything is created.
@@ -841,6 +884,8 @@ export async function planAdminPack(ctx, pre) {
   );
   if (next === 'stop') throw new ResumeLater(`Stopped until an admin has registered the app. Send them ${file}, then run the installer again.`);
   await askAppId(ctx, pre);
+  // The PAX refresh signs in with a secret kept on this PC, so the user always pastes it.
+  if (isPax(config)) return true;
   // Only the model's connection signs in as the app: it gets a secret of its own when it's set up.
   if (!appWanted(config.dataSources)) return false;
   if (secretMode(config) === 'keyvault-admin' && kv.name) {
@@ -950,6 +995,7 @@ export const PRICING = {
   fabric: 'https://azure.microsoft.com/pricing/details/microsoft-fabric/',
   powerAutomate: 'https://www.microsoft.com/power-platform/products/power-automate/pricing',
   keyVault: 'https://azure.microsoft.com/pricing/details/key-vault/',
+  powerBiPro: 'https://www.microsoft.com/power-platform/products/power-bi/pricing',
 };
 
 /**

@@ -20,9 +20,16 @@ import { mNumberParameter } from './transform/model.js';
 /** @typedef {keyof Prices} PriceKey */
 
 /**
+ * Which template's parameters the prices go to. Viva Direct prices each product with its own
+ * parameter, so one price can fill several.
+ * @typedef {'fabric' | 'vivaDirect'} PriceLayout
+ */
+
+/**
  * @typedef {object} PriceInfo
  * @property {PriceKey} key
  * @property {string} parameter  The model parameter, a Number in the Fabric template.
+ * @property {string[]} vivaDirect  The Viva Direct template's Number parameters for the same price. The first one's default stands for them all.
  * @property {string} label
  * @property {string} hint  Where the user finds theirs.
  * @property {boolean} [whole]  A whole number.
@@ -31,30 +38,72 @@ import { mNumberParameter } from './transform/model.js';
 
 /** @type {PriceInfo[]} */
 export const PRICES = [
-  { key: 'creditRate', parameter: 'CreditRate', label: 'Pay-as-you-go price per Copilot credit (USD)', hint: 'Your agreement or invoice. The list price is 0.01.' },
+  {
+    key: 'creditRate',
+    parameter: 'CreditRate',
+    vivaDirect: ['CoworkRatePerCredit', 'StudioRatePerCredit', 'GitHubRatePerCredit'],
+    label: 'Pay-as-you-go price per Copilot credit (USD)',
+    hint: 'Your agreement or invoice. The list price is 0.01.',
+  },
   {
     key: 'prepaidCreditRate',
     parameter: 'PrepaidCreditRate',
+    vivaDirect: ['CoworkPrepaidRatePerCredit', 'StudioPrepaidRatePerCredit'],
     label: 'Prepaid price per Copilot credit (USD)',
     hint: 'Your Copilot Credit Pre-Purchase Plan. The template\'s 0.008 is the largest tier; most organisations pay more.',
   },
-  { key: 'prepaidCreditBalance', parameter: 'PrepaidCreditBalance', label: 'Prepaid Copilot credits bought (0 for none)', hint: 'Microsoft 365 admin center > Copilot > Cost management.' },
-  { key: 'githubBusinessSeatPrice', parameter: 'GitHubBusinessSeatPrice', label: 'GitHub Copilot Business seat, per month (USD)', hint: 'Your GitHub agreement. The list price is 19.' },
-  { key: 'githubEnterpriseSeatPrice', parameter: 'GitHubEnterpriseSeatPrice', label: 'GitHub Copilot Enterprise seat, per month (USD)', hint: 'Your GitHub agreement. The list price is 39.' },
-  { key: 'billingPeriodWeeks', parameter: 'BillingPeriodWeeks', label: 'Billing period, in weeks', hint: 'Your billing cycle. 4 for monthly.', whole: true, min: 1 },
+  {
+    key: 'prepaidCreditBalance',
+    parameter: 'PrepaidCreditBalance',
+    vivaDirect: ['CapacityPackCredits'],
+    label: 'Prepaid Copilot credits bought (0 for none)',
+    hint: 'Microsoft 365 admin center > Copilot > Cost management.',
+  },
+  {
+    key: 'githubBusinessSeatPrice',
+    parameter: 'GitHubBusinessSeatPrice',
+    vivaDirect: ['GitHubBusinessSeatPrice'],
+    label: 'GitHub Copilot Business seat, per month (USD)',
+    hint: 'Your GitHub agreement. The list price is 19.',
+  },
+  {
+    key: 'githubEnterpriseSeatPrice',
+    parameter: 'GitHubEnterpriseSeatPrice',
+    vivaDirect: ['GitHubEnterpriseSeatPrice'],
+    label: 'GitHub Copilot Enterprise seat, per month (USD)',
+    hint: 'Your GitHub agreement. The list price is 39.',
+  },
+  {
+    key: 'billingPeriodWeeks',
+    parameter: 'BillingPeriodWeeks',
+    vivaDirect: ['BillingPeriodWeeks'],
+    label: 'Billing period, in weeks',
+    hint: 'Your billing cycle. 4 for monthly.',
+    whole: true,
+    min: 1,
+  },
 ];
+
+/**
+ * The parameters a price goes to in a template.
+ * @param {PriceInfo} p
+ * @param {PriceLayout} [layout]
+ */
+export const priceParametersOf = (p, layout = 'fabric') => (layout === 'vivaDirect' ? p.vivaDirect : [p.parameter]);
 
 /**
  * The template's own value for each price.
  * @param {import('./transform/model.js').ModelBim} template
+ * @param {PriceLayout} [layout]
  * @returns {Required<Prices>}
  */
-export function templatePrices(template) {
+export function templatePrices(template, layout = 'fabric') {
   /** @type {any} */
   const out = {};
   for (const p of PRICES) {
-    const v = mNumberParameter(template.model, p.parameter);
-    if (v === undefined) throw new Error(`The template has no number parameter "${p.parameter}".`);
+    const parameter = priceParametersOf(p, layout)[0];
+    const v = mNumberParameter(template.model, parameter);
+    if (v === undefined) throw new Error(`The template has no number parameter "${parameter}".`);
     out[p.key] = v;
   }
   return out;
@@ -78,14 +127,15 @@ export function parsePrice(p, text) {
 /**
  * The model parameters to write: the prices the user set, by parameter name.
  * @param {Prices | undefined} prices
+ * @param {PriceLayout} [layout]
  * @returns {Record<string, number>}
  */
-export function priceParameters(prices) {
+export function priceParameters(prices, layout = 'fabric') {
   /** @type {Record<string, number>} */
   const out = {};
   for (const p of PRICES) {
     const v = prices?.[p.key];
-    if (typeof v === 'number' && Number.isFinite(v)) out[p.parameter] = v;
+    if (typeof v === 'number' && Number.isFinite(v)) for (const name of priceParametersOf(p, layout)) out[name] = v;
   }
   return out;
 }
@@ -95,10 +145,11 @@ export function priceParameters(prices) {
  * defaults stand. Prices equal to the template's aren't saved, so a later template default applies.
  * @param {import('./install.js').Ctx} ctx
  * @param {import('./transform/model.js').ModelBim} template
+ * @param {PriceLayout} [layout]
  */
-export async function askPrices(ctx, template) {
+export async function askPrices(ctx, template, layout = 'fabric') {
   const { ui, config } = ctx;
-  const defaults = templatePrices(template);
+  const defaults = templatePrices(template, layout);
   const current = { ...defaults, ...(config.prices ?? {}) };
   ui.heading('Prices');
   ui.info('No export says what a credit or a seat costs you, so the report prices usage with these. See docs/COMMERCIAL-TERMS.md.');
@@ -129,8 +180,9 @@ export async function askPrices(ctx, template) {
 /**
  * One line for the plan and the summary.
  * @param {Prices | undefined} prices
+ * @param {PriceLayout} [layout]
  */
-export function describePrices(prices) {
+export function describePrices(prices, layout = 'fabric') {
   const set = PRICES.filter((p) => typeof prices?.[p.key] === 'number');
-  return set.length ? set.map((p) => `${p.parameter} ${prices?.[p.key]}`).join(', ') : 'the template\'s defaults';
+  return set.length ? set.map((p) => `${priceParametersOf(p, layout).join('/')} ${prices?.[p.key]}`).join(', ') : 'the template\'s defaults';
 }

@@ -1,12 +1,25 @@
 # Consumption Central installer
 
-Sets up the [Fabric option](../2.%20Fabric/README.md) of Consumption Central in your tenant, loads
-the first data and checks it. This page is the reference. To get going, follow
-[Install](../docs/INSTALL.md) → [Check it worked](../docs/INSTALL.md#check-it-worked).
+Sets up Consumption Central in your tenant, loads the first data and checks it. This page is the
+reference. To get going, follow [Install](../docs/INSTALL.md) →
+[Check it worked](../docs/INSTALL.md#check-it-worked).
 
-It's a port of the [Analytics Hub](https://github.com/microsoft/AnalyticsHub-Dashboard) installer,
-cut down to Consumption Central's sources: the same sign-in, questions, plan, repair, update,
-uninstall and exe. [UPSTREAM.md](UPSTREAM.md) records the commit it was ported from.
+The installer has two routes. Choose one in the browser, or with `--target fabric` or
+`--target pax`. An install stays on the route it started on.
+
+| Route | Each day | The report | Needs |
+|---|---|---|---|
+| **Fabric** | Notebooks and a pipeline in a Fabric workspace load the data into a Lakehouse | [2. Fabric](../2.%20Fabric/README.md), on the Lakehouse | A Fabric capacity (F2 or larger, or a trial) |
+| **No Fabric: SharePoint + PAX** | The report reads the exports in a SharePoint folder and Viva Insights itself. A scheduled task on a Windows PC runs PAX for the org file | [3. Viva Direct](../3.%20Viva%20Direct/README.md), on the folder, plus [the app](../app/README.md) | Power BI Pro, and a Windows PC with PowerShell 7.2 or later |
+
+Most of this page is the Fabric route's. The other route has
+[its own section](#no-fabric-sharepoint--pax-route).
+
+The Fabric route is a port of the [Analytics Hub](https://github.com/microsoft/AnalyticsHub-Dashboard)
+installer, cut down to Consumption Central's sources: the same sign-in, questions, plan, repair,
+update, uninstall and exe. The No Fabric route, its PAX refresh and the app step come from the
+[ValueLens](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot) installer.
+[UPSTREAM.md](UPSTREAM.md) records the commits they were ported from.
 
 ## Editing setup and recovering from failures
 
@@ -35,8 +48,9 @@ Terminal setup and `--yes` ask the questions in order, or take the defaults. Men
 
 ## Before you start
 
-Once you sign in, the **Prerequisites** panel (`prereqs` in the terminal) checks most of this,
-and changes nothing.
+This is the Fabric route's list. The No Fabric route's is in
+[What it needs](#what-it-needs). Once you sign in, the **Prerequisites** panel (`prereqs` in the
+terminal) checks most of it, and changes nothing.
 
 | You need | For | Without it |
 |---|---|---|
@@ -121,6 +135,11 @@ to:
 
 They send you back the client ID. Run the installer again, enter it, and paste the secret if
 you're asked. The installer then checks the app as below.
+
+On the [No Fabric route](#no-fabric-sharepoint--pax-route), the pack registers
+`Consumption Central (PAX)` with Organization.Read.All, User.Read.All and Sites.Selected, and the
+secret goes to you. It also has the PowerShell that gives the app write access to the SharePoint
+folder's site, for a SharePoint Administrator or Global Administrator to run.
 
 **Using an app you already have?** The installer checks it before anything is created: that the
 app and its service principal exist, and that every Graph application permission you need is on it
@@ -396,28 +415,309 @@ record notes that the model is owed a reload, so if the run stops or fails, the 
 `update` or **Repair or change** reloads it, even with nothing else to change. If that reload
 fails, `update` and `install` end as failed. Run `refresh`, or run the same command again.
 
+## No Fabric: SharePoint + PAX route
+
+This route sets up the [3. Viva Direct](../3.%20Viva%20Direct/README.md) report without Fabric.
+Each time it refreshes, the report reads your CSV exports from a SharePoint folder, and Copilot
+Cowork credits from Viva Insights, through its own connectors. The installer adds two things:
+
+- **The org file.** A scheduled task on a Windows PC runs [PAX](https://github.com/microsoft/PAX)
+  (Portable Audit eXporter) each day for your users and their departments, from Entra ID. It saves
+  them as `entra_org.csv` at the top of the folder, for the report's department breakdowns. On
+  this route PAX reads nothing else: no audit records.
+- **[The app](#the-app)**, which reads the same files.
+
+### What it needs
+
+| You need | For | Without it |
+|---|---|---|
+| Power BI Pro or Premium Per User | Publishing and sharing the report. In a workspace without a capacity, everyone who opens it needs Pro too | Ask your licence admin |
+| A Windows PC with PowerShell 7.2 or later, on when the task runs | The daily task. Run the installer on that PC | Azure Cloud Shell can't set this route up |
+| A folder in a SharePoint document library | The exports and the org file | |
+| A way to register an app in Entra | The app registration the task signs in as | [If you can't register apps](#if-you-cant-register-apps): the admin pack has the site's commands too |
+| Global Administrator or Privileged Role Administrator | Admin consent for the app's Microsoft Graph permissions | The installer gives you a link to send to one |
+| SharePoint Administrator or Global Administrator | Giving the app write access to the folder's site | The installer shows the commands for one to run |
+
+Only for some parts:
+
+| You need | For |
+|---|---|
+| The Viva Insights **Insights Analyst** role, or an analyst who creates the query | The report's Cowork pages. Until it has the query, they're blank |
+| A Power Platform admin who turns on managed apps, and Power Apps Premium or Copilot Credits for each viewer | [The app](#the-app) |
+
+The **Prerequisites** panel (`prereqs --target pax` in the terminal) checks most of it.
+
+### What it sets up
+
+| What | Name or place |
+|---|---|
+| App registration | `Consumption Central (PAX)`, with the Microsoft Graph application permissions Organization.Read.All, User.Read.All and Sites.Selected. Its client secret is kept in Windows Credential Manager on this PC |
+| Access to one SharePoint site | Write access to the site that holds the folder, and to no other site (Sites.Selected) |
+| Scheduled task | `Consumption Central - PAX refresh`, on this PC, each day at 02:00 by default |
+| Local folder | `%LOCALAPPDATA%\ConsumptionCentral\pax\`: the scripts, settings, logs and working files |
+| SharePoint folder | Your exports, and the org file the task writes |
+| Power BI workspace | A new one, `Consumption Central` by default, or one you're in |
+| Semantic model and report | Both `Consumption Central`, from the [3. Viva Direct](../3.%20Viva%20Direct/README.md) template |
+| Refresh schedule | Twice a day, after the task |
+| Viewer group | `Consumption Central Viewers`, with Build on the model |
+| The app | `Consumption Central`, a Copilot managed app, unless you turn it off |
+
+The questions come in this order: **What it collects** (with **Change the advanced settings?**),
+the **SharePoint folder address**, the **Power BI workspace for the report**, **Deploy the
+Consumption Central app?**, the **Viva Insights partition ID** and **query ID**, and **App
+registration**. The advanced settings add who can view, the new workspace's name, your
+[prices](#prices), when the refresh runs and whether the first load runs straight after setup.
+There's no Fabric or history question.
+
+### Checks before it changes anything
+
+First the installer checks this PC. It stops, and says what to do, if:
+
+- It's Azure Cloud Shell, or not Windows. Run the installer on the Windows PC that will run the
+  task.
+- PowerShell is older than 7.2: `winget install --id Microsoft.PowerShell --source winget`.
+- The execution policy is **AllSigned** or **Restricted**. The scripts aren't signed, and the
+  installer doesn't change or bypass the policy. Run
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or ask your IT admin if Group Policy
+  sets it.
+- An application control policy, such as App Control for Business or AppLocker, limits
+  PowerShell, so the refresh can't keep its secret in Credential Manager. Ask your IT admin to
+  allow the scripts.
+
+The org file needs no Python.
+
+### The daily refresh
+
+The task, `Consumption Central - PAX refresh`:
+
+- Runs as you, each day at 02:00 by default, in this PC's time. The advanced settings change it:
+  **When should the refresh run each day?**
+- Runs at run level **Limited**: not elevated.
+- Runs only while you're signed in to this PC (logon type **Interactive**). A run missed while
+  the PC was off or you were signed out runs when you next sign in. To run it when you're signed
+  out too, change it in Task Scheduler to
+  **Run whether user is logged on or not**, which may need the "Log on as a batch job" right. The
+  installer keeps that change. The Done page card **Keep the refresh running while you're signed
+  out** has the steps.
+- Runs only with a network connection, never twice at once, and stops after 12 hours.
+- Runs `pwsh.exe -NoProfile -NonInteractive -WindowStyle Hidden -File "<refresh.ps1>" -Config "<refresh.json>"`.
+  There's no `-ExecutionPolicy Bypass`.
+
+Each run:
+
+1. Takes a lock, so only one run works at a time.
+2. Reads the client secret from Credential Manager, and signs in to Microsoft Graph as the app.
+3. Runs PAX once, in its own PowerShell process, for the user directory only. PAX is pinned to
+   release `purview-v1.11.15`, and the script's SHA-256 is checked before it runs.
+4. Checks the file PAX wrote. One that fails a check is held back, and nothing is uploaded: see
+   [When a run holds the org file back](#when-a-run-holds-the-org-file-back).
+5. Uploads `entra_org.csv` to the top of the SharePoint folder, replacing the one there.
+6. Writes `state.json` and a log.
+
+Each run reads the whole directory, and its file replaces the last one whole. So there's no
+history to load: a first run, a reinstall or a new PC just runs the same pass. There's no
+**more history** choice, and no `--backfill-days`.
+
+| Where | What |
+|---|---|
+| `%LOCALAPPDATA%\ConsumptionCentral\pax\scripts\` | `refresh.ps1`, `credential.ps1` and `task.ps1`, and the scripts it runs: `Run-PAX-AIBV.ps1` and `Upload-Rollups-SharePoint.ps1` |
+| `…\pax\refresh.json` | The task's settings |
+| `…\pax\state.json` | The last run |
+| `…\pax\logs\` | A log for each run, kept 30 days. It includes what PAX printed |
+| `…\pax\data\` | This PC's copy of the org file, and any file a run held back, kept 30 days |
+| `…\pax\work\` | PAX's working files, such as its download |
+| Windows Credential Manager, `PAX-ConsumptionCentral-<tenant ID>` | The client secret. It lasts 12 months |
+
+### When a run holds the org file back
+
+Before it uploads, each run checks the file PAX wrote. It holds the file back if:
+
+| Check | The file |
+|---|---|
+| UPN column | Has no UPN column, such as `userPrincipalName`, which the report matches people on |
+| Rows | Has no rows |
+| Drop | Has under half the rows of the last `entra_org.csv` this PC published. Exactly half passes. A PC's first run has nothing to compare with, so it skips this check |
+
+A run that holds the file back uploads nothing, so SharePoint keeps the last good
+`entra_org.csv`, and the report keeps its department breakdowns. The run ends as failed:
+
+- `status` shows **Last run: held back**, then says which check failed, with the counts, such as
+  "Held back: the user directory PAX read this run has 4,000 rows, under half of the 10,000 rows
+  in the entra_org.csv this PC last published."
+- The task's last message, in `state.json`, says the same, and so does the run's log.
+- PAX's file moves to `…\pax\data\held-back-<date>-<time>-entra_org.csv`, and is kept 30 days, so
+  you can see what it read.
+
+The next run checks again. If the drop isn't genuine, check the run's log, and that the app still
+has its Microsoft Graph permissions.
+
+**A genuine drop.** After a clean-up of old accounts, say, run `run --accept-drop`. It reads the
+directory now, on this PC, and publishes the file even with under half the rows. It's for that run
+only: it doesn't change the task, and the daily runs check again, against the rows it published.
+It doesn't skip the UPN column or row checks. `refresh.ps1 -AcceptDrop` does the same.
+
+### The SharePoint folder
+
+- Use a folder in a document library on a SharePoint site. A OneDrive folder is refused, so the
+  refresh doesn't depend on one person's OneDrive. Subsites aren't supported. A folder name with
+  spaces at the start or end, or a full stop at the end, is refused.
+- Put your exports in it, by hand or with `upload <files>`. The report finds them by name, in the
+  folder or any subfolder. See [3. Viva Direct](../3.%20Viva%20Direct/README.md) for the names.
+- Give it a site of its own if you can. The report lists every file in the site before keeping
+  the folder's, so a busy site refreshes slowly.
+- The task keeps `entra_org.csv` at the top of the folder, and each run replaces it. Don't put
+  your own there: the next run replaces it. `upload` won't replace it either.
+- `upload <files> --folder <path>` uploads to a subfolder, such as `Exports/2026`. Missing
+  folders are created.
+- Uninstalling leaves the files in SharePoint.
+
+**The site grant.** Giving the app write access to the site needs a sign-in with
+Sites.FullControl.All, which the installer's sign-in usually doesn't have. The installer then
+shows the commands for a SharePoint Administrator or Global Administrator (Microsoft Graph
+PowerShell, or PnP PowerShell), and asks: **Check again**, or
+**Carry on without it (the refresh can't save its files until it's done)**. If you carry on, the
+Done page has **Ask for the app's access to the SharePoint site**, with a message to send.
+**Check the folder** (`check`) checks it again.
+
+### The report
+
+- The installer publishes the report through the Power BI API, to a new workspace
+  (**Create a new workspace**) or one you're in. Creating one needs the tenant setting
+  **Create workspaces**. In an existing workspace you need Admin or Member.
+- If Power BI won't take the report through the API, for example in a workspace without a
+  capacity or with the API turned off for the tenant, the installer falls back to Power BI
+  Desktop. It writes `Consumption Central.pbit` beside the install record and shows the steps:
+  open it in Power BI Desktop, keep the parameters, sign in to SharePoint, save it, and publish it
+  to the workspace. Then choose **I've published it**, **Keep the version that's there for now**
+  or **Stop and resume later**. If you stop, the Done page has
+  **Publish the report from Power BI Desktop**. Desktop never replaces a model the installer
+  didn't publish.
+- **Viva Insights.** The report reads Cowork credits through a Viva Insights query. The installer
+  asks for its partition ID, with your tenant ID as the default, and its query ID;
+  `install --viva-partition <id> --viva-query <id>` gives them in advance. Both are optional, and
+  it keeps both or neither. Leave them blank and the Done page has **Ask a Viva Insights analyst
+  for the Cowork credits query**, with a message to send, and the Cowork pages are blank until you
+  run the installer again and enter them. Running it again offers the saved IDs, and a blank
+  answer forgets them.
+- **Prices.** Under [Advanced settings](#advanced-settings), the installer asks the same
+  [price questions](#prices) as on the Fabric route, and sets the Viva Direct template's
+  parameters for each (`src/prices.js` lists them). Otherwise the report starts with the
+  template's, or with the install record's `prices` if it has them. A price changed in Power BI
+  goes back to that when the installer next updates the model, such as for a new template or
+  another folder. See [Commercial terms](../docs/COMMERCIAL-TERMS.md).
+
+**Sign the model in.** Once, after publishing, the model needs a sign-in to read the folder. The
+installer shows the steps: in the workspace, open the model's settings, then
+**Data source credentials** > **Edit credentials**. Choose **OAuth2** and privacy level
+**Organizational**, then **Sign in**. Do the same for each source. If a site fails the test,
+select **Skip test connection**. Sign Viva Insights in the same way, as someone who can open the
+query. Then choose **I've signed it in**. **Later** leaves
+**Sign Consumption Central in to SharePoint** on the Done page. Until it's done, the report has
+no data.
+
+**Refresh schedule.** Once the model is signed in, the installer schedules its refresh each day
+4 and 10 hours after the task, rounded up to the half hour: 06:00 and 12:00 for a 02:00 task, in
+this PC's time zone. Power BI emails if a refresh fails. **Check status** says when Power BI has
+turned the schedule off. When the installer next refreshes the model, waits for it, and the
+refresh works, it turns the schedule back on. **Refresh the model** (`refresh`) does that.
+
+**Viewers.** As on the Fabric route, the installer gives the viewer group **Build** on the model,
+no workspace role, and asks you to share the report once. See
+[Power BI report and viewers](#power-bi-report-and-viewers). The app is shared with the group
+too. If you choose another group, the installer takes the old group's Build away, but the app
+stays shared with it: if its members shouldn't open it, stop sharing it at
+[managedapps.cloud.microsoft](https://managedapps.cloud.microsoft/).
+
+### The app
+
+On this route the installer asks **Deploy the Consumption Central app?** Yes is the default. The
+[app](../app/README.md) is the front door to the same data.
+
+- It's a Copilot managed app named `Consumption Central`. The installer deploys it with the
+  bundled managed apps CLI (`@microsoft/managed-apps-cli`), which signs in separately: a browser
+  opens.
+- It goes in your Power Platform developer environment, unless you pass `--environment-id`.
+- It's shared with the viewer group. Each viewer needs Power Apps Premium or Copilot Credits.
+- In the app, viewers choose **Change data** and pick the CSV files from the SharePoint folder. So
+  they need read access to the folder. The installer doesn't give it. For the Cowork pages they
+  also pick the Viva Insights query's download: **Analysis results**, the query, then
+  **Download**.
+- **Update** deploys it again only when the build has changed. **Deploy the app** (`deploy-app`)
+  deploys it again whether or not it has.
+- The CLI needs Node.js 24.11 or later. The exe and the PowerShell command bring what it needs.
+  With `-UseInstalledNode`, or from a clone, see
+  [IT-approved Node.js](../docs/INSTALL.md#it-approved-nodejs) and
+  [Without the exe](../docs/INSTALL.md#without-the-exe).
+
+**If the tenant isn't ready.** If **app creation with the managed apps CLI** or **external
+artifacts in managed apps** is off, the installer says which. It finishes at the report instead
+of failing, and the Done page has **Ask for managed apps to be turned on**, with a message to
+send. A Power Platform administrator turns them on in the Power Platform admin center:
+**Copilot** > **Settings** > **Managed apps**. Then choose **Deploy the app** (`deploy-app`).
+
+If the app step stops for another reason, the Done page has **Finish the Consumption Central
+app**, with what went wrong and what to do. When it couldn't start, such as with Node.js older
+than 24.11 or a copy of the installer without the app's build, the rest of the install still
+finishes. When the deploy itself failed, the install ends as partly set up. For example:
+
+- **AADSTS53003.** Conditional Access blocked the CLI's sign-in. Ask for its app ID,
+  `9cee029c-6210-4654-90bb-17e6e9d36617`, to be allowed.
+- **No developer environment.** Pass `--environment-id` with the environment to use.
+- **An app with that name already exists.** Rename or delete it at
+  [managedapps.cloud.microsoft](https://managedapps.cloud.microsoft/).
+
+The Fabric route doesn't deploy the app yet: it sets up the report only.
+
+### After it finishes
+
+The Done page shows only the cards that apply:
+
+- **Ask for the app's access to the SharePoint site**, if your account couldn't give it.
+- **Wait for the first refresh to finish**, or **Fix the first refresh** if it failed.
+- **Publish the report from Power BI Desktop**, if Power BI didn't take it through its API.
+- **Sign Consumption Central in to SharePoint** (and Viva Insights), if you chose **Later**.
+- **Share the report with Consumption Central Viewers**, if you chose **Later**.
+- **Ask for managed apps to be turned on**, if the tenant wasn't ready for the app.
+- **Finish the Consumption Central app**, if the app step stopped.
+- **Ask a Viva Insights analyst for the Cowork credits query**, if the install has no query IDs.
+- **Keep the refresh running while you're signed out** (optional), or **Store the password for
+  the scheduled task** if the task was changed not to store one.
+- **Ask for the app's access to the old site(s) to be taken back** (optional), if you moved the
+  folder to another site and your account couldn't take that access back.
+
+### Uninstalling this route
+
+`uninstall` asks first, then removes the task, the app and the app's access to the SharePoint
+site. It offers to delete the workspace if the installer created it, or else deletes the report
+and asks about the model. If the installer created the app registration, it asks before deleting
+it (the default is no). A registration that stays loses the client secret the installer made. It
+deletes the Credential Manager entry and `%LOCALAPPDATA%\ConsumptionCentral\pax\`. It leaves the
+SharePoint files, the viewer group, PowerShell 7 and the install record, and says so.
+
 ## Commands
 
 Run them as `npx consumption-central-installer <command>` from this folder, as
 `ConsumptionCentralInstaller.exe <command>`, or with the command the PowerShell launcher leaves
-behind. With no command, the browser steps open.
+behind. With no command, the browser steps open. The install record says which route an install
+is on, so only a new install needs `--target fabric` or `--target pax`.
 
 | Command | Does |
 |---|---|
 | `install` | Set up, or repair or change the set-up. `--ui` opens the browser steps |
-| `run` | Run the pipeline, wait for it, then check the data. `--no-wait` only starts it |
-| `rerun-failed` | Run again only the loads that failed in the latest run, and what depends on them |
-| `load-cowork` | Once the Cowork Dataflow is signed in: refresh it, load the Viva credits and refresh the model |
-| `check` | Run the data check again, without the pipeline |
-| `refresh` | Refresh the semantic model from the Lakehouse |
-| `status` | Recent runs, model refreshes, secret and token expiry, and the last data check. Changes nothing |
-| `update` | Push the notebooks, pipeline, model and report from this installer version to Fabric |
-| `rotate-secret` | Replace the app's client secret, and the model connection's |
-| `github-token` | Replace the GitHub token |
+| `run` | Fabric: run the pipeline, wait for it, then check the data. `--no-wait` only starts it. No Fabric: run the refresh now, which replaces the org file. `--accept-drop` publishes a file the drop check held back, for this run only: see [When a run holds the org file back](#when-a-run-holds-the-org-file-back) |
+| `rerun-failed` | Fabric: run again only the loads that failed in the latest run, and what depends on them |
+| `load-cowork` | Fabric: once the Cowork Dataflow is signed in, refresh it, load the Viva credits and refresh the model |
+| `check` | Fabric: run the data check again, without the pipeline. No Fabric: check the app registration can still write to the SharePoint folder |
+| `refresh` | Refresh the semantic model |
+| `status` | Fabric: recent runs, model refreshes, secret and token expiry, and the last data check. No Fabric: the task and its last run, the secret, the folder, the model and the app. Changes nothing |
+| `update` | Fabric: push the notebooks, pipeline, model and report from this installer version. No Fabric: the scripts on this PC, the report and the app |
+| `rotate-secret` | Fabric: replace the app's client secret, and the model connection's. No Fabric: replace the one in Credential Manager on this PC |
+| `github-token` | Fabric: replace the GitHub token |
 | `access` | Who can view: the viewer group, its members and owners, its Build on the model, and the report share |
-| `upload <files…>` | Upload exports to the drop folder. `--run` loads them now |
-| `uninstall` | Delete the workspace and everything in it |
-| `prereqs` | Check your roles, licences, capacity and Azure access. Changes nothing |
+| `upload <files…>` | Fabric: upload exports to the drop folder. `--run` loads them now. No Fabric: upload files to the SharePoint folder. `--folder` puts them in a subfolder |
+| `deploy-app` | No Fabric: deploy [the app](#the-app), or deploy it again |
+| `uninstall` | Fabric: delete the workspace and everything in it. No Fabric: see [Uninstalling this route](#uninstalling-this-route) |
+| `prereqs` | Check your roles, licences, capacity and Azure access. Changes nothing. `--target pax` checks the No Fabric route's |
 | `preview` | Write what would be deployed to a folder, without signing in |
 
 | To | Run |
@@ -429,17 +729,22 @@ behind. With no command, the browser steps open.
 | Read GitHub Copilot from the API | `install --data github=api --github-enterprise <slug>` |
 | Read the credit rate from a billing scope | `install --data commercialTerms=api --billing-scope /subscriptions/<id>` |
 | Keep the secrets in Key Vault | `install --key-vault` |
+| Set up the No Fabric route, with the Cowork credits query | `install --target pax --viva-partition <id> --viva-query <id>` |
+| Upload exports to a SharePoint subfolder | `upload Exports.csv --folder Exports/2026` |
+| Publish the org file after a genuine drop in users | `run --accept-drop` |
+| Make a new app in another Power Platform environment | `deploy-app --environment-id <id>` |
 | Sign in with the Azure CLI, or with a code | `--use-az`, or `--device-code` |
 
-Source IDs for `--data`: `coworkCredits`, `coworkTasks`, `studioCredits`, `github`, `azureAi`,
-`orgData`, `commercialTerms`. Modes: `api`, `csv` or `skip` (`coworkTasks` takes `csv` or `skip`;
-`azureAi` and `commercialTerms` take `api` or `skip`). Without `--flow-environment`, the installer
-asks which environment to use. Add `--help` for every option.
+Source IDs for `--data`, on the Fabric route: `coworkCredits`, `coworkTasks`, `studioCredits`,
+`github`, `azureAi`, `orgData`, `commercialTerms`. Modes: `api`, `csv` or `skip` (`coworkTasks`
+takes `csv` or `skip`; `azureAi` and `commercialTerms` take `api` or `skip`). Without
+`--flow-environment`, the installer asks which environment to use. Add `--help` for every option.
 
-`uninstall` asks before it deletes the workspace. If the installer didn't create the workspace,
-the answer defaults to no. It deletes the workspace's managed private endpoints first, because
-Fabric won't delete a workspace that still has them, then the model's connection. It leaves the
-app registration, the Key Vault and any Power Automate flow alone, and says so.
+On the Fabric route, `uninstall` asks before it deletes the workspace. If the installer didn't
+create the workspace, the answer defaults to no. It deletes the workspace's managed private
+endpoints first, because Fabric won't delete a workspace that still has them, then the model's
+connection. It leaves the app registration, the Key Vault and any Power Automate flow alone, and
+says so.
 
 ## Develop and test
 
@@ -453,14 +758,21 @@ python -m unittest discover -s test/python -p "test_*.py"
 ```
 
 `npm test` runs the Node tests, `typecheck` checks the JSDoc types, and the Python tests cover the
-notebooks that ship with the installer (`assets/`). The installer reads the notebooks and the
-template from this repo through [`installer-assets.json`](../installer-assets.json); `--source
-<folder>` points it at another checkout.
+notebooks that ship with the installer (`assets/`) and the No Fabric route's PowerShell scripts
+(`src/steps/pax/runner/`). The script tests need PowerShell 7 (`pwsh`). Without it, or where the
+execution policy blocks scripts, they skip. The
+installer reads the notebooks and the templates from this repo through
+[`installer-assets.json`](../installer-assets.json); `--source <folder>` points it at another
+checkout.
 
 `npm run build:exe` builds `ConsumptionCentralInstaller.exe`, `ConsumptionCentralInstaller.zip`
 and `install.ps1` in `dist-exe`, on Windows with the .NET Framework C# compiler that ships with it.
-The [installer workflow](../.github/workflows/installer.yml) runs the tests on Windows and Linux
-and builds the exe.
+It also builds [the app](../app/README.md) and bundles it with the managed apps CLI pinned in
+`managed-cli/`, so run `npm ci` in `app` first. Build with Node.js 24.11 or later: the exe ships
+the Node.js that builds it, and the CLI needs 24.11. Older, or without the app's packages, the
+build warns and the exe's app step stops; `--release` fails instead.
+The [installer workflow](../.github/workflows/installer.yml) runs the tests on Linux, the PAX
+script tests on Windows too, and builds the exe.
 
 ## Releases
 

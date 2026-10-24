@@ -106,6 +106,47 @@ test("record: a save that doesn't read back as written fails, so no step counts 
     assert.equal(loadConfig(file).config.fabric.workspaceId, 'ws-1');
   }));
 
+test('record: the access command saving while the install waits on its first load keeps its changes when the install saves after it', () =>
+  inDir((dir) => {
+    const file = join(dir, 'consumption-central-setup.json');
+    // The install: a new record, then the viewer group.
+    const install = loadConfig(file).config;
+    Object.assign(install, { tenantId: 'tenant-1' });
+    Object.assign(install.fabric, { workspaceId: 'ws-1', workspaceName: 'Consumption Central', lakehouseId: 'lh-1' });
+    saveConfig(file, install);
+    install.access = { groupId: 'group-1', groupName: 'Consumption Central Viewers', contact: 'admin@contoso.com', createdGroup: true, grantedModels: [] };
+    const access = install.access;
+    saveConfig(file, install);
+    // The first load starts; the install waits for it, for hours on a large tenant.
+    install.firstRun = { jobId: 'job-1', status: 'NotStarted', startedAt: '2026-06-01T12:30:00.000Z' };
+    saveConfig(file, install);
+
+    // Meanwhile the access command, in another window, grants the model and adds a link to request access.
+    const other = loadConfig(file).config;
+    other.access = { ...other.access, grantedModels: ['cc'] };
+    saveConfig(file, other);
+    Object.assign(/** @type {import('../src/config.js').AccessConfig} */ (other.access), { requestUrl: 'https://contoso.com/request-access' });
+    saveConfig(file, other);
+    const changed = structuredClone(other.access);
+
+    // The first load finishes and the install saves what it holds in memory.
+    install.firstRun = { ...install.firstRun, status: 'Completed', finishedAt: '2026-06-01T16:00:00.000Z' };
+    saveConfig(file, install);
+
+    const saved = loadConfig(file).config;
+    assert.deepEqual(saved.access, changed, "the access command's changes survive the install's save");
+    assert.equal(saved.firstRun?.status, 'Completed');
+    assert.equal(saved.firstRun?.finishedAt, '2026-06-01T16:00:00.000Z');
+    assert.deepEqual(install.access, changed, 'and the install has them in memory, for its summary');
+    assert.equal(install.access, access, 'in the same object, so code holding it sees them too');
+    assert.equal(access.requestUrl, 'https://contoso.com/request-access');
+
+    install.prices = { creditRate: 0.02 };
+    saveConfig(file, install);
+    assert.deepEqual(loadConfig(file).config.access, changed, 'and later saves keep it');
+    assert.deepEqual(loadConfig(file).config.prices, { creditRate: 0.02 });
+  }));
+
 test('record: when two commands change the same field the later save wins; a field the other removed stays removed', () =>
   inDir((dir) => {
     const file = join(dir, 'consumption-central-setup.json');
@@ -131,6 +172,16 @@ test('record: when two commands change the same field the later save wins; a fie
       assert.equal(config.access?.groupName, 'Consumption Central Viewers');
       assert.equal(config.uploads.flowIds, undefined);
     }
+  }));
+
+test('record: the groups that were the viewer group, and the models they still have Build on, read back as saved', () =>
+  inDir((dir) => {
+    const file = join(dir, 'consumption-central-setup.json');
+    const config = record();
+    const retiredGroups = [{ groupId: 'g-2', groupName: 'Old viewers', datasets: ['ds-1', 'ds-2'] }, { groupId: 'g-3', datasets: ['ds-1'] }];
+    config.access = { groupId: 'g-1', grantedModels: ['ds-1'], retiredGroups: structuredClone(retiredGroups) };
+    saveConfig(file, config);
+    assert.deepEqual(loadConfig(file).config.access?.retiredGroups, retiredGroups);
   }));
 
 test('record: a record saved to another file, such as the setup draft, is written as it is', () =>

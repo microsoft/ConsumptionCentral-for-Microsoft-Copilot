@@ -1,25 +1,45 @@
 # Install
 
-The installer sets up the [Fabric option](../2.%20Fabric/README.md) in your tenant: a workspace,
-Lakehouse, notebooks, a pipeline on a schedule, the semantic model and the report. It loads the
-first data, then you check it worked. To set it up by hand instead, follow the
-[Fabric guide](../2.%20Fabric/README.md). The other options in the [README](../README.md) need no
-installer.
+The installer sets Consumption Central up in your tenant and loads the first data, then you check
+it worked. It has two routes:
 
-Check [Before you start](../installer/README.md#before-you-start) first. Then start the installer
-one of these ways. They all run the same installer and ask the same questions.
+- **Fabric** sets up the [Fabric option](../2.%20Fabric/README.md): a workspace, Lakehouse,
+  notebooks, a pipeline on a schedule, the semantic model and the report.
+- **No Fabric: SharePoint + PAX** publishes the [Viva Direct](../3.%20Viva%20Direct/README.md)
+  report on a SharePoint folder of your exports, keeps the org file in that folder up to date with
+  a daily task on a Windows PC, and deploys [the app](../app/README.md).
+
+To set one up by hand instead, follow its guide. [Local CSV](../1.%20Local%20CSV/README.md) needs
+no installer.
+
+Check what your route needs first: [Before you start](../installer/README.md#before-you-start)
+for Fabric, or [What it needs](../installer/README.md#what-it-needs) for No Fabric. Then start the
+installer one of these ways. They all run the same installer and ask the same questions.
 
 | Your PC | Start with |
 |---|---|
 | Windows 10 or 11 | [The PowerShell one-liner](#from-powershell) |
 | Windows, and you'd rather download a program | [The exe](#run-it) |
 | Windows, with a Node.js your IT team has approved | [IT-approved Node.js](#it-approved-nodejs) |
-| Locked down, or not Windows | [Azure Cloud Shell](#locked-down-tenant--azure-cloud-shell) |
+| Locked down, or not Windows (Fabric route only) | [Azure Cloud Shell](#locked-down-tenant--azure-cloud-shell) |
 | Nothing can run locally, and no Cloud Shell | Your IT team deploys it, for example with Intune or Configuration Manager, or you run it from an approved admin workstation |
 | A clone of this repo, with Node.js | [Without the exe](#without-the-exe) |
 
-If your organisation's policy blocks a route, don't work around it. Use another route, or ask
+If your organisation's policy blocks one of these ways, don't work around it. Use another, or ask
 your IT team.
+
+**Which route.** After you sign in, the installer asks **Where should Consumption Central run?**
+On the command line, `--target fabric` or `--target pax` answers it.
+
+- **Fabric.** Notebooks and a pipeline in a Fabric workspace load the data into a Lakehouse each
+  day, for the report. Needs a Fabric capacity (F2 or larger, or a trial).
+- **No Fabric: SharePoint + PAX.** The report reads the exports in a SharePoint folder, and Viva
+  Insights, each time it refreshes. A daily task on this Windows PC runs PAX for the org file. The
+  app reads the same folder. Needs Power BI Pro and PowerShell 7.2 or later. Run the installer on
+  the PC that will run the task. Azure Cloud Shell can't set it up.
+
+An install stays on the route it started on. More in the
+[installer's README](../installer/README.md).
 
 When it finishes: [Check it worked](#check-it-worked).
 
@@ -36,12 +56,13 @@ When it finishes: [Check it worked](#check-it-worked).
    gives its command, and the
    [installer releases](https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/releases?q=consumption-central-installer-v)
    list them all. To check the exe, see [Check the download](#check-the-download). If your
-   organisation blocks either, use another route in the table above.
+   organisation blocks either, use another way in the table above.
 2. The first time, it takes a moment to unpack. Then it opens in your browser. Keep its window
    open while you use the page, and keep the PC awake and plugged in until it finishes. If you
    close the page, go back to that window and press **Enter** to open it again.
 3. Choose **Set up Consumption Central** and sign in.
-4. Answer the questions:
+4. Choose the route: **Fabric** or **No Fabric: SharePoint + PAX**. See **Which route** above.
+5. Answer the questions. On the **Fabric** route:
    1. **Data sources.** Each source has a card: connected (through an API, a flow or a Dataflow),
       **Upload CSV** or **Skip**. **Copilot Cowork and Work IQ credits** and **Copilot Studio
       credits** default to **Upload CSV**; the rest are skipped until you choose otherwise. A CSV
@@ -64,15 +85,45 @@ When it finishes: [Check it worked](#check-it-worked).
       token: in the notebooks by default, with nothing in Azure. Or a Key Vault you create or
       pick; if you can't write to it, a vault admin can add the secret. See
       [Where the secrets go](../installer/README.md#where-the-secrets-go).
-5. Check the plan and approve it. Nothing is created until you do. The plan shows every setting,
-   including the defaults, and a **Costs** list of what's billed (the Fabric capacity, Power
-   Automate Premium for the Studio flow, Azure Key Vault), with links to the pricing pages. The
-   installer stops Windows going to sleep while it runs.
-6. Wait for it to finish. It shows each step as it goes. The first load usually takes under an
-   hour, longer on a trial or small capacity. Copilot Studio credits from the flow arrive after
-   its first run, and Cowork credits from the Dataflow after you sign in to it: see
-   [After it finishes](#after-it-finishes).
-7. When it finishes, open the link to the report.
+
+   On the **No Fabric: SharePoint + PAX** route, it checks your tenant, then this PC: PowerShell
+   7.2 or later, an execution policy that runs local scripts, and no application control that
+   limits PowerShell. If this PC can't run the refresh, it says what to install or change, and
+   stops. Then it asks, one question at a time:
+   - **What it collects**, then **Change the advanced settings?** **No** keeps the defaults for
+     who can view, the new workspace's name, your prices, when the refresh runs (02:00 on this PC)
+     and the first load straight after setup.
+   - **SharePoint folder address**: a folder in a SharePoint document library, for your exports
+     and the org file.
+   - **Power BI workspace for the report**: a new one, or one you're in.
+   - **Deploy the Consumption Central app?** Yes by default. See
+     [The app](../installer/README.md#the-app).
+   - **Viva Insights partition ID** and **Viva Insights query ID**, for the report's Cowork
+     pages. The partition ID is usually your tenant ID, and is the default. Both are optional:
+     leave them blank if you don't have the query yet, and the Done page says how to get it from
+     a Viva Insights analyst. See [the Viva query](VIVA-QUERY.md).
+   - **App registration**: create `Consumption Central (PAX)`, or use one you already have. If
+     you can't create one or approve its permissions, an admin can register it for you.
+
+   `install --target pax --viva-partition <id> --viva-query <id>` gives the Viva Insights IDs in
+   advance. See [The report](../installer/README.md#the-report).
+6. Check the plan and approve it. Nothing is created until you do.
+   - **Fabric.** The plan shows every setting, including the defaults, and a **Costs** list of
+     what's billed (the Fabric capacity, Power Automate Premium for the Studio flow, Azure Key
+     Vault), with links to the pricing pages.
+   - **No Fabric.** The plan shows what it creates, who gets access to what, what runs on this PC,
+     and the costs: Power BI Pro, and Power Apps Premium or Copilot Credits for the app.
+
+   The installer stops Windows going to sleep while it runs.
+7. Wait for it to finish. It shows each step as it goes.
+   - **Fabric.** The first load usually takes under an hour, longer on a trial or small capacity.
+     Copilot Studio credits from the flow arrive after its first run, and Cowork credits from the
+     Dataflow after you sign in to it: see [After it finishes](#after-it-finishes).
+   - **No Fabric.** The first load is one pass of PAX over your user directory, in the scheduled
+     task on this PC. It usually takes minutes, longer on a large tenant. Keep the PC on and
+     signed in until it finishes. The report shows data once you've signed it in to SharePoint.
+     If the managed apps CLI isn't signed in, the app step opens a browser for its sign-in.
+8. When it finishes, open the link to the report, and on the No Fabric route the app.
 
 **Want to change an answer?** Choose **Back**, on any question or on the plan. It opens the
 previous question with your answer filled in, and the questions after it are asked again. If you
@@ -85,12 +136,13 @@ repair the set-up later, start the installer again the same way. **Manage Consum
 shows the record's full path. If OneDrive syncs your Documents folder, the record follows you to
 your other PCs. The record holds no secrets.
 
-**The workspace has gone?** After you sign in, the installer checks that the record's workspace
-still exists. If Fabric says it doesn't, or the record is for another tenant, the home page says
-so. Choose **Start fresh** to set up again. The old record is kept beside the new one, renamed
-with the date and time, such as `consumption-central-setup.20260507-090302.json`. Or choose
-**Keep this record** to carry on with it. In the terminal, `install` asks whether to start fresh.
-If Fabric can't be reached, or you can't read the workspace, nothing changes.
+**The workspace has gone?** After you sign in, the installer checks that the record is for the
+tenant you signed in to and, on the Fabric route, that the record's workspace still exists. If
+not, the home page says so. Choose **Start fresh** to set up again. The old record is kept beside
+the new one, renamed with the date and time, such as
+`consumption-central-setup.20260507-090302.json`. Or choose **Keep this record** to carry on with
+it. In the terminal, `install` asks whether to start fresh. If Fabric can't be reached, or you
+can't read the workspace, nothing changes.
 
 **Using a workspace that already has things in it?** The installer never changes anything it
 didn't create. If one of its names is taken, its own item gets the next free name, such as
@@ -103,28 +155,63 @@ approve it.
 `Consumption Central (Fabric)` app registration. The notebooks keep the names they have in
 [`2. Fabric/notebooks`](../2.%20Fabric/notebooks), such as `Ingest_Studio`, plus
 `ConsumptionCentral_Upload_Router`, `ConsumptionCentral_Refresh_Model` and
-`ConsumptionCentral_Load_Status`.
+`ConsumptionCentral_Load_Status`. On the No Fabric route: the `Consumption Central` report and
+semantic model in the `Consumption Central` workspace, the `Consumption Central (PAX)` app
+registration, the `Consumption Central - PAX refresh` scheduled task and the
+`Consumption Central` app.
 
 ## Check it worked
 
 1. **Read the Done page.** It lists what's left, as cards: who does each step and a message to
    send. See [After it finishes](#after-it-finishes).
-2. **Check what loaded.** After the first run, each source has a card: loaded, failed, skipped,
-   to do or still running. A failed card says why and what to do. The same is in the Lakehouse
-   table `dbo.load_log`. See [Load status and reruns](../installer/README.md#load-status-and-reruns).
-3. **Check status.** Open the installer again and choose **Check status** (`status`): recent runs,
-   each source in the latest run, model refreshes, secret and token expiry, and the last data
-   check. It changes nothing.
-4. **Check the data.** **Check the data** (`check`) asks the semantic model how many rows each
-   source gave it and the dates they cover, and how many people in the org data have a
-   department, without running the pipeline.
-5. **Open the report.** Open the link the installer gives you. Pages for sources you skipped stay
-   empty.
+2. **Check what loaded.**
+   - **Fabric.** After the first run, each source has a card: loaded, failed, skipped, to do or
+     still running. A failed card says why and what to do. The same is in the Lakehouse table
+     `dbo.load_log`. See [Load status and reruns](../installer/README.md#load-status-and-reruns).
+   - **No Fabric.** When the first run finishes, the installer says the org file,
+     `entra_org.csv`, is in the SharePoint folder. If it's still running or it failed, the Done
+     page has **Wait for the first refresh to finish** or **Fix the first refresh**.
+3. **Check status.** Open the installer again and choose **Check status** (`status`). It changes
+   nothing.
+   - **Fabric.** Recent runs, each source in the latest run, model refreshes, secret and token
+     expiry, and the last data check.
+   - **No Fabric.** The scheduled task and its last run, with the run's log, when the client
+     secret expires, the SharePoint folder, and the model's last refresh and schedule.
+4. **Check the data.**
+   - **Fabric.** **Check the data** (`check`) asks the semantic model how many rows each source
+     gave it and the dates they cover, and how many people in the org data have a department,
+     without running the pipeline.
+   - **No Fabric.** **Check the folder** (`check`) signs in as the app, with the secret on this
+     PC, and checks it can write to the SharePoint folder, as the task does.
+5. **Open the report**, and on the No Fabric route the app. Pages for sources you skipped, or
+   exports that aren't in the folder yet, stay empty.
 
-Something failed? Choose **Rerun failed loads** (`rerun-failed`), or see
-[Load status and reruns](../installer/README.md#load-status-and-reruns).
+Something failed? On the Fabric route, choose **Rerun failed loads** (`rerun-failed`), or see
+[Load status and reruns](../installer/README.md#load-status-and-reruns). On the No Fabric route,
+read the log that **Check status** names, then choose **Run the refresh** (`run`). See
+[The daily refresh](../installer/README.md#the-daily-refresh). If **Check status** says the last
+run was **held back**, the new org file failed a check and SharePoint kept the last good one: see
+[When a run holds the org file back](../installer/README.md#when-a-run-holds-the-org-file-back).
 
 ### After it finishes
+
+On the **No Fabric** route:
+
+- **What's left comes first**, as on the Fabric route. The installer's README lists
+  [the cards this route can show](../installer/README.md#after-it-finishes), such as **Ask for the
+  app's access to the SharePoint site**, **Sign Consumption Central in to SharePoint** and **Ask
+  for managed apps to be turned on**.
+- **Admin consent.** If you couldn't grant it, send the link the installer gives you to a Global
+  Administrator or Privileged Role Administrator. Once they have, open the installer again and
+  choose **Check the folder** (`check`), then **Run the refresh** (`run`).
+- **Share the report** as below. The app is shared with the same group, and its users also need
+  read access to the SharePoint folder.
+- **The secret expires.** One the installer made lasts 12 months, and in its last 30 days
+  **Repair or change** replaces it. **Check status** shows when it expires. **Create a new
+  secret** (`rotate-secret`) replaces it at any time; for an app registration you brought, make
+  the new secret in Entra ID first.
+
+On the **Fabric** route:
 
 - **What's left comes first.** The Done page (and the end of the terminal output) starts with
   "N steps left": a card for each thing still to do, in order, with who does it, why, a link and
@@ -180,7 +267,7 @@ A matching hash confirms the file is the one in the release. It doesn't confirm 
 it: the exe and `install.ps1` aren't code-signed yet. On a PC your organisation doesn't manage,
 Edge may say the exe isn't commonly downloaded, and Windows SmartScreen may say it protected your
 PC. On a managed PC, if policy blocks the exe, use the [PowerShell one-liner](#from-powershell) or
-another route in the table at the top, or ask your IT team.
+another way in the table at the top, or ask your IT team.
 
 ## From PowerShell
 
@@ -192,10 +279,10 @@ irm https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/releas
 ```
 
 It downloads `ConsumptionCentralInstaller.zip` from that release (Node.js, the installer, the
-notebooks and the report template), checks its SHA-256 against the one written into
-`install.ps1`, unpacks it under `%LOCALAPPDATA%\ConsumptionCentral` and opens the installer in
-your browser. It needs no admin rights, installs nothing system-wide and changes no settings. Run
-a newer release's command to move to it; it removes the old version.
+notebooks, the report templates, the app and the managed apps CLI), checks its SHA-256 against the
+one written into `install.ps1`, unpacks it under `%LOCALAPPDATA%\ConsumptionCentral` and opens the
+installer in your browser. It needs no admin rights, installs nothing system-wide and changes no
+settings. Run a newer release's command to move to it; it removes the old version.
 
 - **Later commands.** It leaves a command behind for the version it unpacked, for example
   `& $env:LOCALAPPDATA\ConsumptionCentral\consumption-central.cmd status`. With no arguments it
@@ -212,14 +299,15 @@ a newer release's command to move to it; it removes the old version.
   options goes to the installer, for example
   `... -ZipPath .\ConsumptionCentralInstaller.zip status`.
 - **If policy blocks it.** If execution policy, endpoint protection or another control blocks
-  `irm | iex` or the script, don't work around it. Use another route in the table at the top, or
+  `irm | iex` or the script, don't work around it. Use another way in the table at the top, or
   ask your IT team.
 - **Behind a proxy.** It uses the system proxy. To name one, signed in as you, run
   `$env:CONSUMPTION_CENTRAL_PROXY = 'http://proxy:8080'` first. If the proxy blocks GitHub's
   download host, download the zip in a browser and set `$env:CONSUMPTION_CENTRAL_ZIP` to its path,
   or use `-ZipPath`.
 - **Constrained Language Mode** works: the launcher only uses commands allowed there. It skips
-  keeping the PC awake, so keep it plugged in and awake yourself.
+  keeping the PC awake, so keep it plugged in and awake yourself. The No Fabric route's daily
+  refresh doesn't: it needs PowerShell 7 in full language mode, and the installer checks.
 - **Remove it** with `.\install.ps1 -Uninstall` (from the download-and-run steps above), or by
   deleting `%LOCALAPPDATA%\ConsumptionCentral`. That doesn't touch what's in your tenant, or your
   install record in `Documents\Consumption Central`. To remove what's in your tenant, use
@@ -243,21 +331,26 @@ $env:CONSUMPTION_CENTRAL_USE_INSTALLED_NODE = '1'; irm https://github.com/micros
 Or, from the [download-and-run](#from-powershell) files,
 `.\install.ps1 -ZipPath .\ConsumptionCentralInstaller.zip -UseInstalledNode`.
 
-- **Which Node.js.** The `node` on your PATH. It stops if that's missing, too old or not x64.
+- **Which Node.js.** The `node` on your PATH. It stops if that's missing, too old or not x64. On
+  the No Fabric route, the managed apps CLI that deploys the app needs 24.11 or later. With an
+  older one, the installer skips the app, says so, and finishes the rest. **Deploy the app**
+  (`deploy-app`) deploys it once you have a newer one.
 - **What's still downloaded.** The same zip, checked the same way and unpacked to
-  `%LOCALAPPDATA%\ConsumptionCentral`: the installer's JavaScript, the notebooks and the report
-  template. The zip's `node.exe` is unpacked but not run. The installer has no native add-ons, so
-  nothing else runs from your profile.
-- **Same install.** It uses the same folders and the same install record as the other Windows
-  routes, so you can switch routes without a second install. The command it leaves behind,
-  `consumption-central.cmd`, keeps using the approved Node.js, and the update command the
-  installer shows keeps the setting.
+  `%LOCALAPPDATA%\ConsumptionCentral`: the installer's JavaScript, the notebooks, the report
+  templates, the app and the managed apps CLI. The zip's `node.exe` is unpacked but not run. The
+  installer has no native add-ons. The managed apps CLI has one, MSAL's sign-in runtime
+  (`msal-node-runtime.node`), which loads from your profile only when it deploys the app.
+- **Same install.** It uses the same folders and the same install record as the other ways to
+  run it on Windows, so you can switch between them without a second install. The command it
+  leaves behind, `consumption-central.cmd`, keeps using the approved Node.js, and the update
+  command the installer shows keeps the setting.
 
 ## Locked-down tenant / Azure Cloud Shell
 
 If your PC can't run the exe or the PowerShell command (AppLocker, WDAC, or no local PowerShell at
 all), run the installer in [Azure Cloud Shell](https://shell.azure.com) instead. Nothing runs on
-your PC: the installer runs in Cloud Shell and asks its questions in the terminal. Choose
+your PC: the installer runs in Cloud Shell and asks its questions in the terminal. It sets up the
+Fabric route only, because the No Fabric route's daily task runs on a Windows PC. Choose
 **PowerShell** in Cloud Shell and paste the same command:
 
 ```powershell
@@ -323,8 +416,23 @@ npx consumption-central-installer --ui
 
 Leave out `--ui` to answer the questions in the terminal. Other commands: `run`, `rerun-failed`,
 `load-cowork`, `check`, `refresh`, `status`, `update`, `rotate-secret`, `github-token`, `access`,
-`upload`, `uninstall`, `prereqs` and `preview`. Add `--help` for options. The exe takes the same
-commands, for example `ConsumptionCentralInstaller.exe status`. `install --yes` keeps the secrets
-in the notebooks for a new install; read
+`upload`, `deploy-app`, `uninstall`, `prereqs` and `preview`. `rerun-failed`, `load-cowork` and
+`github-token` are for the Fabric route, and `deploy-app` for the No Fabric route. Add `--help`
+for options. The exe takes the same commands, for example `ConsumptionCentralInstaller.exe status`.
+`install --yes` keeps the secrets in the notebooks for a new Fabric install; read
 [the trade-off](../installer/README.md#where-the-secrets-go) first, and add `--key-vault` to use
 Key Vault instead. `--secret-days <n>` sets how long the client secret in the notebooks lasts.
+
+**The app, from a clone.** On the No Fabric route, the installer deploys the app only with
+Node.js 24.11 or later, a build of the app and the pinned managed apps CLI. From the repo root:
+
+```text
+cd app
+npm ci
+npm run build
+cd ..
+npm ci --ignore-scripts --omit=dev --prefix installer/managed-cli
+```
+
+Without them, the installer skips the app, says what to do, and finishes the rest. Then choose
+**Deploy the app** (`deploy-app`).

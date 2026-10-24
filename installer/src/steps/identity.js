@@ -5,16 +5,18 @@
  */
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { appNeeded, appWanted, GRAPH_APP_ID, permissionsFor, secretWanted } from '../catalog.js';
+import { appNeeded, appWanted, GRAPH_APP_ID, secretWanted } from '../catalog.js';
 import { allowsAction, isPrivateVault, networkBlocked, ROLES } from '../clients/azure.js';
-import { adminConsentUrl, apiPermissionsUrl, resolveAppRoles } from '../clients/graph.js';
+import { adminConsentUrl, apiPermissionsUrl, declaredGraphRoles, resolveAppRoles } from '../clients/graph.js';
 import { secretMode } from '../config.js';
 import { HttpError } from '../http.js';
 import { commandLine } from '../launch.js';
 import { ADMIN_PACK_FILE, ENV, INSTALLER_TITLE, PRODUCT_NAME } from '../product.js';
+import { appName, isPax, requiredPermissions, retiredPermissions } from '../target.js';
 import { c, listJoin } from '../ui.js';
 import { askGithubToken, githubContentType, githubSecretName, GITHUB_TOKEN_SCOPES, TOKENS_URL } from './github.js';
 import { APP_NAME } from './plan.js';
+import { pnpGrantCommand, siteGrantCommands, SITE_ADMIN } from './pax/site.js';
 import { addTrackedSecret, adoptAttempts, promoteSecret, settleFailedSecret } from './secrets.js';
 
 export { ADMIN_PACK_FILE };
@@ -87,13 +89,13 @@ export function addDays(from, days) {
 }
 
 /**
- * Graph's service principal and the app roles the chosen sources need, looked up once per run.
+ * Graph's service principal and the app roles the route and the chosen sources need, looked up once per run.
  * @param {Ctx} ctx
  */
 export async function graphRoles(ctx) {
   if (!ctx.graphRoles) {
     const sp = await ctx.api.graph.graphServicePrincipal();
-    const { roles, missing } = resolveAppRoles(sp, permissionsFor(ctx.config.dataSources), OPTIONAL_PERMISSIONS);
+    const { roles, missing } = resolveAppRoles(sp, requiredPermissions(ctx.config), OPTIONAL_PERMISSIONS);
     for (const m of missing) {
       ctx.ui.warn(`Microsoft Graph in this tenant has no ${m} permission yet. ${OPTIONAL_PERMISSION_EFFECTS[m] ?? ''}`.trim());
     }
@@ -101,6 +103,21 @@ export async function graphRoles(ctx) {
   }
   return ctx.graphRoles;
 }
+
+/**
+ * Graph app roles that an app the installer made may have for a choice since switched off, such as
+ * the PAX route's Agent 365 file. None for an app the user brought, which keeps what it has.
+ * @param {import('../config.js').InstallConfig} config
+ * @param {{ appRoles: { id: string, value: string }[] }} graphSp
+ */
+function retiredRoles(config, graphSp) {
+  if (config.app.existing) return [];
+  const retired = retiredPermissions(config);
+  return resolveAppRoles(graphSp, retired, retired).roles;
+}
+
+/** @param {{ value: string }[]} roles */
+const roleNames = (roles) => roles.map((r) => r.value).join(', ');
 
 /**
  * The secrets this install keeps, for messages: the app's client secret, the GitHub token, or both.
@@ -499,8 +516,9 @@ async function addAdminOwner(ctx, email) {
 }
 
 /**
- * Creates or adopts the app registration and its service principal, and puts a client secret in Key Vault
- * when the sources need one.
+ * Creates or adopts the app registration and its service principal. On the Fabric route it also puts a
+ * client secret in Key Vault when the sources need one; the PAX route keeps its secret in Credential
+ * Manager on the PC instead. An app the installer made loses the API permissions it no longer uses.
  * @param {Ctx} ctx
  * @param {{ secret?: boolean }} [o]  secret: false when only the semantic model's connection signs in as
  *   the app. That connection gets its own secret (ensureModelConnection), so none is kept here.
@@ -508,7 +526,8 @@ async function addAdminOwner(ctx, email) {
 export async function ensureApp(ctx, o = {}) {
   const { ui, config, api } = ctx;
   const app = config.app;
-  const { roles } = await graphRoles(ctx);
+  const name = appName(config);
+  const { sp: graphSp, roles } = await graphRoles(ctx);
 
   if (app.appId) {
     const application = await api.graph.findApplication(app.appId);
@@ -521,6 +540,18 @@ export async function ensureApp(ctx, o = {}) {
     }
     app.objectId = application.id;
     app.displayName = application.displayName;
+    // Before the additions, which then see what's left.
+    const declared = declaredGraphRoles(application);
+    const unused = retiredRoles(config, graphSp).filter((r) => declared.has(r.id));
+    if (unused.length) {
+      try {
+        await api.graph.removeRequiredAccess(application, unused);
+        ui.ok(`Took ${roleNames(unused)} off its API permissions, as ${PRODUCT_NAME} no longer uses ${unused.length > 1 ? 'them' : 'it'}`);
+      } catch (err) {
+        if (!isStatus(err, 403)) throw err;
+        ui.warn(`You can't edit ${application.displayName}'s API permissions, so it still lists ${roleNames(unused)}, which ${PRODUCT_NAME} no longer uses. An admin can remove ${unused.length > 1 ? 'them' : 'it'}.`);
+      }
+    }
     try {
       if (await api.graph.ensureRequiredAccess(application, roles)) ui.ok(`Added the ${PRODUCT_NAME} permissions to its API permissions`);
     } catch (err) {
@@ -532,7 +563,7 @@ export async function ensureApp(ctx, o = {}) {
     /** @type {any} */
     let application;
     try {
-      application = await api.graph.createApplication(APP_NAME, roles);
+      application = await api.graph.createApplication(name, roles);
     } catch (err) {
       if (!isStatus(err, 403)) throw err;
       const perms = roles.map((r) => r.value);
@@ -546,7 +577,7 @@ export async function ensureApp(ctx, o = {}) {
     app.displayName = application.displayName;
     app.existing = false;
     ctx.save();
-    ui.ok(`Created app registration "${APP_NAME}" (${app.appId})`);
+    ui.ok(`Created app registration "${name}" (${app.appId})`);
   }
 
   if (!app.servicePrincipalId) {
@@ -560,7 +591,7 @@ export async function ensureApp(ctx, o = {}) {
   }
   ctx.save();
 
-  if (o.secret !== false) await ensureSecret(ctx);
+  if (o.secret !== false && !isPax(config)) await ensureSecret(ctx);
 }
 
 /** @param {Ctx} ctx */
@@ -806,7 +837,50 @@ export async function newSecret(ctx) {
 }
 
 /**
+ * Takes back admin consent for the Graph permissions in `retired` that the app still has. Without
+ * the rights to, or when Graph refuses, it says which remain and where an admin removes them.
+ * @param {Ctx} ctx
+ * @param {{ canConsent: boolean }} who
+ * @param {string} graphSpId
+ * @param {{ id: string, value: string }[]} retired
+ * @param {{ id: string, appRoleId: string }[]} assigned  The app's Graph app role assignments.
+ */
+async function revokeRetiredRoles(ctx, who, graphSpId, retired, assigned) {
+  const { ui, config, api } = ctx;
+  const byId = new Map(retired.map((r) => [r.id, r]));
+  const stale = assigned.filter((a) => byId.has(a.appRoleId));
+  /** @type {{ id: string, value: string }[]} */
+  const done = [];
+  /** @type {{ id: string, value: string }[]} */
+  const left = [];
+  for (const a of stale) {
+    const role = /** @type {{ id: string, value: string }} */ (byId.get(a.appRoleId));
+    if (!who.canConsent) {
+      left.push(role);
+      continue;
+    }
+    try {
+      await api.graph.revokeAppRole(graphSpId, a.id);
+      done.push(role);
+    } catch (err) {
+      if (!(err instanceof HttpError)) throw err;
+      if (err.status === 404) done.push(role);
+      else left.push(role);
+    }
+  }
+  if (done.length) ui.ok(`Took back admin consent for ${roleNames(done)}, as ${PRODUCT_NAME} no longer uses ${done.length > 1 ? 'them' : 'it'}`);
+  if (left.length) {
+    ui.warn(
+      `${config.app.displayName ?? 'The app'} still has admin consent for ${roleNames(left)}, which ${PRODUCT_NAME} no longer uses. ` +
+        `A Global Administrator or Privileged Role Administrator can revoke ${left.length > 1 ? 'them' : 'it'} on its API permissions page:`,
+    );
+    ui.info(apiPermissionsUrl(/** @type {string} */ (config.app.appId)));
+  }
+}
+
+/**
  * Grants the Graph application permissions, or hands the user a link for an admin.
+ * For an app the installer made, it also takes back the consent for permissions it no longer uses.
  * Returns true when every permission is consented.
  * @param {Ctx} ctx
  * @param {{ canConsent: boolean }} who
@@ -817,14 +891,18 @@ export async function ensureConsent(ctx, who) {
   const spId = /** @type {string} */ (app.servicePrincipalId);
   const appId = /** @type {string} */ (app.appId);
   const { sp: graphSp, roles } = await graphRoles(ctx);
+  const retired = retiredRoles(config, graphSp);
 
+  /** @type {{ id: string, appRoleId: string }[]} */
+  let assigned = [];
   const missing = async () => {
-    const assigned = await api.graph.appRoleAssignments(spId);
-    const have = new Set(assigned.filter((a) => a.resourceId === graphSp.id).map((a) => a.appRoleId));
+    assigned = (await api.graph.appRoleAssignments(spId)).filter((a) => a.resourceId === graphSp.id);
+    const have = new Set(assigned.map((a) => a.appRoleId));
     return roles.filter((r) => !have.has(r.id));
   };
 
   let todo = await missing();
+  await revokeRetiredRoles(ctx, who, graphSp.id, retired, assigned);
   if (!todo.length) {
     ui.ok(`Admin consent is in place (${roles.map((r) => r.value).join(', ')})`);
     return true;
@@ -1015,14 +1093,17 @@ export function reportAppCheck(ctx, check, who = {}) {
  * The steps an admin runs to register the app for someone who can't: an Azure Cloud Shell
  * script and the same steps in the portal. The client secret goes where the install keeps it,
  * so in the vault admin mode it never leaves Azure. The GitHub token isn't in it: its secret
- * name is settled at install time, when the installer hands it over (secretHandoff).
+ * name is settled at install time, when the installer hands it over (secretHandoff). On the PAX
+ * route, `site` is the PowerShell that gives the app the SharePoint folder's site, which needs a
+ * SharePoint or Global Administrator.
  * @param {Ctx} ctx
- * @returns {{ script: string[], checklist: string[] }}
+ * @returns {{ script: string[], checklist: string[], site?: string[] }}
  */
 export function adminPack(ctx) {
   const { config } = ctx;
   const kv = config.keyVault;
-  const perms = permissionsFor(config.dataSources);
+  const perms = requiredPermissions(config);
+  const name = appName(config);
   const mode = secretMode(config);
   const script = perms.length
     ? [
@@ -1034,7 +1115,7 @@ export function adminPack(ctx) {
         '# Application Administrator or Cloud Application Administrator.',
       ];
   script.push(
-    `APP_ID=$(az ad app create --display-name "${APP_NAME}" --sign-in-audience AzureADMyOrg --query appId -o tsv)`,
+    `APP_ID=$(az ad app create --display-name "${name}" --sign-in-audience AzureADMyOrg --query appId -o tsv)`,
     'az ad sp create --id "$APP_ID" -o none',
   );
   if (perms.length) {
@@ -1069,7 +1150,7 @@ export function adminPack(ctx) {
     );
   }
   const checklist = [
-    `Entra admin center > App registrations > New registration. Name it "${APP_NAME}", single tenant, no redirect URI.`,
+    `Entra admin center > App registrations > New registration. Name it "${name}", single tenant, no redirect URI.`,
     'Copy the Application (client) ID from its Overview page.',
     ...(perms.length
       ? [
@@ -1084,7 +1165,19 @@ export function adminPack(ctx) {
       ? 'Send the installer user the client ID. They don\'t need the secret.'
       : 'Send the installer user the client ID and the secret value through a secure channel.',
   ];
-  return { script, checklist };
+  if (!isPax(config) || !config.sharePoint) return { script, checklist };
+  const site = [
+    `# Run in PowerShell 7 as ${SITE_ADMIN.replace(/^A /, 'a ')}. It gives the app write access to`,
+    `# ${config.sharePoint.siteUrl} and to no other site (Sites.Selected).`,
+    "$appId = '<the client ID from above>'",
+    ...siteGrantCommands(config, '$appId'),
+  ];
+  checklist.splice(
+    checklist.length - 1,
+    0,
+    `Give the app write access to ${config.sharePoint.siteUrl}: run the PowerShell below as ${SITE_ADMIN.replace(/^A /, 'a ')}, or with PnP PowerShell: ${pnpGrantCommand(config, '$appId')}`,
+  );
+  return { script, checklist, site };
 }
 
 /**
@@ -1092,9 +1185,9 @@ export function adminPack(ctx) {
  * @param {Ctx} ctx
  */
 export function writeAdminPack(ctx) {
-  const { script, checklist } = adminPack(ctx);
+  const { script, checklist, site } = adminPack(ctx);
   const file = join(ctx.configFile ? dirname(ctx.configFile) : process.cwd(), ADMIN_PACK_FILE);
-  const consent = permissionsFor(ctx.config.dataSources).length > 0;
+  const consent = requiredPermissions(ctx.config).length > 0;
   const body = [
     `# ${PRODUCT_NAME}: register the app`,
     '',
@@ -1107,6 +1200,7 @@ export function writeAdminPack(ctx) {
     ...script,
     '```',
     '',
+    ...(site ? ['## Then the SharePoint site (PowerShell 7)', '', '```powershell', ...site, '```', ''] : []),
     '## Or in the portal',
     '',
     ...checklist.map((s, i) => `${i + 1}. ${s}`),
@@ -1141,7 +1235,7 @@ export async function ensureIdentity(ctx, who) {
   if (appNeeded(config)) {
     await ensureApp(ctx, { secret: appWanted(ds) });
     if (appWanted(ds) && byAdmin && !config.keyVault.secretSetAt) adminAdds.push('the client secret');
-    if (permissionsFor(ds).length && !(await ensureConsent(ctx, who))) waits.push('admin consent is granted');
+    if (requiredPermissions(config).length && !(await ensureConsent(ctx, who))) waits.push('admin consent is granted');
   }
   if (!(await ensureGithubToken(ctx))) {
     if (byAdmin) adminAdds.push('the GitHub token');

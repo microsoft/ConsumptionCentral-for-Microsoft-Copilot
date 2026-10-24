@@ -11,41 +11,84 @@ import { connect, createCtx, preview, runCommand } from './install.js';
 import { adoptUploadedRecord, cloudShellKeepsFiles, cloudShellRecordMessage, commandLine, inCloudShell } from './launch.js';
 import { runWizard } from './server.js';
 import { loadSources } from './sources.js';
-import { PRODUCT_ID, UPLOAD_DIR } from './product.js';
+import { PRODUCT, PRODUCT_ID, UPLOAD_DIR } from './product.js';
 import { recordWorkspaceGone, staleRecordMessage } from './steps/fabric.js';
 import { isResumeLater, MAX_SECRET_DAYS, NOTEBOOK_SECRET_DAYS } from './steps/identity.js';
 import { billingScopeFrom, validateBillingScope, validateEnterprise } from './steps/plan.js';
+import { paxHostProblem, ROUTE_NAMES, settledRoute, TARGETS } from './target.js';
 import { isVivaId } from './transform/dataflow.js';
 import { c, createUi } from './ui.js';
 import { DATA_SOURCE_IDS, parseDataFlags } from './uploads.js';
 
-const COMMANDS = ['install', 'update', 'run', 'rerun-failed', 'load-cowork', 'check', 'refresh', 'status', 'rotate-secret', 'github-token', 'access', 'upload', 'uninstall', 'prereqs', 'preview'];
+/** @typedef {import('./target.js').Target} Target */
+
+const COMMANDS = ['install', 'update', 'run', 'rerun-failed', 'load-cowork', 'check', 'refresh', 'status', 'rotate-secret', 'github-token', 'access', 'upload', 'deploy-app', 'uninstall', 'prereqs', 'preview'];
+
+/** Flags that go with either route: the Fabric route's Dataflow reads the Viva Insights query, and the other route's report does. */
+const BOTH_ROUTES = new Set(['viva-partition', 'viva-query']);
+
+/**
+ * The route the command line settles: --target, else the install record's route, else the route
+ * that the route-specific flags given belong to. Throws when flags from both routes are given, or
+ * flags that don't belong to the route.
+ * @param {{ target?: Target, fabricFlags: string[], paxFlags: string[] }} args
+ * @param {Target | undefined} settled  The install record's route, when it has started on one.
+ * @returns {Target | undefined}
+ */
+export function routeFromFlags(args, settled) {
+  const list = (/** @type {string[]} */ flags) => (flags.length > 1 ? `${flags.slice(0, -1).join(', ')} and ${flags[flags.length - 1]} are` : `${flags[0]} is`);
+  const { fabricFlags, paxFlags } = args;
+  if (fabricFlags.length && paxFlags.length) {
+    throw new Error(`${list(fabricFlags)} for the ${ROUTE_NAMES.fabric} route and ${list(paxFlags)} for the ${ROUTE_NAMES.pax} route, so they can't go together.`);
+  }
+  const route = args.target ?? settled;
+  const why = args.target ? `--target ${args.target}` : 'this install record';
+  const so = (/** @type {string[]} */ flags) => (flags.length > 1 ? "so they don't" : "so it doesn't");
+  if (route === 'pax' && fabricFlags.length) throw new Error(`${list(fabricFlags)} for the ${ROUTE_NAMES.fabric} route, ${so(fabricFlags)} go with ${why}.`);
+  if (route === 'fabric' && paxFlags.length) throw new Error(`${list(paxFlags)} for the ${ROUTE_NAMES.pax} route, ${so(paxFlags)} go with ${why}.`);
+  return route ?? (fabricFlags.length ? 'fabric' : paxFlags.length ? 'pax' : undefined);
+}
 
 /** The `--help` text, naming the command the way it was started. */
-export const help = () => `Sets up Consumption Central in Microsoft Fabric: the data pipeline and the semantic model.
+export const help = () => `Sets up ${PRODUCT.name}: its data, semantic model and report, on one of two routes.
+  ${ROUTE_NAMES.fabric}: notebooks and a pipeline in a Fabric workspace load a Lakehouse each day.
+  ${ROUTE_NAMES.pax}: the report reads Viva Insights and the CSV exports in a
+    SharePoint folder itself, and a daily task on this Windows PC runs PAX to keep the org file
+    there. Viewers open the same files in the app.
+The install record says which route an install is on, so the other commands need no flag.
 
 Usage: ${commandLine('[command] [options]')}
        ${commandLine('--ui [options]')}
 
 Commands:
-  install          Set up Consumption Central, or repair it from the install record (default)
-  update           Push the notebooks, pipeline and semantic model from this checkout to Fabric
-  run              Run the pipeline now, then the data check
-  rerun-failed     Run again only the loads that failed in the latest pipeline run
-  load-cowork      Once the Cowork Dataflow is signed in: refresh it, load the Viva credits
-                   and refresh the semantic model
-  check            Run the data check again, without the pipeline
+  install          Set up ${PRODUCT.name}, or repair it from the install record (default)
+  update           Push this checkout to the install: Fabric's notebooks, pipeline and semantic
+                   model, or PAX's scripts on this PC, the report and the app
+  run              Fabric: run the pipeline now, then the data check. PAX: run the refresh now,
+                   which replaces the org file
+  rerun-failed     Fabric: run again only the loads that failed in the latest pipeline run
+  load-cowork      Fabric: once the Cowork Dataflow is signed in, refresh it, load the Viva
+                   credits and refresh the semantic model
+  check            Fabric: run the data check again, without the pipeline. PAX: check the app
+                   registration can still write to the SharePoint folder
   refresh          Refresh the semantic model now
   status           Show recent runs and refreshes, the last data check and when secrets expire
-  rotate-secret    Create new client secrets for Key Vault and the model's connection
-  github-token     Replace the GitHub token the GitHub billing notebook reads, e.g. when
-                   it expires
+  rotate-secret    Create new client secrets: Fabric's for Key Vault and the model's connection,
+                   or PAX's in Credential Manager on this PC
+  github-token     Fabric: replace the GitHub token the GitHub billing notebook reads, e.g.
+                   when it expires
   access           Who can view: the viewer group, its members and owners, its Build on the
                    model and the report share
-  upload [files]   Upload CSV exports to the drop folder (${UPLOAD_DIR})
-  uninstall        Delete the workspace's managed private endpoints, then the workspace
+  upload [files]   Upload files. Fabric: CSV exports to the drop folder (${UPLOAD_DIR}),
+                   which the next run loads. PAX: files such as CSV exports to the SharePoint
+                   folder, which the report reads each time it refreshes
+  deploy-app       PAX: deploy the app, or deploy it again from this checkout's build
+  uninstall        Fabric: delete the workspace's managed private endpoints, then the workspace.
+                   PAX: remove the task, the app, the report and the site access the installer
+                   gave; SharePoint keeps its files
   prereqs          Check the roles, licences, capacities and Azure access you have and lack.
-                   Read-only; works before anything is installed
+                   Read-only; works before anything is installed. --target pax checks the
+                   ${ROUTE_NAMES.pax} route's
   preview          Write what would be deployed to a folder, without signing in
 
 Options:
@@ -55,12 +98,25 @@ Options:
   --config <file>      Install record (default ./${DEFAULT_CONFIG_FILE})
   --source <dir>       The repo folder to deploy from (default: this checkout)
   --tenant <id>        Tenant ID or domain to sign in to
-  --target <target>    Where Consumption Central runs: fabric (default, and the only target)
+  --target <target>    The route, fabric or pax. install asks when it's left out, and an install
+                       record keeps the route it started on
   --device-code        Sign in with a code on another device instead of a browser. The default
                        in Azure Cloud Shell
   --use-az             Use the account you are signed in to with the Azure CLI. In Azure Cloud
                        Shell, run ${AZ_LOGIN} first
   --out <dir>          With preview: where to write (default ./${PRODUCT_ID}-preview)
+  --viva-partition <id>
+  --viva-query <id>    With install: the Viva Insights partition and query the Cowork credits come
+                       from. On the ${ROUTE_NAMES.fabric} route the Cowork credits Dataflow reads
+                       them (needs coworkCredits=api); on the other, the report does
+  --yes                Take saved answers and defaults without asking. It never lets Fabric clear a
+                       model's data: add --allow-model-reset for that
+  --no-wait            Don't wait for the first load or a refresh to finish
+  --verbose            Print each API call
+  -h, --help           Show this help
+  -v, --version        Show the version
+
+${ROUTE_NAMES.fabric} route options. Without --target or an install record, they choose this route:
   --data <id=mode>     With install: how a source arrives, api, csv or skip. Repeat it or use
                        commas, e.g. --data studioCredits=flow,github=api. flow is the Power
                        Automate flow, the api mode of studioCredits.
@@ -75,16 +131,13 @@ Options:
                        signs in to an HTTP with Microsoft Entra ID connection; no Key Vault.
                        app: the app registration, with its secret from Key Vault. The vault must
                        allow public network access.
-  --viva-partition <id>
-  --viva-query <id>    With install: the Viva Insights partition and query the Cowork credits
-                       Dataflow reads (needs coworkCredits=api)
   --github-enterprise <slug>
                        With install: the enterprise, as in github.com/enterprises/<slug>, whose
                        Copilot billing Ingest_GitHub_API reads (needs github=api)
   --billing-scope <id> With install: the subscription (/subscriptions/<id>), billing account or
                        billing profile Ingest_CommercialTerms reads the credit rate from (needs
                        commercialTerms=api)
-  --run                 With upload: run the pipeline straight after, to load the files now
+  --run                With upload: run the pipeline straight after, to load the files now
   --no-key-vault       With install: no Key Vault, the default for a new Fabric install. The client
                        secret goes in the notebooks, where anyone with a role in the workspace can
                        read it. Same as --secret-in-notebook.
@@ -93,15 +146,19 @@ Options:
   --secret-days <n>    With install or rotate-secret, and no Key Vault: how many days the secret in
                        the notebooks lasts, 1 to ${MAX_SECRET_DAYS} (default ${NOTEBOOK_SECRET_DAYS}). Each install, repair or update
                        replaces it.
-  --yes                Take saved answers and defaults without asking. It never lets Fabric clear a
-                       model's data: add --allow-model-reset for that
   --allow-model-reset  With install, update or access: when Fabric can't update a model and keep its
                        data, clear the data and reload it without asking. Reports on that model show
                        no data until the reload finishes
-  --no-wait            Don't wait for the first load or a refresh to finish
-  --verbose            Print each API call
-  -h, --help           Show this help
-  -v, --version        Show the version
+
+${ROUTE_NAMES.pax} route options. Without --target or an install record, they choose this route:
+  --environment-id <id>
+                       With install or deploy-app: the Power Platform environment for a new app.
+                       Default: your developer environment
+  --folder <path>      With upload: a subfolder of the SharePoint folder to upload to, such as
+                       Exports/2026. Missing folders are created
+  --accept-drop        With run: read the user directory now and publish the org file even when
+                       it has under half the rows of the last one, after a genuine drop such as a
+                       clean-up of old accounts. For this run only: the daily runs check again
 `;
 
 /**
@@ -141,6 +198,9 @@ export function parseCli(argv, env = process.env) {
       'key-vault': { type: 'boolean' },
       'secret-days': { type: 'string' },
       'allow-model-reset': { type: 'boolean' },
+      'environment-id': { type: 'string' },
+      folder: { type: 'string' },
+      'accept-drop': { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
     },
@@ -150,6 +210,7 @@ export function parseCli(argv, env = process.env) {
   if (command !== 'upload' && positionals.length > 1) throw new Error(`Unexpected argument: ${positionals[1]}`);
   if (!COMMANDS.includes(command)) throw new Error(`Unknown command "${command}". Try --help.`);
   if (values.run && command !== 'upload') throw new Error('--run goes with upload.');
+  if (values['accept-drop'] && command !== 'run') throw new Error('--accept-drop goes with run.');
   const noVaultFlag = values['no-key-vault'] ? '--no-key-vault' : values['secret-in-notebook'] ? '--secret-in-notebook' : undefined;
   if (noVaultFlag && command !== 'install') throw new Error(`${noVaultFlag} goes with install.`);
   if (values['key-vault'] && command !== 'install') throw new Error('--key-vault goes with install.');
@@ -193,7 +254,32 @@ export function parseCli(argv, env = process.env) {
   if (values['device-code'] && values['use-az']) throw new Error('Choose one of --device-code and --use-az.');
   const cloudShell = inCloudShell(env);
   if (values.ui && cloudShell) throw new Error('Azure Cloud Shell can\'t open the installer\'s page in your browser. Leave out --ui to answer in the terminal.');
-  if (values.target !== undefined && values.target !== 'fabric') throw new Error('--target must be "fabric".');
+  const target = values.target;
+  if (target !== undefined && !TARGETS.includes(/** @type {Target} */ (target))) throw new Error('--target must be "fabric" or "pax".');
+  if (target === 'pax' && cloudShell) throw new Error(/** @type {string} */ (paxHostProblem({ platform: process.platform, cloudShell })));
+  const environmentId = values['environment-id'];
+  if (environmentId !== undefined) {
+    if (command !== 'install' && command !== 'deploy-app') throw new Error('--environment-id goes with install or deploy-app.');
+    if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/.test(environmentId)) throw new Error('--environment-id should be the environment\'s ID, as the Power Platform admin center shows it, such as Default-<tenant ID>.');
+  }
+  if (values.folder !== undefined && command !== 'upload') throw new Error('--folder goes with upload.');
+  const fabricFlags = [
+    ...(values.data?.length ? ['--data'] : []),
+    ...(values.csv?.length ? ['--csv'] : []),
+    ...installOnly.filter((k) => !BOTH_ROUTES.has(k)).map((k) => `--${k}`),
+    ...(values.run ? ['--run'] : []),
+    ...(noVaultFlag ? [noVaultFlag] : []),
+    ...(values['key-vault'] ? ['--key-vault'] : []),
+    ...(values['secret-days'] !== undefined ? ['--secret-days'] : []),
+    ...(values['allow-model-reset'] ? ['--allow-model-reset'] : []),
+  ];
+  const paxFlags = [
+    ...(environmentId !== undefined ? ['--environment-id'] : []),
+    ...(values.folder !== undefined ? ['--folder'] : []),
+    ...(values['accept-drop'] ? ['--accept-drop'] : []),
+  ];
+  routeFromFlags({ target: /** @type {Target | undefined} */ (target), fabricFlags, paxFlags }, undefined);
+  if (values.ui && (target !== undefined || paxFlags.length)) throw new Error('With --ui, choose where it runs on the page.');
   if (values.ui && (positionals.length || values['dry-run'])) throw new Error('--ui opens a home page where you choose what to do. Leave out the command.');
   if (values.ui && values.yes) throw new Error('Choose one of --ui and --yes.');
   if (values.ui && (values.data?.length || values.csv?.length || installOnly.length)) throw new Error('With --ui, choose data sources and exports on the Data sources page.');
@@ -204,7 +290,11 @@ export function parseCli(argv, env = process.env) {
     configFile: resolve(values.config ?? DEFAULT_CONFIG_FILE),
     sourceDir: values.source,
     tenantId: values.tenant,
-    target: /** @type {'fabric' | undefined} */ (values.target),
+    target: /** @type {Target | undefined} */ (target),
+    environmentId,
+    folder: values.folder,
+    fabricFlags,
+    paxFlags,
     // Cloud Shell has no browser to sign in with.
     method: /** @type {'browser' | 'device-code' | 'azure-cli'} */ (values['use-az'] ? 'azure-cli' : values['device-code'] || cloudShell ? 'device-code' : 'browser'),
     cloudShell,
@@ -225,6 +315,7 @@ export function parseCli(argv, env = process.env) {
     billingScope,
     files,
     run: values.run,
+    acceptDrop: !!values['accept-drop'],
     secretInNotebook: !!noVaultFlag,
     useKeyVault: !!values['key-vault'],
     secretDays,
@@ -321,7 +412,8 @@ export async function main(argv) {
     const loaded = loadConfig(args.configFile);
     let config = loaded.config;
     const existed = loaded.existed;
-    if (args.target) config.target = args.target;
+    let target = routeFromFlags(args, settledRoute(config));
+    if (target) config.target = target;
     const sources = loadSources(args.sourceDir);
     applyDataFlags(config, args);
 
@@ -347,17 +439,21 @@ export async function main(argv) {
     });
     if (existed && args.command !== 'prereqs' && (await startFresh({ ui, config, file: args.configFile, fabric: api.fabric, tenantId: user.tenantId, command: args.command }))) {
       config = loadConfig(args.configFile).config;
-      if (args.target) config.target = args.target;
+      // The old record's route went with it.
+      target = routeFromFlags(args, undefined);
+      if (target) config.target = target;
       applyDataFlags(config, args);
     }
     const ctx = createCtx({ ui, config, file: args.configFile, api, user, sources, getToken });
+    ctx.targetChosen = !!target;
+    if (args.environmentId) ctx.environmentId = args.environmentId;
     ctx.csvFiles = args.csvFiles;
     if (args.secretInNotebook) ctx.secretInNotebook = true;
     if (args.useKeyVault) ctx.useKeyVault = true;
     if (args.allowModelReset) ctx.allowModelReset = true;
     if (args.secretDays) config.app.secretDays = args.secretDays;
     try {
-      const ok = await runCommand(ctx, args.command, { wait: args.wait, files: args.files, run: args.run });
+      const ok = await runCommand(ctx, args.command, { wait: args.wait, files: args.files, run: args.run, folder: args.folder, acceptDrop: args.acceptDrop });
       return ok ? 0 : 1;
     } finally {
       // Also after a failure part way: the record is what lets the next run carry on.
