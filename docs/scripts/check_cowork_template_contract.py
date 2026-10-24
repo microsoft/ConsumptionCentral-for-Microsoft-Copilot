@@ -33,6 +33,13 @@ def check(path):
                 errors.append(f"Staged query must contain individual source lines: {name}")
         if "CC_OFFLINE_EXPORT_ONLY" in json.dumps((document, queries)):
             errors.append("Offline export sources must be restored before shipping.")
+        failed = sorted({name for name, query in queries.items() if query.get("resultType") == "Exception"}
+                        | {name for name, expression in expressions.items()
+                           for annotation in expression.get("annotations", [])
+                           if annotation["name"] == "PBI_ResultType" and annotation["value"] == "Exception"})
+        if failed:
+            errors.append("Preview types stored as Exception must be restored before shipping "
+                          f"(fix_pbit_defaults.py --reference): {', '.join(failed)}")
         for name, connector in (("FabricSource", "Sql.Database("), ("DataverseSource", "Sql.Database("),
                                 ("VivaConnectorSource", "VivaInsights.Data("), ("VivaOrgSource", "VivaInsights.Data(")):
             if name not in expressions:

@@ -24,7 +24,8 @@ import prepare_validation
 import prepare_offline_export
 import report
 import sync_notebook
-from fix_pbit_defaults import layout_for, reference_schema, reference_defaults, patch_bodies, patch_query_bodies
+from fix_pbit_defaults import (layout_for, reference_schema, reference_defaults, patch_bodies, patch_query_bodies,
+                               patch_result_types)
 from pbit_to_pbip import Failure as ConversionFailure
 
 SPEC = importlib.util.spec_from_file_location("pbit_to_pbip", ROOT / "docs" / "scripts" / "pbit_to_pbip.py")
@@ -211,6 +212,25 @@ class ModelContractTests(unittest.TestCase):
                 self.assertEqual(lines, body.split("\n"))
                 self.assertEqual("\n".join(lines), body)
                 self.assertEqual(patch_query_bodies(queries, reference), [])
+
+    def test_failed_preview_types_are_restored_from_the_reference(self):
+        # Offline, Viva Direct's SourceFiles cannot list DataFolder, so Desktop stores its preview as Exception.
+        source = documents(ROOT / "3. Viva Direct" / "Consumption Central - Viva Direct.pbit")
+        exported = copy.deepcopy(source)
+        expressions = {e["name"]: e for e in exported[0]["model"]["expressions"]}
+        queries = {q["name"]: q for q in exported[1]["queries"]}
+        annotation = next(a for a in expressions["SourceFiles"]["annotations"] if a["name"] == "PBI_ResultType")
+        annotation["value"] = "Exception"
+        queries["SourceFiles"]["resultType"] = "Exception"
+        queries["CoworkTaskInput"]["resultType"] = "Table"
+        exported[1]["queries"].append({"name": "Synthetic", "text": ["error 1"], "resultType": "Exception"})
+        for value, reference in zip(exported, source):
+            self.assertEqual(patch_result_types(value, reference), ["SourceFiles"])
+            self.assertEqual(patch_result_types(value, reference), [])
+        self.assertEqual(exported[0], source[0])
+        self.assertEqual(queries["SourceFiles"]["resultType"], "Table")
+        self.assertEqual(queries["CoworkTaskInput"]["resultType"], "Table")
+        self.assertEqual(exported[1]["queries"][-1]["resultType"], "Exception")
 
     def test_offline_sources_are_restored_in_both_model_parts(self):
         for profile, directory, name in (("csv", "1. Local CSV", "Local CSV"),

@@ -312,6 +312,24 @@ The Cowork KPI card and Period slicer fixes (`fix_cowork_kpi_cards.py`) were che
 
 Fabric, Viva Direct and Dataverse were not refreshed against live endpoints.
 
+### Cowork Tasks page rebuild verification record
+
+The Desktop rebuild that ships the restyled Cowork Tasks page from `report.py`, with Viva Direct's
+narrower Group By list and the limit and Foundry token measures (`fix_limit_and_token_measures.py`),
+was checked on 24 October 2026.
+
+| Check | Observed result |
+|---|---|
+| Native template construction | Local CSV, Fabric and Viva Direct were each prepared as a dedicated offline PBIP project, applied and exported in its own Desktop instance, then repaired from its own reference with `fix_pbit_defaults.py`. `archive/` was not rebuilt |
+| Package diff against the previous templates | Report: 13 Cowork Tasks parts and 2 "How to read — Cowork & Work IQ" parts, as `report.py` produces them. Model: the eight Cowork Task table descriptions from `model.py`; `UnappliedChanges` unchanged. SecurityBindings re-signed in all three; no offline markers |
+| Exported page against `report.py` | All 18 Cowork Tasks parts present; 9 differ only by Desktop's `$schema` 2.14.0 and `active` projection flag |
+| Preview types | Offline, Desktop stored Viva Direct's `SourceFiles` preview type as `Exception`. `fix_pbit_defaults.py` restored the reference's type in both model parts; the Cowork task contract now rejects any that remain |
+| Shipped spec replay | Every idempotent repair, including the Viva Direct sources, refresh-time cuts, Cowork KPI cards, Org query and limit and token measures, reports nothing outstanding. Every `checks.yml` step passes |
+| Fresh Local CSV template | Opened in a new Desktop instance with the neutral parameter defaults, then refreshed against `1. Local CSV/sample-data`. Azure: Spend & Consumption and Cowork / WorkIQ: Tasks rendered; Tasks showed 10 tasks, 38 credits, 3.80 credits per task, 3.9 expert-equivalent hours and 70.0% valuation coverage |
+
+Only those two Local CSV pages were viewed. Fabric and Viva Direct were not refreshed against live
+endpoints.
+
 ## Things we know we cannot test here
 
 | | Why |

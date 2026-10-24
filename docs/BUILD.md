@@ -182,7 +182,11 @@ It also does not replace the synthetic filesystem and model regression project. 
 four variants, create a matching neutral reference, apply/export that variant natively, and restore
 its source expressions from its own reference. Never ship an offline copy or reuse another
 variant's reference. The Local CSV preview metadata must remain `Number` for `BillingPeriodWeeks`
-and `Table` for staged `DataFiles`; the Cowork contract checks both.
+and `Table` for staged `DataFiles`; the Cowork contract checks both. No template may ship a preview
+type stored as `Exception`. Offline, Viva Direct's `SourceFiles` still lists `DataFolder`, so where
+the shipping placeholder folder doesn't exist Desktop stores its preview type as `Exception`.
+`fix_pbit_defaults.py --reference` restores the reference's type in both model parts, and the
+Cowork contract rejects any that remain.
 
 `sync_notebook.py` copies the actual shared Fabric task helpers into the Viva notebook. Its output
 must remain synchronized. `prepare_validation.py` adds synthetic-only Power Query assertions to
@@ -214,7 +218,8 @@ To change anything in the report, round-trip through PBIP so Desktop re-signs on
 Exporting from a project with no data cache writes every parameter as `null` — issue
 [#6](https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/issues/6) all over again.
 Desktop also drops the comment blocks stored as a query `description` and trims trailing blank lines
-from M, and an offline export can drop table descriptions. `fix_pbit_defaults.py` repairs all of it,
+from M. An offline export can drop table descriptions, and stores the preview type of a query whose
+source it can't reach as `Exception`. `fix_pbit_defaults.py` repairs all of it,
 taking the values from the committed template, and refuses to overwrite any parameter that is not null:
 
 ```
