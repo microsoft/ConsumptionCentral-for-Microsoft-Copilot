@@ -407,15 +407,15 @@ function Get-PaxReleaseScript {
   }
 }
 
-# PAX's own -Dashboard values for the rollup, newest first. Never shown to anyone.
-$script:PaxDashboardValues = @('ValueLens', 'AIBV')
-
 function Get-PaxDashboardValue {
   # Reads -Dashboard from the PAX script's param block without running it. PAX
-  # purview-v1.11.15 renamed the rollup's value (the first of $script:PaxDashboardValues)
-  # and rejects the old one; v1.11.5 to v1.11.14 accept only the old one. Both build the
+  # purview-v1.11.15 renamed the rollup's value (the first of $dashboardValues) and
+  # rejects the old one; v1.11.5 to v1.11.14 accept only the old one. Both build the
   # same rollup.
   param([Parameter(Mandatory = $true)] [string]$ScriptPath)
+
+  # PAX's own -Dashboard values for the rollup, newest first. Never shown to anyone.
+  $dashboardValues = @('ValueLens', 'AIBV')
 
   $parseErrors = $null
   $ast = [System.Management.Automation.Language.Parser]::ParseFile($ScriptPath, [ref]$null, [ref]$parseErrors)
@@ -440,12 +440,12 @@ function Get-PaxDashboardValue {
     } |
     Select-Object -First 1
   # Newer prereleases check the value in code instead of a ValidateSet, and take the new name.
-  if (-not $validateSet) { return $script:PaxDashboardValues[0] }
+  if (-not $validateSet) { return $dashboardValues[0] }
 
   $accepted = @($validateSet.PositionalArguments |
     Where-Object { $_ -is [System.Management.Automation.Language.StringConstantExpressionAst] } |
     ForEach-Object { $_.Value })
-  foreach ($candidate in $script:PaxDashboardValues) {
+  foreach ($candidate in $dashboardValues) {
     $match = $accepted | Where-Object { $_ -eq $candidate } | Select-Object -First 1
     if ($match) { return $match }
   }
