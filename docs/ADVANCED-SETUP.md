@@ -198,7 +198,8 @@ package is required.
 - For spend, tokens and pay-as-you-go, all reads and validation finish before writes begin. Each
   table is written as a delete of its window and then an append: two commits per table, and **not a
   cross-table transaction**. If an append fails, that table's window stays empty until the next
-  successful run, but its older rows are safe; a later write failing can leave a mixed snapshot. If
+  successful run, but its older rows are safe. Rerun promptly: a later run restores only the days
+  still inside its own window. A write failing after others succeeded can leave a mixed snapshot. If
   a column's type in the Lakehouse no longer matches, that write fails before anything is deleted;
   drop the table to start over. Retry the whole notebook and gate report refresh on whole-run
   success. ARM throttling and transient 502/503/504 responses retry up to five attempts, honouring
@@ -208,7 +209,9 @@ package is required.
 - `azure_deployment_health`, `azure_solution_spend` and `azure_billing_reconciliation` are written
   afterwards, **best effort**. A failed account, deployment or metric call is logged as a `WARNING`
   and skipped, and a table whose source fails entirely is left as it was, so a successful run can
-  leave one of them stale: check the run output for `WARNING` lines. Reconciliation prices usage at
+  leave one of them stale: check the run output for `WARNING` lines. Their writes work like the ones
+  above: if an append fails after the delete, the run says so, and that table's window stays empty
+  until the next successful run. Reconciliation prices usage at
   public list prices, which exclude negotiated discounts, credits and reservations, so some variance
   against actual cost is expected.
 

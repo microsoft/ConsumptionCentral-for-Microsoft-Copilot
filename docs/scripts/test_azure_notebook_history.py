@@ -32,11 +32,11 @@ TYPES = {"date": date, "string": str, "double": float}
 
 
 def top_level(names):
-    """The top-level function or assignment defining each name, which must be defined once."""
+    """The top-level definition or assignment of each name, which must be defined once."""
     found = {}
     for tree in TREES:
         for node in tree.body:
-            if isinstance(node, ast.FunctionDef):
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
                 defined = {node.name}
             elif isinstance(node, ast.Assign):
                 defined = {target.id for target in node.targets if isinstance(target, ast.Name)}
@@ -51,11 +51,11 @@ def top_level(names):
 
 
 DEFINED = top_level({
-    "month_end", "history_months", "keep_partial_month", "write_window", "month_cutoff",
-    "as_number", "as_day", "is_provisioned", "health_rows", "recon_rows", "HEALTH_HEADERS",
-    "RECON_HEADERS", "PAYG_POOL", "PROVISIONED_POOL", "RECON_TOLERANCES", "RETAIL_BATCH",
-    "SPEND_SCHEMA", "TOKENS_SCHEMA", "PAYG_SCHEMA", "HEALTH_SCHEMA", "SOLUTION_SCHEMA",
-    "RECON_SCHEMA", *WRITE_ORDER})
+    "month_end", "history_months", "keep_partial_month", "WindowEmptied", "write_window",
+    "month_cutoff", "as_number", "as_day", "is_provisioned", "health_rows", "recon_rows",
+    "HEALTH_HEADERS", "RECON_HEADERS", "PAYG_POOL", "PROVISIONED_POOL", "RECON_TOLERANCES",
+    "RETAIL_BATCH", "SPEND_SCHEMA", "TOKENS_SCHEMA", "PAYG_SCHEMA", "HEALTH_SCHEMA",
+    "SOLUTION_SCHEMA", "RECON_SCHEMA", *WRITE_ORDER})
 # Top-level statements that a simulated run executes as written in the notebook.
 STEPS = top_level({"start", "spend_frame", "tokens_frame", "payg_frame", "health"})
 TABLE = {name: ast.literal_eval(DEFINED[name].value) for name in WRITE_ORDER}
@@ -501,6 +501,7 @@ class WriteWindow(unittest.TestCase):
         self.spark.log.clear()
         with self.assertRaises(RuntimeError) as raised:
             self.write(self.frame([0]))
+        self.assertNotIsInstance(raised.exception, self.ns["WindowEmptied"])
         for text in (f"{SPEND}.Cost is string in the Lakehouse but double here",
                      "nothing was deleted", f"drop {SPEND}"):
             self.assertIn(text, str(raised.exception))
@@ -521,11 +522,12 @@ class WriteWindow(unittest.TestCase):
     def test_failed_append_leaves_the_window_empty_and_older_rows_untouched(self):
         self.write(self.frame([-1, 0, 1]))
         self.spark.fail_append.add(SPEND)
-        with self.assertRaises(RuntimeError) as raised:
+        with self.assertRaises(self.ns["WindowEmptied"]) as raised:
             self.write(self.frame([0, 1, 2], cost=2.0))
         message = str(raised.exception)
-        self.assertIn("rows from 2026-02-09 on were deleted but the append failed", message)
-        self.assertIn("older rows are untouched", message)
+        for text in ("rows from 2026-02-09 on were deleted but the append failed",
+                     "stay empty until the next successful run", "Older rows are untouched"):
+            self.assertIn(text, message)
         self.assertIsInstance(raised.exception.__cause__, OSError)
         self.assertEqual(self.stored(), [(self.day(-1), 1.0)])
 
@@ -670,15 +672,56 @@ class Reloads(unittest.TestCase):
         for note in self.notes:
             self.assertIn("left unchanged", note)
 
-    def test_failed_append_empties_only_the_window_until_the_next_run(self):
-        self.run_on(date(2026, 6, 30), 90)  # Reads all of April.
-        self.spark.fail_append.add(RECON)
-        self.run_on(date(2026, 7, 1), 90)  # April stays; May on is deleted, then the append fails.
-        self.assertEqual(sorted(self.recon()), ["2026-04"])
-        self.assertEqual(len(self.notes), 1)
-        self.assertIn("deleted but the append failed", self.notes[0])
-        self.spark.fail_append.clear()
+    def test_type_mismatch_leaves_a_best_effort_table_unchanged(self):
+        self.run_on(date(2026, 7, 1), 90)
+        stored = self.spark.tables[RECON]
+        stored.dtypes = [(name, "string" if name == "Amount" else kind)
+                         for name, kind in stored.dtypes]
+        before = self.rows(RECON)
+        self.spark.log.clear()
         self.run_on(date(2026, 7, 2), 90)
+        self.assertEqual(self.rows(RECON), before)
+        self.assertNotIn(RECON, [entry[1] for entry in self.spark.log])
+        self.assertEqual(len(self.notes), 1)
+        for text in (f"billing reconciliation failed; {RECON} left unchanged (RuntimeError: ",
+                     f"{RECON}.Amount is string in the Lakehouse but double here",
+                     "nothing was deleted"):
+            self.assertIn(text, self.notes[0])
+
+    def fail_appends_on_1_july(self):
+        """Reads all of April on 30 June, then fails solution spend's and reconciliation's appends
+        on 1 July, after deleting their rows from 2 April and from May on."""
+        self.run_on(date(2026, 6, 30), 90)
+        self.spark.fail_append.update({SOLUTION, RECON})
+        self.run_on(date(2026, 7, 1), 90)
+        self.assertEqual(self.days(SOLUTION, "UsageDate"), [date(2026, 4, 1)])
+        self.assertEqual(sorted(self.recon()), ["2026-04"])
+        self.assertEqual(len(self.notes), 2)
+        for note, prefix in zip(self.notes, (
+                f"solution spend failed; {SOLUTION}: rows from 2026-04-02 on",
+                f"billing reconciliation failed; {RECON}: rows from 2026-05 on")):
+            self.assertTrue(note.startswith(f"{prefix} were deleted but the append failed."), note)
+            self.assertIn("stay empty until the next successful run", note)
+            self.assertNotIn("left unchanged", note)
+        self.spark.fail_append.clear()
+        self.notes.clear()
+
+    def test_rerun_on_the_same_day_restores_the_whole_window(self):
+        self.fail_appends_on_1_july()
+        self.run_on(date(2026, 7, 1), 90)
+        self.assertEqual(self.notes, [])
+        self.assertEqual(self.days(SOLUTION, "UsageDate"),
+                         [date(2026, 4, 1) + timedelta(days=offset) for offset in range(91)])
+        self.assertEqual(sorted(self.recon()), ["2026-04", "2026-05", "2026-06"])
+
+    def test_failed_append_empties_only_the_window_until_the_next_run(self):
+        self.fail_appends_on_1_july()
+        self.run_on(date(2026, 7, 2), 90)  # Reads from 3 April.
+        self.assertEqual(self.notes, [])
+        # 2 April was deleted and is no longer in the window, so only a same-day rerun restored it.
+        self.assertEqual(self.days(SOLUTION, "UsageDate"),
+                         [date(2026, 4, 1)] + [date(2026, 4, 3) + timedelta(days=offset)
+                                               for offset in range(90)])
         self.assertEqual(self.recon(), {
             "2026-04": (date(2026, 4, 1), date(2026, 4, 30), 30.0),
             "2026-05": (date(2026, 5, 1), date(2026, 5, 31), 31.0),
