@@ -111,9 +111,16 @@ success dependency.
 
 `Ingest_Azure_AI.ipynb` writes six tables without manual exports: Foundry spend and tokens, Copilot
 pay-as-you-go, and the three tables behind the Azure pages. It reads one subscription (plus any
-pay-as-you-go subscriptions you list) and overwrites a rolling window of **1–90 complete UTC days**
-(`DAYS = 90` by default) rather than accumulating an archive. Keep these tables dedicated to that
-subscription — independent runs for different subscriptions would replace each other's data.
+pay-as-you-go subscriptions you list). Each run reads the last **1–90 complete UTC days** again
+(`DAYS = 90` by default) and replaces only those rows; older rows stay, so history builds up from
+run to run. The two monthly tables replace whole months; the
+[data dictionary](../2.%20Fabric/docs/DATA-DICTIONARY.md#azure-tables) explains how. Two pages
+total every row kept unless filtered, so their figures grow past 90 days as history builds up:
+**9. Azure: Spend & Consumption**, which has no date filter, and **10.1. Billing: Reconciliation**
+until you pick a period. Keep these tables dedicated to that subscription — independent runs for
+different subscriptions would replace each other's recent rows and mix their history. To start
+over, for example after pointing the notebook at another subscription, drop the six tables before
+the next run; otherwise the old subscription's older rows stay.
 
 | Table | From | Columns |
 |---|---|---|
@@ -186,15 +193,18 @@ package is required.
   is requested; otherwise `Deployment` stays blank for resource-level data. Unexpected dimension
   splits, changed time grains, duplicate points or reaching the series limit fail visibly.
 - Numeric zero points are retained. Null or missing telemetry is omitted, not converted to zero.
-  HTTP, authentication and per-metric errors propagate. A successful empty collection replaces old
-  rows with empty, explicitly typed tables.
-- For spend, tokens and pay-as-you-go, all reads and validation finish before writes begin. Those
-  three Delta overwrites are individually atomic, **not a cross-table transaction** — a later write
-  failing can leave a mixed snapshot. Retry the whole notebook and gate report refresh on
-  whole-run success. ARM throttling and transient 502/503/504 responses retry up to five attempts,
-  honouring `Retry-After`. Delays over 300 seconds defer the job with an error. Configure bounded
-  pipeline retries and avoid overlapping runs. Costs can arrive late or be revised; later
-  rolling-window runs pick up those changes.
+  HTTP, authentication and per-metric errors propagate. A successful empty collection empties the
+  window and keeps the older rows; on the first run it creates empty, explicitly typed tables.
+- For spend, tokens and pay-as-you-go, all reads and validation finish before writes begin. Each
+  table is written as a delete of its window and then an append: two commits per table, and **not a
+  cross-table transaction**. If an append fails, that table's window stays empty until the next
+  successful run, but its older rows are safe; a later write failing can leave a mixed snapshot. If
+  a column's type in the Lakehouse no longer matches, that write fails before anything is deleted;
+  drop the table to start over. Retry the whole notebook and gate report refresh on whole-run
+  success. ARM throttling and transient 502/503/504 responses retry up to five attempts, honouring
+  `Retry-After`. Delays over 300 seconds defer the job with an error. Configure bounded pipeline
+  retries and avoid overlapping runs. Costs can arrive late or be revised; later runs pick up those
+  changes while the days are still within the window.
 - `azure_deployment_health`, `azure_solution_spend` and `azure_billing_reconciliation` are written
   afterwards, **best effort**. A failed account, deployment or metric call is logged as a `WARNING`
   and skipped, and a table whose source fails entirely is left as it was, so a successful run can

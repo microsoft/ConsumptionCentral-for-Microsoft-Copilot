@@ -13,8 +13,8 @@ loads the same template and simply sees no Studio pages populated. Nothing needs
 
 Every table also carries **`_loaded_at`** (timestamp), written by the ingester. Not used by the
 report; useful when a number looks wrong and you need to know when it arrived. The exceptions are
-[`copilot_org_data`](#copilot_org_data) and the [Azure tables](#azure-tables), which are replaced
-whole on every run.
+[`copilot_org_data`](#copilot_org_data), which is replaced whole on every run, and the
+[Azure tables](#azure-tables).
 
 ---
 
@@ -351,11 +351,19 @@ a perfectly good use of this.
 ## Azure tables
 
 [`Ingest_Azure_AI`](../notebooks/Ingest_Azure_AI.ipynb) writes these for one subscription. Each run
-replaces each table whole with the last `DAYS` complete UTC days (90 by default). `azure_ai_spend`
+reads the last `DAYS` complete UTC days again (90 by default) and replaces only the rows from that
+window's first day on. Older rows stay, so history builds up from run to run. `azure_ai_spend`
 and `azure_ai_tokens` feed the Foundry figures; their columns are listed in
 [Azure ingestion in Fabric](../../docs/ADVANCED-SETUP.md#azure-ingestion-in-fabric). The last three
 below are best effort: if a run cannot read their source, it logs a warning and leaves the table as
 it was.
+
+The two monthly tables, `azure_deployment_health` and `azure_billing_reconciliation`, replace whole
+months from the first month the window covers in full. When the window starts part-way through a
+month, that month's stored rows stay if they were written after it ended; otherwise the run's rows
+replace them. A monthly row is complete only for a month that one run reads in full, so keep `DAYS`
+at least 30 plus the days between runs (31 for a daily schedule); the default 90 does that with room
+to spare.
 
 ### `copilot_payg_spend`
 
