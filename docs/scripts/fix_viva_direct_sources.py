@@ -19,8 +19,8 @@ folder instead of a local one means replacing that one query:
   (cowork_tasks/SourceFileInput.m) read SourceFiles.
 * OrgNormalised (viva_query_org/OrgNormalised.m) reads PAX's Entra export:
   its spellings of cost center, division and manager, the five columns it
-  repeats under AI-in-One's names, and the per-person columns that would
-  otherwise each become a Group By attribute.
+  repeats under AI-in-One's names, and the per-person columns, postal code
+  and account flags that would otherwise each become a Group By attribute.
 
 Each change lands in DataModelSchema and in the UnappliedChanges copy of the
 query, with Desktop's last-loaded copies kept in step so the template opens
@@ -179,6 +179,14 @@ ORG_EDITS = (
         '                    not List.Contains(NotOrg, Key(_)) and not List.Contains(Known, Key(_))',
         '                    and not List.Contains(Surplus, Key(_)))),',
     ))),
+    # Added after the edits above shipped, so it also upgrades that text.
+    ('        "proxyaddressesprimary", "proxyaddressesall", "proxyaddressescount"',
+     "\n".join((
+         '        "proxyaddressesprimary", "proxyaddressesall", "proxyaddressescount",',
+         "        // Nor are its postal code and account flags: they describe the directory",
+         "        // entry, not where someone sits in the organisation.",
+         '        "postalcode", "accountenabled", "onpremisessyncenabled", "externaluserstate"',
+     ))),
 )
 ORG_NORMALISED = "OrgNormalised"
 REWRITTEN = (*REWRITES, ORG_NORMALISED)

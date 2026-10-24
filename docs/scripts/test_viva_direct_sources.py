@@ -116,13 +116,23 @@ def set_text(model, pending, name, text, where=("model", "pending")):
         named(pending["queries"], name)["text"] = text.split("\n")
 
 
-def pre_pax(text):
-    """OrgNormalised as it was before PAX's aliases."""
-    for old, new in reversed(F.ORG_EDITS):
+def undo(text, edits):
+    """text with edits taken off, newest first."""
+    for old, new in reversed(edits):
         if text.count(new) != 1:
             raise AssertionError(f"cannot undo {new[:60]!r}")
         text = text.replace(new, old)
     return text
+
+
+def pre_pax(text):
+    """OrgNormalised as it was before PAX's aliases."""
+    return undo(text, F.ORG_EDITS)
+
+
+def pax_first_shipped(text):
+    """OrgNormalised as PAX's aliases first shipped, when its postal code and account flags were Group Bys."""
+    return undo(text, F.ORG_EDITS[-1:])
 
 
 def text_before(name):
@@ -300,19 +310,37 @@ class RevertAndRerun(unittest.TestCase):
         cache = json.loads(named(pending["queries"], other)["lastLoadedAsTableFormulaText"])
         self.assertEqual(cache["ReferencedQueriesFormulaText"], {"DataFiles": F.DATA_FILES_M, "Elsewhere": old})
 
-    def test_fix_viva_query_org_still_accepts_orgnormalised_before_pax(self):
-        old = text_before(F.ORG_NORMALISED)
-        digest = hashlib.sha256(old.encode("utf-8")).hexdigest()
-        self.assertEqual(digest, "04e88e974a8778603ac3c93944e2cf4847c1b6b48cd668ca0c5c3421ed516214")
+    def test_fix_viva_query_org_still_accepts_each_earlier_orgnormalised(self):
         profile = org_fix.PROFILES["direct"]
-        self.assertIn(digest, profile["previous_sha256"][F.ORG_NORMALISED])
         replacements = {F.ORG_NORMALISED: F.ORG_NORMALISED_M}
-        with mock.patch.object(org_fix, "ACTIVE_PROFILE", "direct"), \
-                mock.patch.object(org_fix, "ORIGINAL_SHA256", dict(profile["original_sha256"])):
-            for text in (old, F.ORG_NORMALISED_M):
-                org_fix.check_anchor(F.ORG_NORMALISED, text, replacements, "test")
-            with self.assertRaisesRegex(F.PatchError, "unsupported source"):
-                org_fix.check_anchor(F.ORG_NORMALISED, old + "\n", replacements, "test")
+        for old, digest in (
+                (text_before(F.ORG_NORMALISED), "04e88e974a8778603ac3c93944e2cf4847c1b6b48cd668ca0c5c3421ed516214"),
+                (pax_first_shipped(F.ORG_NORMALISED_M),
+                 "300423f0a26c26a5a299c3887d21c2145103c4d60d05205aeb647e79c0c9de8d")):
+            with self.subTest(digest=digest):
+                self.assertEqual(hashlib.sha256(old.encode("utf-8")).hexdigest(), digest)
+                self.assertIn(digest, profile["previous_sha256"][F.ORG_NORMALISED])
+                with mock.patch.object(org_fix, "ACTIVE_PROFILE", "direct"), \
+                        mock.patch.object(org_fix, "ORIGINAL_SHA256", dict(profile["original_sha256"])):
+                    for text in (old, F.ORG_NORMALISED_M):
+                        org_fix.check_anchor(F.ORG_NORMALISED, text, replacements, "test")
+                    with self.assertRaisesRegex(F.PatchError, "unsupported source"):
+                        org_fix.check_anchor(F.ORG_NORMALISED, old + "\n", replacements, "test")
+
+    def test_orgnormalised_as_pax_first_shipped_is_upgraded(self):
+        old = pax_first_shipped(F.ORG_NORMALISED_M)
+
+        def change(model, pending):
+            set_text(model, pending, F.ORG_NORMALISED, old)
+            for query in pending["queries"]:
+                F.sync_last_loaded(query, {F.ORG_NORMALISED: (F.ORG_NORMALISED_M, old)})
+
+        rebuilt, changes = F.build(edited(RAW, change))
+        self.assertEqual(changes, ["DataModelSchema OrgNormalised", "UnappliedChanges OrgNormalised"])
+        self.assertShipped(rebuilt)
+        again, changes = F.build(rebuilt)
+        self.assertEqual(changes, [])
+        self.assertIs(again, rebuilt)
 
 
 class Refusals(unittest.TestCase):
@@ -1022,9 +1050,10 @@ PAX_COPIES = {
 PAX_ALWAYS_EMPTY = ("EffectiveDate", "FunctionType", "BusinessAreaCode", "OrgLevel_3Label")
 CANONICAL = ["DisplayName", "Department", "Organisation", "JobTitle", "JobFamily",
              "City", "Country", "CostCenter", "Manager", "BusinessUnit"]
-PAX_EXTRAS = ["employeeType", "state", "postalCode", "accountEnabled", "userType", "usageLocation",
-              "preferredLanguage", "onPremisesSyncEnabled", "externalUserState", "manager_jobTitle",
+PAX_EXTRAS = ["employeeType", "state", "userType", "usageLocation", "preferredLanguage", "manager_jobTitle",
               "EffectiveDate", "BusinessAreaCode", "OrgLevel_3Label", "hasLicense"]
+# Group Bys when PAX's aliases first shipped; they describe the directory entry, not the organisation.
+PAX_DROPPED = ["postalCode", "accountEnabled", "onPremisesSyncEnabled", "externalUserState"]
 
 
 def read_fixture():
@@ -1127,7 +1156,8 @@ class PaxReplay(unittest.TestCase):
 
     def test_the_rules_paxs_columns_meet(self):
         new, old = self.new, self.old
-        self.assertEqual((len(new["ids"]), len(new["not_org"]), len(new["copies"])), (17, 50, 5))
+        self.assertEqual((len(new["ids"]), len(new["not_org"]), len(new["copies"])), (17, 54, 5))
+        self.assertEqual(new["not_org"][-4:], [match_key(column) for column in PAX_DROPPED])
         self.assertEqual((len(old["ids"]), len(old["not_org"]), len(old["copies"])), (17, 38, 0))
         self.assertEqual([name for name, _ in new["aliases"]], CANONICAL)
         self.assertEqual({name: len(aliases) for name, aliases in new["aliases"]}, {
@@ -1148,7 +1178,7 @@ class PaxReplay(unittest.TestCase):
         self.assertEqual(normalised["identity"], ["userPrincipalName", "mail"])
         self.assertEqual(normalised["extras"], PAX_EXTRAS)
         self.assertEqual(normalised["keep"], ["UserPrincipalName"] + CANONICAL + PAX_EXTRAS)
-        self.assertEqual(len(normalised["keep"]), 25)
+        self.assertEqual(len(normalised["keep"]), 21)
         self.assertEqual(normalised["bindings"], {
             "DisplayName": ["displayName"], "Department": ["department"], "Organisation": [],
             "JobTitle": ["jobTitle"], "JobFamily": ["FunctionType"], "City": ["city", "officeLocation"],
@@ -1159,8 +1189,8 @@ class PaxReplay(unittest.TestCase):
     def test_ids_per_person_values_and_copies_stay_out_of_group_by(self):
         self.assertEqual(group_by(self.normalised["keep"], self.normalised["people"]), [
             "DisplayName", "Department", "JobTitle", "City", "Country", "CostCenter", "Manager", "BusinessUnit",
-            "employeeType", "state", "postalCode", "accountEnabled", "userType", "usageLocation",
-            "preferredLanguage", "onPremisesSyncEnabled", "externalUserState", "manager_jobTitle", "hasLicense"])
+            "employeeType", "state", "userType", "usageLocation", "preferredLanguage", "manager_jobTitle",
+            "hasLicense"])
         before = self.before
         self.assertEqual(len(before["extras"]), 34)
         self.assertEqual(len(before["keep"]), 45)
@@ -1168,6 +1198,17 @@ class PaxReplay(unittest.TestCase):
         self.assertEqual(len(attributes), 38)
         self.assertEqual([c for c in attributes if c in CANONICAL],
                          ["DisplayName", "Department", "JobTitle", "City", "Country", "Manager", "BusinessUnit"])
+
+    def test_postal_code_and_account_flags_are_no_longer_group_bys(self):
+        first = normalise(self.header, self.rows, org_rules(pax_first_shipped(F.ORG_NORMALISED_M)))
+        offered = group_by(first["keep"], first["people"])
+        self.assertEqual([c for c in offered if c in PAX_DROPPED], PAX_DROPPED)
+        self.assertEqual([c for c in offered if c not in PAX_DROPPED],
+                         group_by(self.normalised["keep"], self.normalised["people"]))
+        for column in PAX_DROPPED:
+            with self.subTest(column=column):
+                self.assertIn(column, self.header)
+                self.assertNotIn(column, self.normalised["keep"])
 
     def test_each_person_from_paxs_export(self):
         people = self.normalised["people"]
@@ -1178,20 +1219,18 @@ class PaxReplay(unittest.TestCase):
             "DisplayName": "Avery Lane", "Department": "Finance", "Organisation": None,
             "JobTitle": "Finance Analyst", "JobFamily": None, "City": "Dublin", "Country": "Ireland",
             "CostCenter": "CC-100", "Manager": "Emery Chen", "BusinessUnit": "Corporate Services",
-            "employeeType": "Employee", "state": "Leinster", "postalCode": "D02 XY01",
-            "accountEnabled": "True", "userType": "Member", "usageLocation": "IE", "preferredLanguage": "en-IE",
-            "onPremisesSyncEnabled": "True", "externalUserState": None, "manager_jobTitle": "Chief Executive",
+            "employeeType": "Employee", "state": "Leinster", "userType": "Member", "usageLocation": "IE",
+            "preferredLanguage": "en-IE", "manager_jobTitle": "Chief Executive",
             "EffectiveDate": None, "BusinessAreaCode": None, "OrgLevel_3Label": None, "hasLicense": "True"})
         expected = {
             "blake.rivera@example.com": {"BusinessUnit": "Contoso Sales Ltd", "Manager": "Drew Patel",
                                          "CostCenter": "CC-200", "City": "Manchester", "state": None},
             "casey.morgan@example.com": {"BusinessUnit": "Field Sales", "CostCenter": "CC-210",
-                                         "employeeType": "Contractor", "preferredLanguage": None,
-                                         "onPremisesSyncEnabled": "False"},
+                                         "employeeType": "Contractor", "preferredLanguage": None},
             "drew.patel@example.com": {"City": "London", "Manager": "Emery Chen"},
             "emery.chen@example.com": {"Manager": None, "BusinessUnit": "Executive Office", "CostCenter": "CC-001"},
             "finley.brooks_partner.example#ext#@example.com": {
-                "DisplayName": "Finley Brooks", "userType": "Guest", "externalUserState": "Accepted",
+                "DisplayName": "Finley Brooks", "userType": "Guest",
                 "Department": None, "City": None, "BusinessUnit": None, "Manager": None, "hasLicense": "False"},
         }
         for upn, values in expected.items():
