@@ -156,6 +156,9 @@ ${ROUTE_NAMES.pax} route options. Without --target or an install record, they ch
                        Default: your developer environment
   --folder <path>      With upload: a subfolder of the SharePoint folder to upload to, such as
                        Exports/2026. Missing folders are created
+  --accept-drop        With run: read the user directory now and publish the org file even when
+                       it has under half the rows of the last one, after a genuine drop such as a
+                       clean-up of old accounts. For this run only: the daily runs check again
 `;
 
 /**
@@ -197,6 +200,7 @@ export function parseCli(argv, env = process.env) {
       'allow-model-reset': { type: 'boolean' },
       'environment-id': { type: 'string' },
       folder: { type: 'string' },
+      'accept-drop': { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
     },
@@ -206,6 +210,7 @@ export function parseCli(argv, env = process.env) {
   if (command !== 'upload' && positionals.length > 1) throw new Error(`Unexpected argument: ${positionals[1]}`);
   if (!COMMANDS.includes(command)) throw new Error(`Unknown command "${command}". Try --help.`);
   if (values.run && command !== 'upload') throw new Error('--run goes with upload.');
+  if (values['accept-drop'] && command !== 'run') throw new Error('--accept-drop goes with run.');
   const noVaultFlag = values['no-key-vault'] ? '--no-key-vault' : values['secret-in-notebook'] ? '--secret-in-notebook' : undefined;
   if (noVaultFlag && command !== 'install') throw new Error(`${noVaultFlag} goes with install.`);
   if (values['key-vault'] && command !== 'install') throw new Error('--key-vault goes with install.');
@@ -268,7 +273,11 @@ export function parseCli(argv, env = process.env) {
     ...(values['secret-days'] !== undefined ? ['--secret-days'] : []),
     ...(values['allow-model-reset'] ? ['--allow-model-reset'] : []),
   ];
-  const paxFlags = [...(environmentId !== undefined ? ['--environment-id'] : []), ...(values.folder !== undefined ? ['--folder'] : [])];
+  const paxFlags = [
+    ...(environmentId !== undefined ? ['--environment-id'] : []),
+    ...(values.folder !== undefined ? ['--folder'] : []),
+    ...(values['accept-drop'] ? ['--accept-drop'] : []),
+  ];
   routeFromFlags({ target: /** @type {Target | undefined} */ (target), fabricFlags, paxFlags }, undefined);
   if (values.ui && (target !== undefined || paxFlags.length)) throw new Error('With --ui, choose where it runs on the page.');
   if (values.ui && (positionals.length || values['dry-run'])) throw new Error('--ui opens a home page where you choose what to do. Leave out the command.');
@@ -306,6 +315,7 @@ export function parseCli(argv, env = process.env) {
     billingScope,
     files,
     run: values.run,
+    acceptDrop: !!values['accept-drop'],
     secretInNotebook: !!noVaultFlag,
     useKeyVault: !!values['key-vault'],
     secretDays,
@@ -443,7 +453,7 @@ export async function main(argv) {
     if (args.allowModelReset) ctx.allowModelReset = true;
     if (args.secretDays) config.app.secretDays = args.secretDays;
     try {
-      const ok = await runCommand(ctx, args.command, { wait: args.wait, files: args.files, run: args.run, folder: args.folder });
+      const ok = await runCommand(ctx, args.command, { wait: args.wait, files: args.files, run: args.run, folder: args.folder, acceptDrop: args.acceptDrop });
       return ok ? 0 : 1;
     } finally {
       // Also after a failure part way: the record is what lets the next run carry on.

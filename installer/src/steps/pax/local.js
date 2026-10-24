@@ -457,13 +457,13 @@ export function writeScripts(host, paxScripts) {
  * refresh.json for the scheduled refresh. Product names come from product.js; the rest from
  * the install record.
  * @param {InstallConfig} config
- * @param {{ configFile?: string }} [o]  The install record's path, for the repair command in error messages.
+ * @param {{ configFile?: string }} [o]  The install record's path, for the commands in error messages.
  */
 export function refreshConfig(config, o = {}) {
   const sp = config.sharePoint;
   if (!sp) throw new Error('The install record has no SharePoint folder yet.');
   if (!config.app.appId) throw new Error('The install record has no app registration yet.');
-  const repair = commandLine(o.configFile ? `install --config "${o.configFile}"` : 'install');
+  const command = (/** @type {string} */ args) => commandLine(o.configFile ? `${args} --config "${o.configFile}"` : args);
   const userInfo = userInfoMode();
   return {
     schema: 1,
@@ -480,7 +480,9 @@ export function refreshConfig(config, o = {}) {
     files: { ...PRODUCT.pax.files },
     ...(userInfo ? {} : { seedDays: config.pax?.seedDays ?? SEED_DAYS }),
     agent365: !userInfo && !!config.pax?.agent365,
-    repairHint: `To fix it, run the ${PRODUCT.installer}'s repair: ${repair}`,
+    repairHint: `To fix it, run the ${PRODUCT.installer}'s repair: ${command('install')}`,
+    // A user directory held back for a drop: the command that publishes it, once.
+    ...(userInfo ? { acceptDropHint: `If the drop is genuine, run: ${command('run --accept-drop')}` } : {}),
   };
 }
 
@@ -723,9 +725,10 @@ export async function uploadToFolder(host, file, o = {}) {
 
 /**
  * Runs the refresh now in this window, rather than through the task, such as to fill a gap with
- * -Days. Like the task, it's stopped after 12 hours.
+ * -Days, or to publish an org file after a genuine drop with -AcceptDrop. Like the task, it's
+ * stopped after 12 hours.
  * @param {PaxHost} host
- * @param {{ days?: number, timeoutMs?: number }} [o]
+ * @param {{ days?: number, acceptDrop?: boolean, timeoutMs?: number }} [o]
  * @returns {Promise<RunResult>}
  */
 export function runRefresh(host, o = {}) {
@@ -735,6 +738,7 @@ export function runRefresh(host, o = {}) {
     if (!Number.isInteger(o.days) || o.days < 1 || o.days > 180) return Promise.reject(new RangeError(`A refresh reads from 1 to 180 days, not ${o.days}.`));
     args.push('-Days', String(o.days));
   }
+  if (o.acceptDrop) args.push('-AcceptDrop');
   return runScript(host, 'refresh.ps1', args, { timeoutMs: o.timeoutMs ?? RUN_LIMIT_MS });
 }
 

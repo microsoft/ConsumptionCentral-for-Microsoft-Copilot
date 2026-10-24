@@ -16,7 +16,7 @@ import { paxPlan, paxPreflight } from '../src/steps/pax/plan.js';
 import { refreshTimes, SCHEDULE_OFF_WHY } from '../src/steps/pax/publish.js';
 import { PAX_AUDIT_PERMISSIONS, PAX_PERMISSIONS, ROUTE_NAMES } from '../src/target.js';
 import { fakeAzureGraph, fakeCtx, fakeFabric, fakePowerBi, fakeUi, httpError, realSources } from './fakes.js';
-import { PARTIAL_MESSAGE, failed, fakePaxHost } from './pax-fakes.js';
+import { ACCEPTED_MESSAGE, HELD_FILE, HELD_MESSAGE, HELD_UPN_MESSAGE, PARTIAL_MESSAGE, failed, fakePaxHost } from './pax-fakes.js';
 
 const FOLDER = 'https://contoso.sharepoint.com/sites/Analytics/Shared Documents/Consumption Central';
 const SITE_URL = 'https://contoso.sharepoint.com/sites/Analytics';
@@ -486,6 +486,20 @@ test('pax flow: how a run ended, from state.json', { timeout: 10_000 }, () => {
   );
   assert.deepEqual(endedSince({ lastRunUtc: at(30), lastResult: 'success', lastMessage: null, progress }, startedAt), { status: 'success', partial: true });
   assert.equal(endedSince({ lastRunUtc: at(30), lastResult: 'failed', lastError: 'PAX stopped.', progress }, startedAt)?.status, 'failed', 'a failed window is still a failure');
+
+  // A user directory that failed a check before its upload, so SharePoint kept the last good copy.
+  const heldBack = { check: 'drop', rows: 4, columns: 3, lastRows: 20, file: HELD_FILE };
+  assert.deepEqual(
+    endedSince({ lastRunUtc: at(30), lastResult: 'failed', lastError: HELD_MESSAGE, lastMessage: HELD_MESSAGE, heldBack, lastLog: 'C:\\x.log' }, startedAt),
+    { status: 'failed', error: HELD_MESSAGE, log: 'C:\\x.log', heldBack: 'drop' },
+  );
+  assert.deepEqual(
+    endedSince({ lastRunUtc: at(30), lastResult: 'failed', lastError: 'PAX stopped.', heldBack: null }, startedAt),
+    { status: 'failed', error: 'PAX stopped.', log: undefined },
+    'a run that failed for another reason',
+  );
+  assert.deepEqual(endedSince({ lastRunUtc: at(30), lastResult: 'success', heldBack }, startedAt), { status: 'success' }, 'only a failed run was held back');
+  assert.equal(endedSince({ lastRunUtc: at(-61), lastResult: 'failed', heldBack }, startedAt), undefined, 'an earlier run that was held back');
 });
 
 /**
@@ -966,6 +980,20 @@ test('pax flow: a first run that fails is reported with its log', { timeout: 10_
   assert.ok(text.includes(`${PRODUCT.name} is partly set up`), text);
 });
 
+test('CC: pax flow: a first run whose org file fails a check warns with the check and the counts, and is left to fix', { timeout: 10_000 }, async () => {
+  const s = await paxSetup({ host: { run: 'held-upn' } });
+  const ok = await paxInstall(s.ctx, s.pre);
+  const text = plain(s.ui.text());
+  assert.equal(ok, false, text);
+  assert.ok(text.includes(`! ${HELD_UPN_MESSAGE}`), text);
+  assert.ok(!text.includes('The refresh failed'), text);
+  assert.ok(text.includes(`Log: ${join(s.pax.host.root, 'logs', 'refresh.log')}`), text);
+  assert.equal(s.config.pax.firstRun?.result, 'failed');
+  assert.equal(s.config.pax.firstRun?.error, HELD_UPN_MESSAGE, 'the next-steps card says which check it failed');
+  assert.ok(!s.pbi.calls.some((c) => c.startsWith('refreshNow')), 'no org file reached SharePoint');
+  assert.ok(text.includes(`${PRODUCT.name} is partly set up`), text);
+});
+
 test('pax flow: a first run that takes a while is left to run in the background', { timeout: 10_000 }, async () => {
   const s = await paxSetup({ host: { run: 'running' } });
   const ok = await paxInstall(s.ctx, s.pre);
@@ -1057,6 +1085,24 @@ test('pax flow: status reports a failed run and a model that has gone', { timeou
   assert.match(text, /Last run: +failed, /);
   assert.ok(text.includes('! PAX could not sign in.'), text);
   assert.ok(text.includes(`The model isn't in the workspace any more. To publish it again, run: ${commandLine('update')}`), text);
+});
+
+test('CC: pax flow: status says when the last run held the org file back, with the check and the counts', { timeout: 10_000 }, async () => {
+  const s = await installed({ by: { [Q.signIn]: 'set' } });
+  s.pax.finishRun('held');
+  const ok = await paxStatus(s.ctx);
+  const text = plain(s.ui.text());
+  assert.equal(ok, false, text);
+  assert.match(text, /^ +Last run: +held back, \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$/m);
+  assert.doesNotMatch(text, /Last run: +failed/);
+  assert.ok(text.includes(`! ${HELD_MESSAGE}`), text);
+  assert.ok(HELD_MESSAGE.endsWith(`If the drop is genuine, run: ${commandLine('run --accept-drop')}`), 'it says how to publish a genuine drop');
+
+  // A run that failed for another reason isn't held back.
+  s.ui.out.length = 0;
+  s.pax.finishRun('failed');
+  assert.equal(await paxStatus(s.ctx), false);
+  assert.match(plain(s.ui.text()), /Last run: +failed, /);
 });
 
 test('pax flow: the summary says when the set-up is partly done', { timeout: 10_000 }, async () => {
@@ -1233,6 +1279,62 @@ test('pax flow: run starts the task, as a first run until one has worked', { tim
   const text = plain(s.ui.text());
   assert.ok(text.includes(`It runs in the background. To see how it's going, run: ${commandLine('status')}`), text);
   assert.ok(s.config.pax.firstRun?.startedAt, 'no run has worked on this PC, so it is the first');
+});
+
+test('CC: pax flow: a run that holds the org file back warns with the check and the counts, and leaves the model as it was', { timeout: 10_000 }, async () => {
+  const s = await installed({ by: { [Q.signIn]: 'set' } });
+  s.pax.setRun('held');
+  assert.equal(await paxCommand(s.ctx, 'run'), false, plain(s.ui.text()));
+  const text = plain(s.ui.text());
+  assert.ok(text.includes(`! ${HELD_MESSAGE}`), text);
+  assert.ok(!text.includes('The refresh failed'), text);
+  assert.ok(text.includes(`Log: ${join(s.pax.host.root, 'logs', 'refresh.log')}`), text);
+  assert.ok(s.pax.keys().includes('task Start'), s.pax.keys().join(', '));
+  assert.deepEqual(s.pax.refreshes, [], 'the task ran it');
+  assert.ok(!s.pbi.calls.some((c) => c.startsWith('refreshNow')), 'SharePoint kept the last org file, so the model has nothing new to load');
+});
+
+test('CC: pax flow: run --accept-drop reads the user directory now and publishes a genuine drop, for that run only', { timeout: 10_000 }, async () => {
+  const s = await installed({ by: { [Q.signIn]: 'set' } });
+  s.pax.setRun('held');
+  assert.equal(await paxCommand(s.ctx, 'run', { acceptDrop: true }), true, plain(s.ui.text()));
+  let text = plain(s.ui.text());
+  assert.ok(text.includes(ACCEPTED_MESSAGE), text);
+  assert.deepEqual(s.pax.refreshes, [{ acceptDrop: true }], 'refresh.ps1 ran here, once, with -AcceptDrop');
+  assert.ok(!s.pax.keys().includes('task Start'), 'not the task');
+  assert.ok(s.pbi.calls.some((c) => c.startsWith('refreshNow pbi-ws-1 ')), 'the model loads the new org file');
+
+  // The task never passes -AcceptDrop, so the next run checks again.
+  const task = s.pax.tasks[PRODUCT.pax.task];
+  assert.ok(!String(task.arguments).includes('AcceptDrop'), task.arguments);
+  s.ui.out.length = 0;
+  s.pbi.calls.length = 0;
+  assert.equal(await paxCommand(s.ctx, 'run'), false);
+  text = plain(s.ui.text());
+  assert.ok(text.includes(`! ${HELD_MESSAGE}`), text);
+  assert.deepEqual(s.pax.refreshes, [{ acceptDrop: true }], 'the task ran it');
+  assert.ok(!s.pbi.calls.some((c) => c.startsWith('refreshNow')));
+});
+
+test('CC: pax flow: run --accept-drop says when a refresh is running, and still holds back a file that fails another check', { timeout: 10_000 }, async () => {
+  const s = await installed({ by: { [Q.signIn]: 'set' } });
+  const run = async (/** @type {import('./pax-fakes.js').FakeRun} */ result) => {
+    s.pax.setRun(result);
+    s.ui.out.length = 0;
+    return paxCommand(s.ctx, 'run', { acceptDrop: true });
+  };
+  assert.equal(await run('busy'), false);
+  assert.ok(plain(s.ui.text()).includes(`! A refresh is already running on this PC. When it's done, run: ${commandLine('run --accept-drop')}`), plain(s.ui.text()));
+
+  assert.equal(await run('held-upn'), false);
+  const text = plain(s.ui.text());
+  assert.ok(text.includes(`! ${HELD_UPN_MESSAGE}`), text);
+  assert.ok(text.includes(`Log: ${join(s.pax.host.root, 'logs', 'refresh.log')}`), text);
+
+  await assert.rejects(run('failed'), { message: 'The refresh failed (exit code 1): PAX could not sign in.' });
+  assert.deepEqual(s.pax.refreshes, [{ acceptDrop: true }, { acceptDrop: true }, { acceptDrop: true }]);
+  assert.ok(!s.pax.keys().includes('task Start'), s.pax.keys().join(', '));
+  assert.ok(!s.pbi.calls.some((c) => c.startsWith('refreshNow')), 'nothing new reached SharePoint');
 });
 
 test('CC: pax flow: an install asked to reload history still starts the task for a plain first load, as the org file is replaced whole', { timeout: 10_000 }, async () => {

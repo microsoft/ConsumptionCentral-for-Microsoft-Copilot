@@ -265,6 +265,17 @@ test('parseCli: --target, deploy-app and the PAX route\'s flags', () => {
   assert.throws(() => parse(['upload', 'a.csv', '--folder', 'x', '--run']), /can't go together/);
   assert.deepEqual(parse(['upload', 'a.csv', '--run']).fabricFlags, ['--run']);
 
+  // A user directory held back for a drop is published by one run with --accept-drop.
+  const drop = parse(['run', '--accept-drop']);
+  assert.equal(drop.acceptDrop, true);
+  assert.deepEqual(drop.paxFlags, ['--accept-drop']);
+  assert.equal(parse(['run']).acceptDrop, false);
+  assert.throws(() => parse(['status', '--accept-drop']), /^Error: --accept-drop goes with run\.$/);
+  assert.throws(() => parse(['--accept-drop']), /^Error: --accept-drop goes with run\.$/, 'not with install');
+  assert.throws(() => parse(['run', '--target', 'fabric', '--accept-drop']), /--accept-drop is for the No Fabric: SharePoint \+ PAX route, so it doesn't go with --target fabric\./);
+  assert.throws(() => routeFromFlags({ fabricFlags: [], paxFlags: ['--accept-drop'] }, 'fabric'), /--accept-drop is for the No Fabric: SharePoint \+ PAX route, so it doesn't go with this install record\./);
+  assert.throws(() => parse(['run', '--accept-drop', '--backfill-days', '30']), /Unknown option '--backfill-days'/);
+
   assert.throws(() => parse(['--ui', '--target', 'pax']), /With --ui, choose where it runs on the page\./);
   assert.throws(() => parse(['--ui', '--environment-id', 'env-1']), /With --ui, choose where it runs on the page\./);
 });
@@ -276,6 +287,7 @@ test('help: both routes, the route flag and the PAX commands, and never the reti
   assert.match(text, /\n {2}deploy-app {7}PAX: deploy the app/);
   assert.match(text, /--environment-id <id>/);
   assert.match(text, /--folder <path>/);
+  assert.match(text, /--accept-drop {8}With run: read the user directory now and publish the org file even when\n/);
   assert.match(text, /No Fabric: SharePoint \+ PAX route options/);
   assert.doesNotMatch(text, /App Edition/i);
   assert.doesNotMatch(text, /Value ?Lens|Analytics Hub|Agent Evaluator/i, 'this installer is Consumption Central only');

@@ -37,13 +37,16 @@ import { paxUpload } from './upload.js';
  * @typedef {object} PaxOptions
  * @property {boolean} [wait]  Watch the run that `run` starts, and load the model after it. Default true.
  * @property {number} [backfillDays]  `run` reads this many days of history now, on this PC.
+ * @property {boolean} [acceptDrop]  `run` reads the user directory now, on this PC, and publishes it even
+ *   with under half the rows of the last one. For that run only.
  * @property {string[]} [files]  The files `upload` puts in the SharePoint folder.
  * @property {string} [folder]  `upload`'s subfolder of the SharePoint folder.
  *
  * @typedef {'running' | 'busy' | 'success' | 'no-data' | 'failed'} RunStatus
- * @typedef {{ status: RunStatus, error?: string, log?: string, partial?: boolean, message?: string }} RunOutcome
+ * @typedef {{ status: RunStatus, error?: string, log?: string, partial?: boolean, message?: string, heldBack?: string }} RunOutcome
  *   `partial` is a success that stopped to stay inside the task's time limit, with the rest of
- *   the load left to the next run. `message` is what the run said about it.
+ *   the load left to the next run. `message` is what the run said about it. `heldBack` is the
+ *   check that held a user directory back from SharePoint: upn, rows or drop.
  */
 
 /** How long set-up and `run` watch a run for a quick failure before leaving it to carry on. */
@@ -277,6 +280,7 @@ export function endedSince(state, startedAt) {
     status: state.lastResult === 'no-data' ? 'no-data' : 'failed',
     error: state.lastError || state.lastMessage || undefined,
     log: state.lastLog || undefined,
+    ...(state.lastResult === 'failed' && state.heldBack?.check ? { heldBack: String(state.heldBack.check) } : {}),
   };
 }
 
@@ -398,7 +402,9 @@ async function startAndWatch(ctx, { wait = true, first = false }) {
       ui.warn('The refresh finished but found no Copilot audit records. If Copilot is in use, check that auditing is on in Microsoft Purview.');
       return true;
     default:
-      ui.fail(`The refresh failed${out.error ? `: ${out.error}` : '.'}`);
+      // A user directory that failed a check never reached SharePoint, which keeps the last good copy.
+      if (out.heldBack) ui.warn(out.error ?? 'The refresh held the org file back from SharePoint.');
+      else ui.fail(`The refresh failed${out.error ? `: ${out.error}` : '.'}`);
       if (out.log) ui.info(`Log: ${out.log}`);
       return false;
   }
@@ -437,6 +443,38 @@ async function reloadHistory(ctx, days) {
   const state = readState(host);
   if (state?.progress) ui.ok(state.lastMessage ? String(state.lastMessage) : PARTIAL_LOAD);
   else ui.ok(`Read ${days} days of the audit log and added them to the rollups in SharePoint.`);
+  return loadAfterRun(ctx, true);
+}
+
+/**
+ * Reads the user directory now, on this PC, and publishes it even when it has under half the rows
+ * of the last one, after a genuine drop. Only this run: the scheduled runs check it again, from
+ * this one's rows. The UPN column and row checks still apply.
+ * @param {Ctx} ctx
+ */
+async function acceptDrop(ctx) {
+  const { config, ui } = ctx;
+  paxOf(config);
+  if (!userInfoMode()) {
+    throw new Error(`--accept-drop is for a refresh that reads only the user directory, and this one reads the audit log. To run it now, run: ${commandLine('run')}`);
+  }
+  const host = paxHostOf(ctx);
+  const startedAt = ctx.now().toISOString();
+  const progress = ui.progress('Reading the user directory with PAX');
+  const r = await runRefresh(host, { acceptDrop: true, timeoutMs: RUN_LIMIT_MS }).finally(() => progress.done());
+  if (r.code === EXIT_BUSY) {
+    ui.warn(`A refresh is already running on this PC. When it's done, run: ${commandLine('run --accept-drop')}`);
+    return false;
+  }
+  const out = endedSince(readState(host), startedAt);
+  if (r.code !== 0) {
+    if (!out?.heldBack) throw scriptFailed(r, 'The refresh');
+    ui.warn(out.error ?? 'The refresh held the org file back from SharePoint.');
+    if (out.log) ui.info(`Log: ${out.log}`);
+    return false;
+  }
+  const said = readState(host)?.lastMessage;
+  ui.ok(said ? String(said) : `The refresh finished, and the org file, ${PRODUCT.pax.files.users}, is in SharePoint.`);
   return loadAfterRun(ctx, true);
 }
 
@@ -596,7 +634,9 @@ export async function paxStatus(ctx) {
   if (!state) {
     ui.info('Last run:     none has finished on this PC yet');
   } else {
-    ui.info(`Last run:     ${state.lastResult ?? 'unknown'}, ${when(state.lastRunUtc)}`);
+    // A user directory that failed a check before its upload, so SharePoint kept the last good copy.
+    const held = state.lastResult === 'failed' && !!state.heldBack?.check;
+    ui.info(`Last run:     ${held ? 'held back' : state.lastResult ?? 'unknown'}, ${when(state.lastRunUtc)}`);
     if (state.lastSuccessUtc) ui.info(`Last success: ${when(state.lastSuccessUtc)}`);
     if (state.coveredThroughUtc) ui.info(`Data up to:   ${when(state.coveredThroughUtc)}`);
     const load = state.progress;
@@ -696,6 +736,7 @@ export async function paxCommand(ctx, command, opts = {}) {
       return paxInstall(ctx, await paxPreflight(ctx), { wait: opts.wait });
     case 'run':
       if (opts.backfillDays) return reloadHistory(ctx, opts.backfillDays);
+      if (opts.acceptDrop) return acceptDrop(ctx);
       return startAndWatch(ctx, { wait: opts.wait, first: !readState(paxHostOf(ctx))?.lastSuccessUtc });
     case 'rerun-failed':
       throw new Error(`rerun-failed is for the Fabric route. To run PAX again now, run: ${commandLine('run')}`);

@@ -186,7 +186,9 @@ registration, the `Consumption Central - PAX refresh` scheduled task and the
 Something failed? On the Fabric route, choose **Rerun failed loads** (`rerun-failed`), or see
 [Load status and reruns](../installer/README.md#load-status-and-reruns). On the No Fabric route,
 read the log that **Check status** names, then choose **Run the refresh** (`run`). See
-[The daily refresh](../installer/README.md#the-daily-refresh).
+[The daily refresh](../installer/README.md#the-daily-refresh). If **Check status** says the last
+run was **held back**, the new org file failed a check and SharePoint kept the last good one: see
+[When a run holds the org file back](../installer/README.md#when-a-run-holds-the-org-file-back).
 
 ### After it finishes
 

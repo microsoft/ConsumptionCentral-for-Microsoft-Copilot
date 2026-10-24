@@ -508,8 +508,10 @@ Each run:
 2. Reads the client secret from Credential Manager, and signs in to Microsoft Graph as the app.
 3. Runs PAX once, in its own PowerShell process, for the user directory only. PAX is pinned to
    release `purview-v1.11.15`, and the script's SHA-256 is checked before it runs.
-4. Uploads `entra_org.csv` to the top of the SharePoint folder, replacing the one there.
-5. Writes `state.json` and a log.
+4. Checks the file PAX wrote. One that fails a check is held back, and nothing is uploaded: see
+   [When a run holds the org file back](#when-a-run-holds-the-org-file-back).
+5. Uploads `entra_org.csv` to the top of the SharePoint folder, replacing the one there.
+6. Writes `state.json` and a log.
 
 Each run reads the whole directory, and its file replaces the last one whole. So there's no
 history to load: a first run, a reinstall or a new PC just runs the same pass. There's no
@@ -521,9 +523,37 @@ history to load: a first run, a reinstall or a new PC just runs the same pass. T
 | `…\pax\refresh.json` | The task's settings |
 | `…\pax\state.json` | The last run |
 | `…\pax\logs\` | A log for each run, kept 30 days. It includes what PAX printed |
-| `…\pax\data\` | This PC's copy of the org file |
+| `…\pax\data\` | This PC's copy of the org file, and any file a run held back, kept 30 days |
 | `…\pax\work\` | PAX's working files, such as its download |
 | Windows Credential Manager, `PAX-ConsumptionCentral-<tenant ID>` | The client secret. It lasts 12 months |
+
+### When a run holds the org file back
+
+Before it uploads, each run checks the file PAX wrote. It holds the file back if:
+
+| Check | The file |
+|---|---|
+| UPN column | Has no UPN column, such as `userPrincipalName`, which the report matches people on |
+| Rows | Has no rows |
+| Drop | Has under half the rows of the last `entra_org.csv` this PC published. Exactly half passes. A PC's first run has nothing to compare with, so it skips this check |
+
+A run that holds the file back uploads nothing, so SharePoint keeps the last good
+`entra_org.csv`, and the report keeps its department breakdowns. The run ends as failed:
+
+- `status` shows **Last run: held back**, then says which check failed, with the counts, such as
+  "Held back: the user directory PAX read this run has 4,000 rows, under half of the 10,000 rows
+  in the entra_org.csv this PC last published."
+- The task's last message, in `state.json`, says the same, and so does the run's log.
+- PAX's file moves to `…\pax\data\held-back-<date>-<time>-entra_org.csv`, and is kept 30 days, so
+  you can see what it read.
+
+The next run checks again. If the drop isn't genuine, check the run's log, and that the app still
+has its Microsoft Graph permissions.
+
+**A genuine drop.** After a clean-up of old accounts, say, run `run --accept-drop`. It reads the
+directory now, on this PC, and publishes the file even with under half the rows. It's for that run
+only: it doesn't change the task, and the daily runs check again, against the rows it published.
+It doesn't skip the UPN column or row checks. `refresh.ps1 -AcceptDrop` does the same.
 
 ### The SharePoint folder
 
@@ -668,7 +698,7 @@ is on, so only a new install needs `--target fabric` or `--target pax`.
 | Command | Does |
 |---|---|
 | `install` | Set up, or repair or change the set-up. `--ui` opens the browser steps |
-| `run` | Fabric: run the pipeline, wait for it, then check the data. `--no-wait` only starts it. No Fabric: run the refresh now, which replaces the org file |
+| `run` | Fabric: run the pipeline, wait for it, then check the data. `--no-wait` only starts it. No Fabric: run the refresh now, which replaces the org file. `--accept-drop` publishes a file the drop check held back, for this run only: see [When a run holds the org file back](#when-a-run-holds-the-org-file-back) |
 | `rerun-failed` | Fabric: run again only the loads that failed in the latest run, and what depends on them |
 | `load-cowork` | Fabric: once the Cowork Dataflow is signed in, refresh it, load the Viva credits and refresh the model |
 | `check` | Fabric: run the data check again, without the pipeline. No Fabric: check the app registration can still write to the SharePoint folder |
@@ -695,6 +725,7 @@ is on, so only a new install needs `--target fabric` or `--target pax`.
 | Keep the secrets in Key Vault | `install --key-vault` |
 | Set up the No Fabric route, with the Cowork credits query | `install --target pax --viva-partition <id> --viva-query <id>` |
 | Upload exports to a SharePoint subfolder | `upload Exports.csv --folder Exports/2026` |
+| Publish the org file after a genuine drop in users | `run --accept-drop` |
 | Make a new app in another Power Platform environment | `deploy-app --environment-id <id>` |
 | Sign in with the Azure CLI, or with a code | `--use-az`, or `--device-code` |
 

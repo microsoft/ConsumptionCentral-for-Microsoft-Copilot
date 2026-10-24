@@ -96,7 +96,13 @@ documentation.
 For the Viva Direct template, the installer's
 [No Fabric route](../installer/README.md#no-fabric-sharepoint--pax-route) sets
 this up for you: a daily task on a Windows PC runs PAX as its own app and
-replaces `entra_org.csv` at the top of the SharePoint folder.
+replaces `entra_org.csv` at the top of the SharePoint folder. Before it does,
+it checks the new file has a UPN column, at least one row, and at least half
+the rows of the last one it published. A file that fails is held back, so
+SharePoint keeps the last good one, and the installer's `status` says which
+check failed. After a genuine drop, such as a clean-up of old accounts,
+`run --accept-drop` publishes it, for that run only. See
+[When a run holds the org file back](../installer/README.md#when-a-run-holds-the-org-file-back).
 
 > **Don't add `-Deidentify`.** It replaces names and UPNs with one-way tokens,
 > so no row matches your consumption data and every attribute shows as

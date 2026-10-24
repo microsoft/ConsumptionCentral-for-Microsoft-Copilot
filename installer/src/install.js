@@ -638,7 +638,7 @@ export async function showPrereqs(ctx) {
  * Runs one command against a signed-in context.
  * @param {Ctx} ctx
  * @param {string} command
- * @param {{ wait: boolean, files?: string[], run?: boolean, folder?: string }} opts
+ * @param {{ wait: boolean, files?: string[], run?: boolean, folder?: string, acceptDrop?: boolean }} opts
  * @returns {Promise<boolean>} false when a run or refresh it waited for didn't succeed.
  */
 export async function runCommand(ctx, command, opts) {
@@ -653,7 +653,7 @@ export async function runCommand(ctx, command, opts) {
     if (command === 'github-token') {
       throw new Error(`github-token is for the ${ROUTE_NAMES.fabric} route, where a notebook reads GitHub's Copilot billing with the token. This route has no notebooks.`);
     }
-    return paxCommand(ctx, command, { wait: opts.wait, files: opts.files, folder: opts.folder });
+    return paxCommand(ctx, command, { wait: opts.wait, files: opts.files, folder: opts.folder, acceptDrop: opts.acceptDrop });
   }
   switch (command) {
     case 'install':

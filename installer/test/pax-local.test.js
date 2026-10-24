@@ -575,6 +575,7 @@ test('pax local: refreshConfig fills refresh.json from the install record and pr
     files: { ...PRODUCT.pax.files },
     agent365: false,
     repairHint: `To fix it, run the ${PRODUCT.installer}'s repair: ${commandLine('install')}`,
+    acceptDropHint: `If the drop is genuine, run: ${commandLine('run --accept-drop')}`,
   });
   assert.deepEqual(cfg.files, { users: 'entra_org.csv' });
   assert.match(cfg.paxReleaseTag, /^purview-v\d+\.\d+\.\d+$/);
@@ -597,6 +598,7 @@ test("pax local: refreshConfig prefers Graph's site ID, and a record's audit set
   assert.equal(cfg.agent365, false);
   assert.deepEqual(cfg.files, { ...PRODUCT.pax.files });
   assert.equal(cfg.repairHint, `To fix it, run the ${PRODUCT.installer}'s repair: ${commandLine(`install --config "${file}"`)}`);
+  assert.equal(cfg.acceptDropHint, `If the drop is genuine, run: ${commandLine(`run --accept-drop --config "${file}"`)}`);
 });
 
 test('pax local: refreshConfig needs the folder, the app and the tenant', () => {
@@ -675,7 +677,7 @@ test('CC: pax local: the task refreshes the org file alone and replaces it whole
   config.history = { days: 90 };
   const cfg = refreshConfig(config);
   assert.deepEqual(Object.keys(cfg).sort(), [
-    'agent365', 'clientId', 'credentialTarget', 'files', 'folderPath', 'library', 'mode',
+    'acceptDropHint', 'agent365', 'clientId', 'credentialTarget', 'files', 'folderPath', 'library', 'mode',
     'paxReleaseTag', 'paxSha256', 'product', 'repairHint', 'schema', 'siteId', 'tenantId',
   ]);
   assert.equal(cfg.mode, 'userInfo');
@@ -944,6 +946,15 @@ test('pax local: runRefresh runs the refresh in this window, with -Days when ask
   assert.deepEqual(options, [{ timeoutMs: RUN_LIMIT_MS }, { timeoutMs: RUN_LIMIT_MS }, { timeoutMs: 5_000 }]);
   assert.deepEqual(f.refreshes, [{ days: 7 }, {}, { days: 180 }]);
   assert.equal(readState(f.host)?.lastResult, 'success');
+});
+
+test('CC: pax local: runRefresh passes -AcceptDrop only when asked', async (t) => {
+  const f = pc(t);
+  const { config } = paxPaths(f.host);
+  await runRefresh(f.host, { acceptDrop: true });
+  await runRefresh(f.host, { acceptDrop: false });
+  assert.deepEqual(f.calls.map((c) => c.args.slice(4)), [['-Config', config, '-AcceptDrop'], ['-Config', config]]);
+  assert.deepEqual(f.refreshes, [{ acceptDrop: true }, {}]);
 });
 
 test('pax local: runRefresh refuses days refresh.ps1 would refuse, without running it', async (t) => {

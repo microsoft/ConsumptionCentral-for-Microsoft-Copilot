@@ -4,7 +4,9 @@
 # way the real script does. Its picks don't check that a file is new, so the runner's own
 # check is what keeps an earlier run's file out. STUB_MODE picks the behaviour:
 #   (unset)       appends a row to each target, or writes a first run's files. With
-#                 -OnlyUserInfo it writes the user directory alone, as PAX does
+#                 -OnlyUserInfo it writes the user directory alone, as PAX does: a
+#                 userPrincipalName column and one row, or STUB_USER_CSV's text when that's
+#                 set, with {row} as the run's row. STUB_USER_CSV=<empty> writes an empty file
 #   zero          prints PAX's zero-row lines and writes nothing
 #   stale         writes nothing
 #   users-stale   writes the interactions only
@@ -77,7 +79,14 @@ switch ($behaviour) {
   'stale' { }
   default {
     if ($OnlyUserInfo) {
-      Set-Content -LiteralPath (Join-Path $OutDir "EntraUsers_MAClicensing_${stamp}.csv") -Value 'Id', $row
+      $directory = Join-Path $OutDir "EntraUsers_MAClicensing_${stamp}.csv"
+      if ($env:STUB_USER_CSV -eq '<empty>') {
+        [System.IO.File]::WriteAllBytes($directory, [byte[]]@())
+      } elseif ($env:STUB_USER_CSV) {
+        [System.IO.File]::WriteAllText($directory, $env:STUB_USER_CSV.Replace('{row}', $row), [System.Text.UTF8Encoding]::new($true))
+      } else {
+        Set-Content -LiteralPath $directory -Value 'userPrincipalName', $row
+      }
     } elseif ($appendTarget) {
       Add-Content -LiteralPath $appendTarget -Value $row
     } else {
