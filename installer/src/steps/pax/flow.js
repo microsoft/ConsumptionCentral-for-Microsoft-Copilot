@@ -1,7 +1,8 @@
 // The "No Fabric: PAX + SharePoint" route after its questions: set-up, the commands, status, the
-// summary and uninstall. A scheduled task on this PC runs PAX each day and puts the audit rollups
-// in a SharePoint folder. The SharePoint report reads them there, from a Power BI Pro workspace,
-// and the app goes on as a Copilot managed app when the tenant is ready for it.
+// summary and uninstall. A scheduled task on this PC runs PAX each day and puts its files (the
+// audit rollups, or only the org file) in a SharePoint folder. The SharePoint report reads them
+// there, from a Power BI Pro workspace, and the app goes on as a Copilot managed app when the
+// tenant is ready for it.
 import { HttpError } from '../../http.js';
 import { commandLine } from '../../launch.js';
 import { deployTheApp, removeTheApp } from '../../managed-app/flow.js';
@@ -17,7 +18,7 @@ import { addTrackedSecret, promoteSecret, removeRetired, settleFailedSecret } fr
 import {
   PAX_RELEASE, RUN_LIMIT_MS, credentialTarget, paxHostOf, paxPaths, readState, refreshConfig, registerTask,
   removeLocal, removeSecret, runRefresh, scriptFailed, secretStored, startTask, storeSecret, taskCurrent,
-  taskInfo, unregisterTask, writeRefreshConfig, writeScripts,
+  taskInfo, unregisterTask, userInfoMode, writeRefreshConfig, writeScripts,
 } from './local.js';
 import { paxAppWanted, paxPreflight } from './plan.js';
 import { askCredentials, ensurePaxWorkspace, loadPaxModel, publishPax, SCHEDULE_OFF_WHY, setPaxSchedule } from './publish.js';
@@ -247,7 +248,7 @@ async function ensureTask(ctx) {
   const report = await registerTask(host, {
     name: task.name,
     at: task.at,
-    description: `${PRODUCT.name}: runs PAX each day and puts the Copilot audit rollups in SharePoint. Set up by the ${PRODUCT.installer}.`,
+    description: `${PRODUCT.name}: runs PAX each day and puts ${userInfoMode() ? 'the org file' : 'the Copilot audit rollups'} in SharePoint. Set up by the ${PRODUCT.installer}.`,
   });
   task.registeredAt = ctx.now().toISOString();
   task.logonType = report.logonType;
@@ -364,7 +365,7 @@ async function startAndWatch(ctx, { wait = true, first = false }) {
     ui.info(`It runs in the background. To see how it's going, run: ${commandLine('status')}`);
     return true;
   }
-  const progress = ui.progress('Reading the audit log with PAX');
+  const progress = ui.progress(userInfoMode() ? 'Reading the user directory with PAX' : 'Reading the audit log with PAX');
   const until = ctx.now().getTime() + WATCH_MS;
   /** @type {RunOutcome} */
   let out = { status: 'running' };
@@ -380,13 +381,17 @@ async function startAndWatch(ctx, { wait = true, first = false }) {
   if (first) await settleFirstRun(ctx);
   switch (out.status) {
     case 'running':
-      ui.info(`It's still running, in the background. In a large tenant a first run can take hours. To see how it's going, run: ${commandLine('status')}`);
+      ui.info(`It's still running, in the background.${userInfoMode() ? '' : ' In a large tenant a first run can take hours.'} To see how it's going, run: ${commandLine('status')}`);
       return true;
     case 'busy':
       ui.info(`Another refresh was already running on this PC, so this one stopped. To see how it's going, run: ${commandLine('status')}`);
       return true;
     case 'success':
-      ui.ok(out.partial ? (out.message ?? PARTIAL_LOAD) : 'The refresh finished, and the rollups are in SharePoint.');
+      ui.ok(
+        userInfoMode()
+          ? `The refresh finished, and the org file, ${PRODUCT.pax.files.users}, is in SharePoint.`
+          : out.partial ? (out.message ?? PARTIAL_LOAD) : 'The refresh finished, and the rollups are in SharePoint.',
+      );
       return loadAfterRun(ctx, wait);
     case 'no-data':
       ui.warn('The refresh finished but found no Copilot audit records. If Copilot is in use, check that auditing is on in Microsoft Purview.');
@@ -407,6 +412,11 @@ async function startAndWatch(ctx, { wait = true, first = false }) {
 async function reloadHistory(ctx, days) {
   const { config, ui } = ctx;
   paxOf(config);
+  if (userInfoMode()) {
+    throw new Error(
+      `This refresh reads only the user directory, and each run replaces the org file whole, so there's no history to reload. To refresh it now, run: ${commandLine('run')}`,
+    );
+  }
   const host = paxHostOf(ctx);
   const progress = ui.progress(`Reading ${days} days of the audit log with PAX`);
   const r = await runRefresh(host, { days, timeoutMs: RUN_LIMIT_MS }).finally(() => progress.done());
@@ -445,7 +455,8 @@ export async function paxInstall(ctx, pre, { wait = true } = {}) {
   // Asked once: Power BI has no API to share a report, and the group gets no workspace role instead.
   const share = viewers && config.access?.reportShared !== true;
   const app = paxAppWanted(ctx);
-  const reload = ctx.reloadHistoryDays;
+  // The org file is a whole snapshot, so a userInfo refresh never reloads history.
+  const reload = userInfoMode() ? undefined : ctx.reloadHistoryDays;
   const titles = [
     'App registration', 'Microsoft Graph permissions', 'Client secret', 'SharePoint access', 'Scheduled refresh',
     ...(report ? ['Power BI report'] : []),
@@ -600,7 +611,7 @@ export async function paxStatus(ctx) {
     }
     if (state.lastLog) ui.info(`Log:          ${state.lastLog}`);
   }
-  if (first === 'running') ui.info('The first run is still going. In a large tenant it can take hours.');
+  if (first === 'running') ui.info(`The first run is still going.${userInfoMode() ? '' : ' In a large tenant it can take hours.'}`);
   if (first === 'failed') ok = false;
   const target = pax.credentialTarget ?? credentialTarget(config);
   const stored = await secretStored(host, target);
@@ -832,7 +843,7 @@ export async function paxUninstall(ctx) {
   if (config.sharePoint) {
     ui.note(`The files in ${describeFolder(config.sharePoint)}. SharePoint keeps them: delete them there if you don't need them.`);
   }
-  ui.note(`The ${PRODUCT.viewerGroup} group, PowerShell 7 and Python, which other things may use.`);
+  ui.note(`The ${PRODUCT.viewerGroup} group${userInfoMode() ? ' and PowerShell 7' : ', PowerShell 7 and Python'}, which other things may use.`);
   ui.note(`${PRODUCT.recordFile}. Move it aside before you install again, or the installer picks this set-up up.`);
   return ok;
 }

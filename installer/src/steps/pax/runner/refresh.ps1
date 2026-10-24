@@ -40,13 +40,18 @@
 
   Product names come only from refresh.json, so other products can reuse this script.
 
+  With "mode": "userInfo" in refresh.json, a refresh reads only the user directory. After
+  steps 1 and 2, Run-PAX-AIBV.ps1 -OnlyUserInfo runs once, with no audit query, window or
+  rollup, and needs no Python. Its file replaces files.users in the SharePoint folder whole,
+  so nothing is restored from SharePoint or carried over from the last run.
+
 .PARAMETER Config
   The refresh.json that the installer wrote.
 
 .PARAMETER Days
   How many days of activity to ask PAX for, from 1 to 180, in place of the number this script
   works out. Use it once to fill a gap that state.json reports. The days are still read in
-  windows.
+  windows. A userInfo refresh reads no activity, so it refuses -Days.
 
 .PARAMETER Upload
   A local file to upload into the SharePoint folder.
@@ -62,7 +67,7 @@
 
 .NOTES
   Exit codes: 0 success; 1 failed; 2 another run holds the lock; 3 PAX found no Copilot
-  activity yet, so there was nothing to upload.
+  activity yet, so there was nothing to upload (audit mode only).
 #>
 [CmdletBinding(DefaultParameterSetName = 'Refresh')]
 param(
@@ -181,6 +186,7 @@ function Read-RefreshConfig {
   param([string]$Path)
   $config = [ordered]@{
     schema           = 1
+    mode             = 'audit'
     product          = 'Dashboard'
     tenantId         = $null
     clientId         = $null
@@ -218,6 +224,10 @@ function Read-RefreshConfig {
   if ($config.repairHint -is [string] -and $config.repairHint.Trim()) { $script:RepairHint = $config.repairHint.Trim() }
 
   if ($config.schema -ne 1) { $problems.Add("schema is '$($config.schema)', and this script reads schema 1.") }
+  # userInfo reads only the user directory, as one file that each run replaces whole.
+  $userInfo = $config.mode -eq 'userInfo'
+  if ($config.mode -notin 'audit', 'userInfo') { $problems.Add("mode is '$($config.mode)', and this script reads audit or userInfo.") }
+  if ($userInfo) { $config.files = @{ users = $config.files.users } }
   $guid = [guid]::Empty
   foreach ($key in 'tenantId', 'clientId') {
     if (-not ($config[$key] -is [string] -and [guid]::TryParse($config[$key], [ref]$guid))) { $problems.Add("$key must be a GUID.") }
@@ -244,7 +254,7 @@ function Read-RefreshConfig {
     }
   }
   $names = @()
-  foreach ($key in $script:Streams.Keys) {
+  foreach ($key in $(if ($userInfo) { 'users' } else { $script:Streams.Keys })) {
     $name = $config.files[$key]
     if ($name -is [string] -and (Test-FileName $name)) { $names += $name }
     else { $problems.Add("files.$key isn't a file name that SharePoint can use: '$name'.") }
@@ -276,6 +286,7 @@ function Read-RefreshConfig {
   foreach ($key in 'agent365', 'deidentify') {
     if ($config[$key] -isnot [bool]) { $problems.Add("$key must be true or false.") }
   }
+  if ($userInfo -and $config.agent365 -eq $true) { $problems.Add('agent365 must be false in userInfo mode, which reads only the user directory.') }
   if ($problems.Count) {
     throw ("{0} has problems:`n  - {1}`n{2}" -f $Path, ($problems -join "`n  - "), $script:RepairHint)
   }
@@ -806,7 +817,9 @@ function Invoke-PaxChild {
   $arguments.AddRange([string[]]@(
       '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot 'Run-PAX-AIBV.ps1'),
       '-TenantId', $cfg.tenantId, '-ClientId', $cfg.clientId))
-  if (@($script:Windows).Count -gt 1) {
+  if ($cfg.mode -eq 'userInfo') {
+    $arguments.Add('-OnlyUserInfo')
+  } elseif (@($script:Windows).Count -gt 1) {
     # PAX reads from the start date up to, but not including, the end date.
     $arguments.AddRange([string[]]@(
         '-StartDate', $Window.From.ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture),
@@ -827,7 +840,7 @@ function Invoke-PaxChild {
   # A file that an earlier window wrote can look new to this one, so each file's time is
   # recorded first. Test-FreshFile passes only a file whose time then changes.
   $script:WrittenBefore = @{}
-  $files = @(Get-LocalPath 'interactions'; Get-LocalPath 'users')
+  $files = @(foreach ($name in 'interactions', 'users') { if ($script:Streams.Contains($name)) { Get-LocalPath $name } })
   $processed = Join-Path $script:WorkDir 'processed'
   if (Test-Path -LiteralPath $processed) {
     $files += @(Get-ChildItem -LiteralPath $processed -File -Recurse -Force | ForEach-Object FullName)
@@ -991,6 +1004,20 @@ function Complete-PaxRun {
   $script:WindowRead = $true
 }
 
+function Complete-UserInfoRun {
+  # Takes the user directory that PAX wrote this run, to replace the last one whole.
+  if ($script:ChildExit -ne 0) { throw (Get-PaxFailure) }
+  $manifest = @{}
+  $manifestPath = Join-Path $script:WorkDir 'processed\rollup-manifest.json'
+  if (Test-FreshFile $manifestPath) { $manifest = Read-JsonFile $manifestPath }
+  $made = $manifest[$script:Streams.users.Manifest]
+  if (-not ($made -and (Test-FreshFile $made))) {
+    throw "PAX didn't write the user directory, though it exited 0. The log is $($script:LogPath)."
+  }
+  Move-Item -LiteralPath $made -Destination (Get-LocalPath 'users') -Force
+  $script:State.streams.users.updated = $true
+}
+
 function Update-Coverage {
   # Records how far the cumulative files reach, and the oldest day they may be missing when
   # the refresh didn't run for longer than this run looks back. Save-State turns that day
@@ -1040,7 +1067,8 @@ function Publish-Streams {
     if ($stream.error) { $problems.Add($stream.error); continue }
     if ($name -eq 'agents365' -and -not $stream.updated) { continue }
     $local = Get-LocalPath $name
-    if (-not $stream.synced -and $name -ne 'agents365') {
+    # A file that replaces SharePoint's copy whole needs no check on who wrote that copy.
+    if (-not $stream.synced -and $stream.mode -ne 'replace') {
       # A file this machine didn't upload or restore may hold another machine's data.
       try { $existing = Get-RemoteItem $name }
       catch { $stream.error = $_.Exception.Message; $problems.Add($stream.error); continue }
@@ -1078,6 +1106,10 @@ function Invoke-Refresh {
   $library = if ($cfg.driveId) { $cfg.driveId } else { $cfg.library }
   Write-Host "SharePoint site $($cfg.siteId), library $library, folder $($cfg.folderPath)"
   New-Item -ItemType Directory -Force -Path $script:DataDir, $script:WorkDir | Out-Null
+  if ($cfg.mode -eq 'userInfo') {
+    Invoke-UserInfoRefresh
+    return
+  }
   Get-AppSecret
   Test-Python
   Connect-Graph
@@ -1150,6 +1182,31 @@ function Invoke-Refresh {
     "SharePoint's files are up to date."
   }
   if ($agents.warning) { $state.lastMessage += ' ' + $agents.warning }
+  Write-Host $state.lastMessage
+  $script:ExitCode = 0
+}
+
+function Invoke-UserInfoRefresh {
+  # One PAX pass reads the whole user directory, and its file replaces the last one whole, here
+  # and in SharePoint. So a new machine or a reinstall has nothing to restore or carry on from.
+  $state = $script:State
+  $script:Streams = [ordered]@{ users = @{ Local = 'current_Users.csv'; Manifest = 'users_csv' } }
+  $users = $state.streams.users
+  $state.streams = [ordered]@{ users = $users }
+  $users.mode = 'replace'
+  $state.progress = $null
+  $state.gapFromUtc = $null
+  $state.coveredThroughUtc = $null
+  Get-AppSecret
+  Connect-Graph
+  Resolve-Drive
+  Write-Host 'PAX reads the user directory, with no audit activity.'
+  Invoke-PaxChild
+  Complete-UserInfoRun
+  Publish-Streams
+  $state.lastResult = 'success'
+  $state.lastSuccessUtc = Format-UtcDate ([datetime]::UtcNow)
+  $state.lastMessage = "SharePoint's $($script:Cfg.files.users) holds the user directory as this run read it."
   Write-Host $state.lastMessage
   $script:ExitCode = 0
 }
@@ -1236,6 +1293,15 @@ if ($PSCmdlet.ParameterSetName -eq 'Upload') {
     $script:GraphToken = $null
   }
   exit $script:ExitCode
+}
+
+if ($script:DaysOverride) {
+  # Only the mode is read here. A refresh.json with problems fails in the run, as usual.
+  $mode = try { (Read-JsonFile $script:ConfigPath).mode } catch { $null }
+  if ($mode -eq 'userInfo') {
+    Write-Host 'ERROR: -Days says how many days of audit activity to read, and this refresh reads only the user directory, which every run replaces whole. Run it without -Days.'
+    exit 1
+  }
 }
 
 if (-not (Enter-RunLock)) {

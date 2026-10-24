@@ -16,7 +16,7 @@ import { coworkDataflowOn } from './fabric.js';
 import { connectionSteps, FLOW_NAMES, flowsWanted } from './flows.js';
 import { GITHUB_TOKEN_SCOPES, NEW_TOKEN_URL, TOKEN_WARN_DAYS, TOKENS_URL } from './github.js';
 import { modelSettingsUrl } from './model.js';
-import { SEED_DAYS } from './pax/local.js';
+import { SEED_DAYS, userInfoMode } from './pax/local.js';
 import { credentialSteps, desktopSteps } from './pax/publish.js';
 import { pnpGrantCommand, SITE_ADMIN, siteGrantCommands, siteRemovalCommands } from './pax/site.js';
 import { reportUrl } from './report.js';
@@ -39,13 +39,6 @@ const MAKER = 'https://make.powerautomate.com/';
 const DAY_MS = 86_400_000;
 export const AUDIT_URL = 'https://learn.microsoft.com/purview/audit-log-enable-disable';
 export const DESKTOP_URL = 'https://learn.microsoft.com/power-bi/fundamentals/desktop-get-the-desktop';
-
-/**
- * Whether the PAX route's refresh exports only the org file (PAX -OnlyUserInfo), as Consumption
- * Central's does, rather than reading the audit log.
- * @param {{ mode?: string }} [pax]  PRODUCT.pax, or a stand-in.
- */
-export const userInfoMode = (pax = PRODUCT.pax) => pax.mode === 'userInfo';
 
 /**
  * A message to someone else: a greeting, the ask, the details, and a sign-off.

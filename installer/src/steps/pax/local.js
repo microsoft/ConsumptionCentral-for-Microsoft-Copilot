@@ -1,8 +1,8 @@
 // @ts-check
 /**
- * The PAX route's work on this PC: checking for PowerShell 7 and Python, copying the refresh
- * scripts and writing refresh.json under %LOCALAPPDATA%, keeping the app's client secret in
- * Windows Credential Manager, and the scheduled task that runs the refresh each day.
+ * The PAX route's work on this PC: checking for PowerShell 7 and, for the audit log, Python,
+ * copying the refresh scripts and writing refresh.json under %LOCALAPPDATA%, keeping the app's
+ * client secret in Windows Credential Manager, and the scheduled task that runs the refresh each day.
  *
  * Every script runs with `pwsh -NoProfile -NonInteractive -File`. Nothing here changes or
  * bypasses PowerShell's execution policy: when the policy won't run local unsigned scripts, the
@@ -35,6 +35,14 @@ export const MIN_PYTHON = Object.freeze([3, 10]);
 export const TASK_AT = '02:00';
 /** How many days of activity the first refresh asks PAX for. */
 export const SEED_DAYS = 30;
+
+/**
+ * Whether the refresh reads only the user directory (PAX -OnlyUserInfo) into one file that each
+ * run replaces whole, rather than the audit log. Then there's no history to load or reload, no
+ * Agent 365 file, and no need for Python.
+ * @param {{ mode?: string }} [pax]  PRODUCT.pax, or a stand-in.
+ */
+export const userInfoMode = (pax = PRODUCT.pax) => pax.mode === 'userInfo';
 /**
  * The longest a refresh may run, as task.ps1 sets it. refresh.ps1 reads a long load in windows and
  * stops between them before its own runHours budget runs out, so the next run carries on.
@@ -342,12 +350,13 @@ export async function findPython(host) {
 
 /**
  * Checks this PC can run the scheduled refresh: PowerShell 7.2 or later in full language mode,
- * an execution policy that runs local scripts, and Python 3.10 or later where PAX looks for it.
- * Remembers the pwsh it found, which runs the scripts from then on.
+ * an execution policy that runs local scripts, and, to read the audit log, Python 3.10 or later
+ * where PAX looks for it. Remembers the pwsh it found, which runs the scripts from then on.
  * @param {PaxHost} host
+ * @param {{ python?: boolean }} [o]  python: whether to look for Python. Only PAX's audit rollup needs it.
  * @returns {Promise<HostCheck>}
  */
-export async function checkHost(host) {
+export async function checkHost(host, { python: wantPython = !userInfoMode() } = {}) {
   /** @type {HostProblem[]} */
   const problems = [];
   const { pwsh, error } = await findPwsh(host);
@@ -376,8 +385,8 @@ export async function checkHost(host) {
       });
     }
   }
-  const { python, older } = await findPython(host);
-  if (!python) {
+  const { python, older } = wantPython ? await findPython(host) : {};
+  if (wantPython && !python) {
     problems.push({
       part: 'python',
       title: older ? `Python ${older.version} is too old` : "Python isn't installed",
@@ -455,8 +464,10 @@ export function refreshConfig(config, o = {}) {
   if (!sp) throw new Error('The install record has no SharePoint folder yet.');
   if (!config.app.appId) throw new Error('The install record has no app registration yet.');
   const repair = commandLine(o.configFile ? `install --config "${o.configFile}"` : 'install');
+  const userInfo = userInfoMode();
   return {
     schema: 1,
+    mode: userInfo ? 'userInfo' : 'audit',
     product: PRODUCT.name,
     tenantId: config.tenantId,
     clientId: config.app.appId,
@@ -467,8 +478,8 @@ export function refreshConfig(config, o = {}) {
     paxReleaseTag: PAX_RELEASE.tag,
     paxSha256: PAX_RELEASE.sha256,
     files: { ...PRODUCT.pax.files },
-    seedDays: config.pax?.seedDays ?? SEED_DAYS,
-    agent365: !!config.pax?.agent365,
+    ...(userInfo ? {} : { seedDays: config.pax?.seedDays ?? SEED_DAYS }),
+    agent365: !userInfo && !!config.pax?.agent365,
     repairHint: `To fix it, run the ${PRODUCT.installer}'s repair: ${repair}`,
   };
 }
