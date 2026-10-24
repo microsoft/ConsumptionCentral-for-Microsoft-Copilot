@@ -1,16 +1,52 @@
 <div align="center">
 
+<br>
+
 # 💳 Consumption Central
 
-### *for Microsoft Copilot* — an app and a Power BI report for **Copilot credit consumption and cost**
+### Microsoft Copilot credit consumption and cost, as an app or a Power BI report.
+
+**What you're consuming · what it costs · where to trim · what next year looks like**
+
+<br>
 
 All reports and guides can be found on the [Analytics Hub](https://microsoft.github.io/Analytics-Hub/).
 
-**What you're consuming · what it costs · where to trim · what next year looks like**
+**Also see [Analytics Hub for Microsoft Copilot](https://github.com/microsoft/AnalyticsHub-Dashboard):**
+one installer sets up an app on Microsoft Fabric or Azure that shows Copilot and agent adoption,
+value, consumption and governance in one place. It includes Consumption Central as its optional
+*Credit consumption* add-on.
+
+<br>
+
+**Found this useful? ⭐ Star this repo to help others discover it!**
+
+<br>
+
+**[Start here ↓](#start-here-the-app-preview)** &nbsp;·&nbsp; **[Your data ↓](#where-your-data-comes-from)** &nbsp;·&nbsp; **[Power BI report ↓](#the-power-bi-report)** &nbsp;·&nbsp; **[Fabric App ↓](#the-fabric-app-alternative)** &nbsp;·&nbsp; **[Docs ↓](#documentation)** &nbsp;·&nbsp; **[Support ↓](#support)**
+
+<br>
 
 ![Consumption Central](Images/ConsumptionCentral-Preview.gif)
 
 </div>
+
+<a id="usage-and-compliance"></a>
+
+<details>
+<summary>⚠️ <strong>Important usage &amp; compliance disclaimer</strong></summary>
+
+This template helps you understand your own Copilot consumption and cost. Microsoft has no
+visibility into the data you load, nor control over how the template is used. You are responsible
+for ensuring your use complies with applicable law, including data privacy and employment law.
+Microsoft disclaims all liability arising from use of this template.
+
+Several underlying exports are **in preview**, and the identifiable variant of the Viva Insights
+export processes personal data. Review the "Previews" section of the Microsoft Products and Services
+Data Protection Addendum before enabling it, and consult your works council or privacy office where
+per-person reporting requires it.
+
+</details>
 
 Consumption Central covers Copilot spend across **Cowork/Work IQ**, **Copilot Studio**,
 **GitHub Copilot** and **Azure AI Foundry**: consumption, cost, optimisation and forecast per
@@ -178,11 +214,6 @@ No published model? Host the CSV app above in a Fabric workspace instead of as a
 ([steps](app/README.md#as-a-fabric-app-in-a-fabric-workspace)), or have the report refresh on Fabric
 with the [2. Fabric](2.%20Fabric/) path.
 
-> **Also see [Analytics Hub for Microsoft Copilot](https://github.com/microsoft/AnalyticsHub-Dashboard):**
-> one installer sets up an app on Microsoft Fabric or Azure that shows Copilot and agent adoption,
-> value, consumption and governance in one place. It includes Consumption Central as its optional
-> *Credit consumption* add-on.
-
 ---
 
 ## Archived
@@ -216,21 +247,7 @@ Not supported through Microsoft support channels — **[open an issue](../../iss
 Built and tested end to end against live tenant data on all three paths. The sample dataset is
 synthetic; no customer data is in this repo. If you schedule the Azure collectors, complete the
 [Azure acceptance procedure](docs/TESTING.md#azure-automation-acceptance) in your own environment.
-
-<details>
-<summary><strong>Usage &amp; compliance</strong></summary>
-
-This template helps you understand your own Copilot consumption and cost. Microsoft has no
-visibility into the data you load, nor control over how the template is used. You are responsible
-for ensuring your use complies with applicable law, including data privacy and employment law.
-Microsoft disclaims all liability arising from use of this template.
-
-Several underlying exports are **in preview**, and the identifiable variant of the Viva Insights
-export processes personal data. Review the "Previews" section of the Microsoft Products and Services
-Data Protection Addendum before enabling it, and consult your works council or privacy office where
-per-person reporting requires it.
-
-</details>
+The usage &amp; compliance disclaimer is [at the top](#usage-and-compliance).
 
 ---
 
