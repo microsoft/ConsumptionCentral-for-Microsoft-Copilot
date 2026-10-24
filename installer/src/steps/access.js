@@ -4,11 +4,12 @@
  * model, and the report is shared with the group once, by hand. Sharing is then adding people to
  * the group, from the installer or My Groups.
  *
- * The group gets no workspace role: workspace viewers can read notebook code, and the notebooks can
- * hold a client secret or a GitHub token.
+ * The group gets no workspace role: on the Fabric route, workspace viewers can read notebook code,
+ * and the notebooks can hold a client secret or a GitHub token. On the PAX route it needs none.
  */
 import { HttpError } from '../http.js';
 import { VIEWER_GROUP } from '../product.js';
+import { isPax } from '../target.js';
 import { asksAdvanced } from './advanced.js';
 import { reportsOn, reportUrl } from './report.js';
 
@@ -16,6 +17,8 @@ import { reportsOn, reportUrl } from './report.js';
 /** @typedef {{ workspaceId: string, datasetId: string, name: string }} ModelRef */
 
 export const VIEWER_GROUP_NAME = VIEWER_GROUP;
+/** On the PAX route the report is in a workspace with no capacity, where Power BI asks each viewer for a licence. */
+export const PRO_VIEWERS = 'Unless the workspace is on a paid F64 or larger Fabric capacity, or a Power BI Premium capacity, each of them needs Power BI Pro or Premium Per User.';
 const GROUP_DESCRIPTION = 'People who can view Consumption Central. Add members to share it.';
 
 /** Where a group's owners add and remove members themselves. @param {string} groupId */
@@ -23,6 +26,35 @@ export const myGroupsUrl = (groupId) => `https://myaccount.microsoft.com/groups/
 
 const isEmail = (/** @type {string} */ v) => (/^[^\s@]+@[^\s@]+$/.test(v.trim()) ? true : 'Enter an email address');
 const isLinkOrEmpty = (/** @type {string} */ v) => (!v.trim() || /^https:\/\/\S+$/i.test(v.trim()) ? true : 'Enter an https:// link, or leave it empty');
+const lower = (/** @type {unknown} */ s) => String(s ?? '').toLowerCase();
+
+/**
+ * When the viewer group changes, the old group keeps the Build the installer gave it until the
+ * next grant takes it away. Its ID moves to retiredGroups, with the models it has Build on.
+ * @param {import('../config.js').AccessConfig} access  planAccess's copy of the record's access.
+ */
+function retireGroup(access) {
+  const id = access.groupId;
+  if (!id) return;
+  const prior = access.retiredGroups?.find((g) => lower(g.groupId) === lower(id));
+  const datasets = [...new Set([...(prior?.datasets ?? []), ...(access.grantedModels ?? [])])];
+  const others = (access.retiredGroups ?? []).filter((g) => g !== prior);
+  const retired = datasets.length ? [...others, { groupId: id, ...(access.groupName ? { groupName: access.groupName } : {}), datasets }] : others;
+  if (retired.length) access.retiredGroups = retired;
+  else delete access.retiredGroups;
+  access.grantedModels = [];
+}
+
+/**
+ * A group chosen as the viewer group again keeps its Build.
+ * @param {import('../config.js').AccessConfig} access
+ * @param {string} id
+ */
+function unretireGroup(access, id) {
+  if (!access.retiredGroups) return;
+  access.retiredGroups = access.retiredGroups.filter((g) => lower(g.groupId) !== lower(id));
+  if (!access.retiredGroups.length) delete access.retiredGroups;
+}
 
 /**
  * The saved access contact, or undefined when its domain isn't one of the tenant's verified domains,
@@ -67,6 +99,8 @@ export async function planAccess(ctx) {
   );
   if (mode === 'new') {
     if (!access.createdGroup) {
+      // A group already called that is the one the next step finds, so it stays the viewer group.
+      if (lower(access.groupName) !== lower(VIEWER_GROUP_NAME)) retireGroup(access);
       delete access.groupId;
       delete access.reportShared;
     }
@@ -76,7 +110,11 @@ export async function planAccess(ctx) {
       const name = (await ui.input('Group name or object ID', { default: access.createdGroup ? undefined : access.groupName ?? access.groupId })).trim();
       const found = await api.graph.resolvePrincipal(name).catch(() => null);
       if (found?.kind === 'group') {
-        if (found.id !== access.groupId) delete access.reportShared;
+        if (found.id !== access.groupId) {
+          delete access.reportShared;
+          retireGroup(access);
+          unretireGroup(access, found.id);
+        }
         Object.assign(access, { groupId: found.id, groupName: found.displayName, createdGroup: false });
         ui.ok(`Viewers: ${found.displayName}`);
         break;
@@ -91,7 +129,8 @@ export async function planAccess(ctx) {
 }
 
 /**
- * Plan review rows: the group the access step creates and the Build grant it gives.
+ * Plan review rows: the group the access step creates and the Build grant it gives, and the Build
+ * it takes away from a group that was the viewer group.
  * @param {import('../config.js').InstallConfig} config
  * @param {string} where  The models, e.g. "Semantic models in workspace X".
  */
@@ -101,9 +140,18 @@ export function accessReview(config, where) {
   const name = a.groupName ?? VIEWER_GROUP_NAME;
   // You may not own a group you picked. You own one the installer creates.
   const owners = a.groupId && !a.createdGroup ? 'Its owners share it by adding people to it.' : 'You are its owner; share by adding people to it.';
+  const retired = (a.retiredGroups ?? []).filter((g) => g.datasets.length && lower(g.groupId) !== lower(a.groupId));
   return {
     creates: [{ kind: 'Entra group', name, isNew: !a.groupId, detail: `Who can view Consumption Central. ${owners}` }],
-    grants: [{ who: `${name} (group)`, what: 'Build (ReadExplore)', where, detail: 'So its members can view the report, once you share it with the group. Power BI has no API for that, so the installer shows you the clicks.' }],
+    grants: [
+      { who: `${name} (group)`, what: 'Build (ReadExplore)', where, detail: 'So its members can view the report, once you share it with the group. Power BI has no API for that, so the installer shows you the clicks.' },
+      ...retired.map((g) => ({
+        who: `${g.groupName ?? g.groupId} (group)`,
+        what: 'Build removed',
+        where,
+        detail: "It isn't the viewer group any more, so the installer takes away the Build it gave it.",
+      })),
+    ],
   };
 }
 
@@ -183,10 +231,11 @@ async function addGroupToModel(ctx, m, groupId) {
 }
 
 /**
- * Gives the viewer group Build (ReadExplore) on each model, so its members can query them.
- * A grant that fails is reported and doesn't stop the install.
+ * Gives the viewer group Build (ReadExplore) on each model, so its members can query them, then
+ * takes away the Build the installer gave a group that was the viewer group before. A grant or a
+ * removal that fails is reported and doesn't stop the install.
  * @param {Ctx} ctx
- * @param {ModelRef[]} models
+ * @param {ModelRef[]} models  All of the install's models.
  */
 export async function grantModelAccess(ctx, models) {
   const { ui, config, api } = ctx;
@@ -207,7 +256,61 @@ export async function grantModelAccess(ctx, models) {
   }
   a.grantedModels = [...granted];
   ctx.save();
+  await removeRetiredAccess(ctx, models);
 }
+
+/**
+ * Takes away the Build the installer gave groups that were the viewer group. It takes away all of
+ * the group's direct access to the model, but not what a workspace role gives. A model that isn't
+ * the install's any more was deleted, and its access with it.
+ * @param {Ctx} ctx
+ * @param {ModelRef[]} models  All of the install's models.
+ */
+async function removeRetiredAccess(ctx, models) {
+  const { ui, config, api } = ctx;
+  const a = /** @type {import('../config.js').AccessConfig} */ (config.access);
+  if (!a.retiredGroups?.length) return;
+  /** @type {import('../config.js').RetiredGroup[]} */
+  const left = [];
+  for (const g of a.retiredGroups) {
+    // The viewer group again, such as the one the new group step found by name.
+    if (lower(g.groupId) === lower(a.groupId)) continue;
+    const name = g.groupName ?? g.groupId;
+    /** @type {string[]} */
+    const keep = [];
+    for (const id of g.datasets) {
+      const m = models.find((x) => x.datasetId === id);
+      if (!m) {
+        if (!models.length) keep.push(id);
+        continue;
+      }
+      const users = await api.powerBi.datasetUsers(m.workspaceId, m.datasetId).catch(() => undefined);
+      if (users && !users.some((u) => lower(u.identifier) === lower(g.groupId))) continue;
+      try {
+        await api.powerBi.updateDatasetUser(m.workspaceId, m.datasetId, { identifier: g.groupId, principalType: 'Group', datasetUserAccessRight: 'None' });
+        ui.ok(`${name} no longer has Build on ${m.name}`);
+      } catch (err) {
+        if (err instanceof HttpError && err.status === 404) continue;
+        // A deleted group has no members left to use it.
+        if ((await api.graph.getGroup(g.groupId).catch(() => undefined)) === null) continue;
+        ui.warn(`Couldn't take away ${name}'s Build on ${m.name}: ${/** @type {Error} */ (err).message}`);
+        ui.info(`Remove ${name} from the model's Manage permissions page, or the installer tries again next time.`);
+        keep.push(id);
+      }
+    }
+    if (keep.length) left.push({ ...g, datasets: keep });
+  }
+  if (left.length) a.retiredGroups = left;
+  else delete a.retiredGroups;
+  ctx.save();
+}
+
+/**
+ * The workspace in the Fabric portal, where the report's … (More options) menu is.
+ * @param {string} workspaceId
+ * @param {string} [tenantId]
+ */
+export const workspaceUrl = (workspaceId, tenantId) => `https://app.fabric.microsoft.com/groups/${workspaceId}${tenantId ? `?ctid=${tenantId}` : ''}`;
 
 /**
  * The clicks that share the report with the viewer group, one whole step each.
@@ -226,13 +329,22 @@ export function shareReportSteps(config) {
 }
 
 /**
+ * What the record keeps once the user says they shared the report. On the Fabric route it's the
+ * report's ID, so a report published again is asked about again. On the PAX route it's true, and
+ * publishing a different report clears it.
+ * @param {import('../config.js').InstallConfig} config
+ * @returns {string | true | undefined}
+ */
+const sharedMark = (config) => (isPax(config) ? true : config.semanticModel.report?.id);
+
+/**
  * The report still needs sharing with the viewer group: there is a group and a report, and nobody
- * has said this report was shared. A report published again has a new ID, so it's asked again.
+ * has said this report was shared.
  * @param {import('../config.js').InstallConfig} config
  */
 export const shareReportPending = (config) => {
   const id = config.semanticModel.report?.id;
-  return reportsOn(config) && !!config.access?.groupId && !!id && config.access.reportShared !== id;
+  return reportsOn(config) && !!config.access?.groupId && !!id && config.access.reportShared !== sharedMark(config);
 };
 
 /**
@@ -253,7 +365,11 @@ export async function shareReport(ctx) {
   const group = a?.groupName ?? VIEWER_GROUP_NAME;
   ui.info(`Members of "${group}" can open the report once it's shared with the group. Power BI has no API for that, so it takes a few clicks:`);
   shareReportSteps(config).forEach((s, i) => ui.info(`  ${i + 1}. ${s}`));
-  ui.note('After that, give people access by adding them to the group.');
+  ui.note(
+    isPax(config)
+      ? `After that, give people access by adding them to the group. They need no workspace role. ${PRO_VIEWERS}`
+      : 'After that, give people access by adding them to the group.',
+  );
   const done = await ui.select(
     'Have you shared the report?',
     [
@@ -266,7 +382,7 @@ export async function shareReport(ctx) {
     ui.note('Until it\'s shared, people in the group get "no access" when they open the report.');
     return;
   }
-  /** @type {import('../config.js').AccessConfig} */ (a).reportShared = config.semanticModel.report?.id;
+  /** @type {import('../config.js').AccessConfig} */ (a).reportShared = sharedMark(config);
   ctx.save();
   ui.ok(`The report is shared with "${group}"`);
 }

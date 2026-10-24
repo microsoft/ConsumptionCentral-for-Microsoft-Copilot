@@ -16,6 +16,12 @@ export const APP_ROLES = {
   '158c047a-c907-4556-b7ef-446551a6b5f7': 'Cloud Application Administrator',
 };
 
+/** Roles that can give an app access to one SharePoint site (Sites.Selected). */
+export const SITE_ADMIN_ROLES = {
+  '62e90394-69f5-4237-9190-012177145e10': 'Global Administrator',
+  'f28a1f50-f6e7-4571-818b-6a12f2af6b6c': 'SharePoint Administrator',
+};
+
 export const FABRIC_ADMIN_ROLE = 'a9ea8996-122f-4c74-9520-8edcd192826c';
 export const GLOBAL_READER_ROLE = 'f2ef992c-3afb-46b9-b7cf-a126ee74c451';
 export const AI_ADMIN_ROLE = 'd2562ede-74db-457e-a7b6-544e236ebb61';
@@ -37,6 +43,17 @@ export function resolveAppRoles(graphSp, permissions, optional = []) {
   if (fatal.length) throw new Error(`Microsoft Graph in this tenant has no application permission named ${fatal.join(', ')}.`);
   const roles = permissions.filter((p) => byValue.has(p)).map((p) => ({ value: p, id: /** @type {string} */ (byValue.get(p)) }));
   return { roles, missing: absent };
+}
+
+/**
+ * The Graph application permissions (app role IDs) an app registration lists on its API permissions page.
+ * @param {{ requiredResourceAccess?: { resourceAppId: string, resourceAccess: { id: string, type: string }[] }[] }} application
+ * @returns {Set<string>}
+ */
+export function declaredGraphRoles(application) {
+  return new Set((application.requiredResourceAccess ?? [])
+    .filter((r) => r.resourceAppId === GRAPH_APP_ID)
+    .flatMap((r) => (r.resourceAccess ?? []).filter((a) => a.type === 'Role').map((a) => a.id)));
 }
 
 /**
@@ -178,6 +195,24 @@ export function graphApi(http) {
       await http.patch(`/applications/${application.id}`, { requiredResourceAccess: [...others, graph] });
       return true;
     },
+    /**
+     * Takes Graph app roles off the app's required permissions, keeping the rest, and updates
+     * `application` to match. Their admin consent stays until revokeAppRole takes it back.
+     * @param {any} application
+     * @param {{ id: string }[]} appRoles
+     * @returns {Promise<boolean>}  Whether any were there.
+     */
+    async removeRequiredAccess(application, appRoles) {
+      const drop = new Set(appRoles.map((r) => r.id));
+      if (![...declaredGraphRoles(application)].some((id) => drop.has(id))) return false;
+      const current = /** @type {any[]} */ (application.requiredResourceAccess ?? []);
+      const next = current
+        .map((r) => (r.resourceAppId === GRAPH_APP_ID ? { ...r, resourceAccess: r.resourceAccess.filter((/** @type {any} */ a) => !(a.type === 'Role' && drop.has(a.id))) } : r))
+        .filter((r) => r.resourceAppId !== GRAPH_APP_ID || r.resourceAccess.length);
+      await http.patch(`/applications/${application.id}`, { requiredResourceAccess: next });
+      application.requiredResourceAccess = next;
+      return true;
+    },
 
     /** New apps take a few seconds to replicate, so 400/404 are retried briefly. @param {string} appId */
     createServicePrincipal: (appId) => http.post('/servicePrincipals', { appId }, replicationRetry),
@@ -290,6 +325,12 @@ export function graphApi(http) {
      */
     grantAppRole: (resourceId, principalId, appRoleId) =>
       http.post(`/servicePrincipals/${resourceId}/appRoleAssignedTo`, { principalId, resourceId, appRoleId }, replicationRetry),
+    /**
+     * Takes back one application permission's admin consent. Needs the same admin as granting it.
+     * @param {string} resourceId  Graph's service principal ID.
+     * @param {string} assignmentId  The app role assignment's ID.
+     */
+    revokeAppRole: (resourceId, assignmentId) => http.del(`/servicePrincipals/${resourceId}/appRoleAssignedTo/${assignmentId}`),
 
     /**
      * Admin consent for a delegated scope for all users. Reuses an existing grant, adding the scope if it's missing.
@@ -321,6 +362,31 @@ export function graphApi(http) {
      */
     grantSiteRead: (siteId, appId, displayName) =>
       http.post(`/sites/${siteId}/permissions`, { roles: ['read'], grantedToIdentities: [{ application: { id: appId, displayName } }] }),
+
+    /**
+     * Gives an app a role on one site, for apps holding Sites.Selected. Needs a SharePoint admin (Sites.FullControl.All).
+     * @param {string} siteId  Graph site ID.
+     * @param {string} appId
+     * @param {string} displayName
+     * @param {'read' | 'write'} role
+     */
+    grantSitePermission: (siteId, appId, displayName, role) =>
+      http.post(`/sites/${siteId}/permissions`, { roles: [role], grantedToIdentities: [{ application: { id: appId, displayName } }] }, { once: true }),
+
+    /** The apps granted access to one site, without their roles. Needs a SharePoint admin. @param {string} siteId @returns {Promise<any[]>} */
+    sitePermissions: (siteId) => http.list(`/sites/${siteId}/permissions`),
+
+    /** One app's access to a site, with its roles. @param {string} siteId @param {string} permissionId */
+    sitePermission: (siteId, permissionId) => http.get(`/sites/${siteId}/permissions/${permissionId}`),
+
+    /**
+     * Changes one app's role on a site.
+     * @param {string} siteId @param {string} permissionId @param {'read' | 'write'} role
+     */
+    updateSitePermission: (siteId, permissionId, role) => http.patch(`/sites/${siteId}/permissions/${permissionId}`, { roles: [role] }),
+
+    /** Takes back one app's access to a site. @param {string} siteId @param {string} permissionId */
+    deleteSitePermission: (siteId, permissionId) => http.del(`/sites/${siteId}/permissions/${permissionId}`),
   };
 }
 

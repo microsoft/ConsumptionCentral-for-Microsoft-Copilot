@@ -10,8 +10,9 @@ import { scheduleBody } from '../clients/fabric.js';
 import { secretMode } from '../config.js';
 import { HttpError } from '../http.js';
 import { commandLine } from '../launch.js';
-import { holdsOtherInstall, otherInstallIn, workspaceTaken } from '../other-installs.js';
+import { foreignInstall, foreignWorkspaceMessage, holdsOtherInstall, otherInstallIn, workspaceTaken } from '../other-installs.js';
 import { ENV, INSTALLER_TITLE, ITEM_PREFIX, LAKEHOUSE_NAME, PRODUCT_ID } from '../product.js';
+import { isPax } from '../target.js';
 import { prepareNotebook, serialiseNotebook } from '../transform/notebook.js';
 import { buildPipeline, PIPELINE_CHANGE, PIPELINE_VERSION } from '../transform/pipeline.js';
 import { askGithubToken, revokeHint } from './github.js';
@@ -259,7 +260,8 @@ export function clearPending(f, key) {
 /**
  * Whether the workspace an install record points at is gone, so the record is stale. Only a
  * definite answer counts: Fabric says it isn't there, or the record is for another tenant. A 403,
- * a network error or anything else returns null, and the record is used as it is.
+ * a network error or anything else returns null, and the record is used as it is. On the PAX
+ * route, only another tenant counts: its install makes a gone Power BI workspace again.
  * @param {{ config: import('../config.js').InstallConfig, fabric: { getWorkspace: (id: string) => Promise<any> }, tenantId?: string }} o
  * @returns {Promise<{ workspace: string, reason: 'not-found' | 'other-tenant' } | null>}
  */
@@ -268,6 +270,7 @@ export async function recordWorkspaceGone({ config, fabric, tenantId }) {
   if (!f?.workspaceId) return null;
   const workspace = f.workspaceName ?? f.workspaceId;
   if (config.tenantId && tenantId && config.tenantId.toLowerCase() !== tenantId.toLowerCase()) return { workspace, reason: 'other-tenant' };
+  if (isPax(config)) return null;
   try {
     await fabric.getWorkspace(f.workspaceId);
     return null;
@@ -284,6 +287,9 @@ export const staleRecordMessage = (gone) =>
   gone.reason === 'other-tenant'
     ? `The install record is for workspace "${gone.workspace}" in another tenant, not the one you signed in to.`
     : `This workspace no longer exists: "${gone.workspace}".`;
+
+/** For the PAX route's report, which the copied pax/ code reads from here. */
+export { foreignInstall, foreignWorkspaceMessage };
 
 /** @param {Ctx} ctx */
 export async function ensureWorkspace(ctx) {

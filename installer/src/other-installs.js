@@ -73,6 +73,19 @@ export async function otherInstallIn(api, workspaceId) {
 /** Whether another product's installer set up the workspace: today, Analytics Hub's. @param {OtherInstall} found */
 export const holdsOtherInstall = (found) => found.items.length > 0 || !!found.folder;
 
+/**
+ * Whether a workspace's items include an Analytics Hub install: an item its installer named, or one
+ * whose description names it. The PAX route checks the Power BI workspace it publishes the report to
+ * with this. It may see only the workspace's Power BI items, and no OneLake folders.
+ * @param {{ displayName?: string, description?: string }[]} items
+ */
+export const foreignInstall = (items) =>
+  named(items, ANALYTICS_HUB_ITEM).length > 0 || items.some((i) => /\banalytics hub\b/i.test(String(i.description ?? '')));
+
+/** Why the PAX route won't publish to a workspace that holds an Analytics Hub install. @param {string} workspace  Its name. */
+export const foreignWorkspaceMessage = (workspace) =>
+  `Workspace "${workspace}" holds an Analytics Hub install. ${PRODUCT_NAME} needs a workspace of its own: uninstalling Analytics Hub deletes its whole workspace. Choose another workspace or create a new one. To change that install, use its installer: ${ANALYTICS_HUB_URL}`;
+
 /** "a, b, c and 2 more" @param {string[]} names */
 function sample(names) {
   const shown = names.slice(0, 3);
