@@ -271,15 +271,17 @@ function buildCowork(metrics: MetricRow[], roster: RosterRow[]) {
 
 // ---------- Org and Group By ----------
 
+// PAX's Entra export spells three of these employeeOrgData_division, employeeOrgData_costCenter
+// and manager_displayName. The first alias a file has wins, so a division beats a company name.
 const ORG_FIELDS: [string, string[]][] = [
   ['Department', ['Department', 'dept', 'Organization', 'Organisation']],
-  ['Business Unit', ['BusinessUnit', 'division', 'segment', 'company']],
-  ['Cost Center', ['CostCenter', 'costcentre']],
+  ['Business Unit', ['BusinessUnit', 'division', 'employeeOrgData_division', 'segment', 'companyName', 'company']],
+  ['Cost Center', ['CostCenter', 'costcentre', 'employeeOrgData_costCenter']],
   ['Job Family', ['JobFamily', 'function', 'functiontype']],
   ['Job Title', ['JobTitle', 'title', 'role']],
   ['Country', ['Country', 'countryorregion', 'region']],
   ['City', ['City', 'officelocation', 'location']],
-  ['Manager', ['Manager', 'managername']],
+  ['Manager', ['Manager', 'managername', 'manager_displayName']],
 ]
 
 function readOrg(p: Parsed | undefined) {

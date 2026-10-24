@@ -136,6 +136,13 @@ jobs:
           python docs/scripts/check_refresh_time_cuts.py
           python docs/scripts/test_refresh_time_cuts.py
 
+      - name: Viva Direct reads its files through SourceFiles
+        run: |
+          # The installer swaps SourceFiles for the SharePoint form; after the
+          # swap nothing may read a local file, or the published model needs a gateway.
+          python docs/scripts/check_viva_direct_sources.py
+          python docs/scripts/test_viva_direct_sources.py
+
       - name: Azure notebook request regression tests
         run: python docs/scripts/test_azure_notebook_requests.py
 

@@ -38,6 +38,7 @@ import zipfile
 sys.dont_write_bytecode = True
 import fix_viva_query_org as fix
 from fix_org_upn_case import BUFFERED_NEW, BUFFERED_OLD
+from fix_viva_direct_sources import ORG_EDITS as PAX_EDITS
 
 # Every record in the template except the two model parts the patcher may
 # rewrite. All three shipping templates carry the same report layer, so this
@@ -346,15 +347,23 @@ def previous_sources(replacements):
              '        {{"userPrincipalName", "UserPrincipalName"}}),\n'),
         ],
     }
-    # The Org key fold (docs/scripts/fix_org_upn_case.py) is the newest
-    # revision, layered on top of the performance rewrite, so it has to come
-    # off first or none of the older blocks below will match.
+    # PAX's Entra aliases (docs/scripts/fix_viva_direct_sources.py) are the
+    # newest revision, so they come off first. The Org key fold
+    # (docs/scripts/fix_org_upn_case.py) is layered on top of the performance
+    # rewrite, so it comes off next or none of the older blocks below will match.
+    pax_inverses = {
+        "OrgNormalised": [(new, old) for old, new in reversed(PAX_EDITS)],
+    }
     fold_inverses = {
         "OrgNormalised": [(BUFFERED_NEW, BUFFERED_OLD)],
     }
     result = {}
     for name, blocks in inverses.items():
         text = replacements[name]
+        for new, old in pax_inverses.get(name, ()):
+            if text.count(new) != 1:
+                raise AssertionError(f"{name}: PAX fixture block must match exactly once")
+            text = text.replace(new, old, 1)
         for new, old in fold_inverses.get(name, ()):
             if text.count(new) != 1:
                 raise AssertionError(f"{name}: case-fold fixture block must match exactly once")

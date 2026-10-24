@@ -167,7 +167,12 @@ def check():
             else:
                 filename = "azureaispenddaily" if name == "AzureAiSpend" else "azureaitokensdaily"
                 assert "GetDataFile(" in query and f'"{filename}"' in query
-                assert "DataFolder" in expressions["DataFiles"]
+                files = m_tokens(expressions["DataFiles"])
+                if "SourceFiles" in expressions:
+                    # Viva Direct lists its files once, in SourceFiles, which reads DataFolder.
+                    assert "SourceFiles" in files, (label, "DataFiles does not read SourceFiles")
+                    files = m_tokens(expressions["SourceFiles"])
+                assert "DataFolder" in files, (label, "the data files do not come from DataFolder")
         assert "AzureAiDeployments" not in tables, "Update the documented inventory support"
         print(f"{label}: canonical Azure spend/metrics reader contracts match")
     print("Static contract check only; no M execution, Azure calls or Service refresh.")

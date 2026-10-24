@@ -15,7 +15,12 @@ let
         "policyname", "policylimit", "policyservicesincluded", "includedservices",
         "metricdate", "date", "week", "weekstart", "sessioncount",
         "spendingpolicylimit", "totalcopilotcreditsused", "creditsused", "userlimit", "planlimit",
-        "iscopilotlicensed", "standardtimezone", "timezone"
+        "iscopilotlicensed", "standardtimezone", "timezone",
+        // Per-person ids, dates and lists from a PAX (Entra) export. None is a useful
+        // Group By, and each would still cost a column in Org and Org Attribute Source.
+        "id", "employeeid", "onpremisesimmutableid", "givenname", "surname",
+        "employeehiredate", "createddatetime", "managermail", "assignedlicenses",
+        "proxyaddressesprimary", "proxyaddressesall", "proxyaddressescount"
     },
     Aliases = {
         {"DisplayName", {"displayname", "name", "fullname", "preferredname"}},
@@ -25,13 +30,23 @@ let
         {"JobFamily", {"jobfamily", "function", "functiontype", "jobfunction"}},
         {"City", {"city", "officelocation", "location"}},
         {"Country", {"country", "countryorregion", "region"}},
-        {"CostCenter", {"costcenter", "costcentre"}},
-        {"Manager", {"manager", "managername", "supervisor", "managerid", "managerupn", "manageruserprincipalname"}},
-        {"BusinessUnit", {"businessunit", "division", "segment", "companyname", "company"}}
+        // PAX spells these employeeOrgData_costCenter, manager_displayName and
+        // employeeOrgData_division. Earlier aliases win: a manager's name beats
+        // their id, and a division beats a company name.
+        {"CostCenter", {"costcenter", "costcentre", "employeeorgdatacostcenter"}},
+        {"Manager", {"manager", "managername", "managerdisplayname", "supervisor", "managerid", "managerupn", "manageruserprincipalname"}},
+        {"BusinessUnit", {"businessunit", "division", "employeeorgdatadivision", "segment", "companyname", "company"}}
     },
     Canonical = List.Transform(Aliases, each _{0}),
     Expected = {"UserPrincipalName"} & Canonical,
     Known = List.Combine(List.Transform(Aliases, each _{1})),
+    // PAX repeats five columns under AI-in-One's names: {copy, original}.
+    // A copy is dropped only when its original is in the same file.
+    Copies = {
+        {"username", "displayname"}, {"businessarealabel", "employeeorgdatadivision"},
+        {"companycodelabel", "companyname"}, {"costcentrelabel", "employeeorgdatacostcenter"},
+        {"countryofemployment", "country"}
+    },
     ColumnsFor = (columns as list, aliases as list) as list =>
         List.Combine(List.Transform(aliases, (a) => List.Select(columns, each Key(_) = a))),
     Ids = (row as record, columns as list) as list =>
@@ -115,9 +130,13 @@ let
         else
             let
                 Present = List.Buffer(Table.ColumnNames(src)),
+                PresentKeys = List.Buffer(List.Transform(Present, Key)),
+                Surplus = List.Buffer(List.Transform(
+                    List.Select(Copies, (pair) => List.Contains(PresentKeys, pair{1})), each _{0})),
                 IdentityColumns = List.Buffer(ColumnsFor(Present, IdAliases)),
                 Extras = List.Buffer(List.Select(Present, each
-                    not List.Contains(NotOrg, Key(_)) and not List.Contains(Known, Key(_)))),
+                    not List.Contains(NotOrg, Key(_)) and not List.Contains(Known, Key(_))
+                    and not List.Contains(Surplus, Key(_)))),
                 Keep = List.Buffer(Expected & Extras),
                 Bindings = List.Buffer(List.Transform(Aliases, (spec) =>
                     List.Buffer(List.Distinct(
