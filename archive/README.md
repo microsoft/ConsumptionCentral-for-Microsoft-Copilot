@@ -1,11 +1,19 @@
 # Archive
 
-Previous versions of the three templates, kept so a working copy is always
-recoverable and so changes between releases can be diffed.
+Routes that are no longer supported, and previous versions of the three templates, kept so a working
+copy is always recoverable and so changes between releases can be diffed.
 
-The current templates live in their numbered folders — `1. Local CSV`,
-`2. Fabric`, `3. Viva Direct`. **Start there.** These are here for reference
-only and are not maintained.
+The current report templates live in their numbered folders — `1. Local CSV`,
+`2. Fabric`, `3. Viva Direct`. For a new setup, start with [the app](../README.md#the-app).
+Everything here is for reference only and is not maintained.
+
+## Archived routes
+
+| Folder | Notes |
+|---|---|
+| [4. Power Automate + Dataverse](4.%20Power%20Automate%20%2B%20Dataverse/README.md) | Power Automate flows load the data into Dataverse, and the report reads it from there. Archived and unsupported: flows you already run keep working, but they get no fixes. |
+
+## Previous template versions
 
 | File | Notes |
 |---|---|

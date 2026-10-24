@@ -1,5 +1,5 @@
 <!-- impeccable:product-schema 1 -->
-# Consumption Central — App Edition
+# Consumption Central app
 
 ## Platform
 A web app that ships two ways: as a single self-contained HTML file that runs offline in Edge or Chrome, and as a Copilot **Managed App** (Copilot Managed Runtime). It is designed desktop first, for 1280–1600px, and works down to 390px.
@@ -8,7 +8,7 @@ A web app that ships two ways: as a single self-contained HTML file that runs of
 - **FinOps and finance owners.** They track what Copilot credits cost across products, reconcile against the bill, and plan next year's budget.
 - **Copilot, Copilot Studio and GitHub admins.** They decide where to trim: idle seats, oversized prepaid packs, runaway agents, under-used provisioned capacity.
 
-They know their own billing and are familiar with the Power BI edition. They open the app monthly, often while preparing a cost review.
+They know their own billing and are familiar with the Power BI report. They open the app monthly, often while preparing a cost review.
 
 ## Purpose
 This is an app version of the Consumption Central Power BI report. It keeps **the same information as the PBI**: every measure, chart and table, including the Cowork Tasks page, with the same DAX definitions.

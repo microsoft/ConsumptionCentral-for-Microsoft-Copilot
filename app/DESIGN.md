@@ -1,5 +1,5 @@
 ---
-name: Consumption Central (App Edition)
+name: Consumption Central app
 description: Calm FinOps workspace for Copilot credit consumption and cost, computed in the browser from CSV exports.
 colors:
   canvas: "#f3f6f5"
@@ -81,9 +81,9 @@ components:
     textColor: "{colors.ink-2}"
 ---
 
-# DESIGN.md: Consumption Central (App Edition)
+# DESIGN.md: Consumption Central app
 
-> Recorded from the shipped build in `src/index.css`, `src/ui/theme.ts` and the components in `src/ui/`. It shares its design kit with the AI in One app edition, so the two apps look and behave the same.
+> Recorded from the shipped build in `src/index.css`, `src/ui/theme.ts` and the components in `src/ui/`. It shares its design kit with the AI in One app, so the two apps look and behave the same.
 
 ## Overview
 

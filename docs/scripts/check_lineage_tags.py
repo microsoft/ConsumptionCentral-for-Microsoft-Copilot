@@ -79,7 +79,8 @@ def main() -> int:
     if len(sys.argv) > 1:
         templates = [Path(a) for a in sys.argv[1:]]
     else:
-        templates = sorted(REPO.glob("*/*.pbit"))
+        # Archived routes keep their template in a subfolder of archive/.
+        templates = sorted(set(REPO.glob("*/*.pbit")) | set(REPO.glob("archive/*/*.pbit")))
     if not templates:
         print("error: no templates found")
         return 1

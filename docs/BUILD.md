@@ -131,7 +131,7 @@ python docs\scripts\pbit_to_pbip.py "1. Local CSV\Consumption Central - Local CS
 python docs\scripts\cowork_tasks\apply.py .pbi-work\csv\csv.pbip --profile csv
 ```
 
-Repeat with `fabric`, `viva` and `dataverse`. Open, refresh and inspect each project in Desktop before exporting
+Repeat with `fabric`, `viva` and, for the archived Dataverse template, `dataverse`. Open, refresh and inspect each project in Desktop before exporting
 the corresponding PBIT. If a project is already open, apply external changes through Desktop's
 supported reload/apply path before saving; otherwise Desktop can overwrite them.
 
@@ -154,7 +154,8 @@ Create each reference before replacing its original PBIT. References are data-fr
 repair inputs, **not report deliverables**. They do not contain the new signed report page.
 The generator writes reproducible UTF-16LE JSON layouts accepted by `fix_pbit_defaults.py`;
 the regression suite exercises that repair reader against a generated reference.
-When initializing a Dataverse variant from Fabric, use the existing `Build-Dataverse-Template.py`,
+When initializing a Dataverse variant from Fabric, use the existing `Build-Dataverse-Template.py`
+in `archive\4. Power Automate + Dataverse\scripts` (the route is archived and unsupported),
 then give Dataverse its own native project Apply/export and regenerate `dataverse-schema.json`.
 For updates, expand the existing Dataverse PBIT and use the `dataverse` profile directly so its
 own source definitions are preserved. Do not publish, tag, deploy a table or change a tenant

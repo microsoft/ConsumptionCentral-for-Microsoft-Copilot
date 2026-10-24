@@ -1,4 +1,4 @@
-# Consumption Central: App Edition
+# Consumption Central app (preview)
 
 An app version of the Consumption Central Power BI report. It shows the same measures, charts and tables as the report, using the same DAX definitions. The layout is simpler: the 24 report pages become six tabs with short sub-views.
 
@@ -6,16 +6,16 @@ Everything runs in the browser. The app reads your CSV exports locally and calcu
 
 ## Get the app
 
-Neither option needs a Power BI licence or Node.js.
-
 | Option | What you do | Best for |
 |---|---|---|
-| **Open it on your PC** | Open [`download/Consumption-Central-App.html`](download/Consumption-Central-App.html), choose **Download raw file**, then open the downloaded file in Edge or Chrome. | Trying it, or one person looking at the numbers. Works offline. |
-| **Copilot Managed App** | See [Deploy](#as-a-copilot-managed-app). | Tenants that use Copilot Managed Apps. |
+| **Deploy it for your organisation** *(preview)* | Deploy it once as a Copilot Managed App with the `ms` command line, then share it. See [Deploy](#as-a-copilot-managed-app). | Teams. Viewers open it at [managedapps.cloud.microsoft](https://managedapps.cloud.microsoft) and need Power Apps Premium or Copilot Credits. |
+| **Open it on your PC** | Open [`download/Consumption-Central-App.html`](download/Consumption-Central-App.html), choose **Download raw file**, then open the downloaded file in Edge or Chrome. | Trying it, or one person looking at the numbers. Works offline, with no deploy and no licence. |
 
-The downloaded page opens with a labelled synthetic sample. Choose **Change data** and drop in your CSV exports (see [Data](#data)). The page is self-contained: the code, styles and sample are all inside it, and it makes no network calls.
+Neither option needs a Power BI licence. Only the person deploying needs Node.js and Git.
 
-On Microsoft Fabric, get Consumption Central through [Analytics Hub for Microsoft Copilot](https://github.com/microsoft/AnalyticsHub-Dashboard) instead.
+The app opens with a labelled synthetic sample. Choose **Change data** and drop in your CSV exports (see [Data](#data)). The downloaded page is self-contained: the code, styles and sample are all inside it, and it makes no network calls.
+
+On Microsoft Fabric, you can host the app as a [Fabric App](#as-a-fabric-app-alternative) instead, or get Consumption Central through [Analytics Hub for Microsoft Copilot](https://github.com/microsoft/AnalyticsHub-Dashboard).
 
 ## Tabs
 
@@ -33,7 +33,7 @@ How the controls work:
 - Each metric has an info button that shows its glossary definition.
 - Report parameters live under **Rates** in the header: credit rates, the prepaid pack balance, GitHub seat prices, included credits and the allowance change date.
 
-The Guide's **About this app edition** section lists the presentation changes from Power BI. For example, treemaps, funnels and donuts become ranked bars. The values are unchanged.
+The Guide's **About this app** section lists the presentation changes from Power BI. For example, treemaps, funnels and donuts become ranked bars. The values are unchanged.
 
 ## Data
 
@@ -73,6 +73,8 @@ npm run build:file  # build the single-file download to download/Consumption-Cen
 
 `download/Consumption-Central-App.html` is committed so people can download it. Whenever you change the app or the sample, run `npm run build:file` and commit the result. The single-file build inlines the code and styles, and embeds the sample CSVs listed in `public/sample/manifest.json`, gzipped.
 
+If Git converts line endings in your checkout (`core.autocrlf=true`, the Git for Windows default), run `npm run prepare-sample` before `npm run build:file`. It rewrites the sample with the line endings the committed page was built from. Otherwise every embedded sample file gains a carriage return and the download changes even when the app hasn't.
+
 The code is organised like this:
 - `src/data/`: CSV loading and header detection.
 - `src/metrics/`: the DAX port, one file per product.
@@ -83,24 +85,88 @@ The design system is in [DESIGN.md](DESIGN.md) and the product brief is in [PROD
 
 ## Deploy
 
-Most people should use [Get the app](#get-the-app). This section is for deploying from a clone of the repo. The same `npm run build` output runs in two hosts.
+To deploy, most people only need [Start here: the app](../README.md#the-app) in the main README. This section is the full reference: admin settings, licensing, each command, updates and troubleshooting. The same `npm run build` output runs in two hosts. The recommended host is a Copilot Managed App, and a Fabric App is the alternative.
 
-### As a Fabric App in a Fabric workspace
+### As a Copilot Managed App
 
-You need a workspace on Fabric capacity (F2 or larger, or a trial; *My workspace* won't work) and the **Fabric Apps (preview)** tenant setting turned on. The project config is [`rayfin/rayfin.yml`](rayfin/rayfin.yml). The app keeps no server-side data, so only auth and static hosting are on.
+*Preview.* Copilot Managed Runtime hosts the app in your tenant. Viewers open it from [managedapps.cloud.microsoft](https://managedapps.cloud.microsoft) with their work account. The app uses no connectors and stores nothing. It reads only the CSV files each viewer chooses, in that viewer's browser.
+
+#### Admin settings
+
+A Global Administrator or Power Platform Administrator turns on two settings once. Both are in the [Power Platform admin center](https://admin.powerplatform.microsoft.com) under **Copilot** › **Settings** › **Managed apps**, and both are off by default. Turn each one on for the environment group or environment you deploy to. Unless your organisation has set up its own environment routing, each maker deploys to a personal developer environment in the default environment group. If a group has a published rule for one of these settings, that rule overrides the setting on the group's environments, so change it on the group.
+
+| Setting | Why the app needs it |
+|---|---|
+| **Allow app creation with the Copilot Managed Runtime command line interface (CLI)** | You create and deploy the app with the `ms` CLI. |
+| **External artifacts in managed apps** | The CLI builds the app on your PC and uploads the result (`--repo none`), instead of building it in a platform-managed repo. |
+
+Microsoft's guide: [governance settings for Copilot Managed Runtime](https://learn.microsoft.com/en-us/microsoft-365/admin/manage/apps/governance).
+
+#### Licensing
+
+- **Deploying needs no licence.** The CLI creates, builds and deploys without one.
+- **Everyone who opens the app needs a Power Apps Premium licence or Copilot Credits.** That includes you. The Power Apps rights included with Microsoft 365 or Dynamics 365 don't count, and sharing the app doesn't license anyone. No Microsoft 365 Copilot licence is needed.
+- **Copilot Credits:** launching the app counts as an API call, at 0.1 credits each. Before people without Power Apps Premium can open it, an admin sets this up in the [Microsoft 365 admin center](https://admin.microsoft.com):
+  1. Turn on usage-based billing for Copilot Credits.
+  2. Create a spending policy for managed applications that includes the viewers or their groups.
+  3. Set credit allocations and per-user limits as needed.
+
+Microsoft's guide: [Copilot Managed Runtime licensing FAQ](https://learn.microsoft.com/en-us/microsoft-365/admin/manage/apps/licensing-faq).
+
+#### Commands
+
+You need [Node.js](https://nodejs.org) 24.11 or later and [Git](https://git-scm.com/downloads). The `ms` CLI (`@microsoft/managed-apps-cli`) is pinned in [`package.json`](package.json), so `npm ci` installs the tested version and `npx ms` runs it. Run the commands from this `app` folder, one at a time, in Command Prompt, PowerShell or a terminal. Pasting them all at once can feed later lines to an earlier command's prompts.
+
+```
+npm ci
+npx ms auth login
+npx ms app init -n "Consumption Central" --repo none -b ./dist -S "npm run build"
+npx ms app deploy
+npx ms app share alex@example.com,finance-team@example.com
+```
+
+1. `npm ci` installs the app's dependencies, including the CLI.
+2. `npx ms auth login` opens a browser to sign in. On a machine without a browser, add `--device-code` and enter the code it shows on another device.
+3. `npx ms app init` creates the app and writes `ms.config.json`, which holds your tenant's app and environment IDs. `--repo none` means you build the app yourself and upload the result. To use a specific environment, or if init times out looking one up, add `-e` followed by the environment ID.
+4. `npx ms app deploy` runs `npm run build` and uploads `dist/`. It waits until the deployment finishes.
+5. `npx ms app share` gives people access to open the app. Replace the example addresses with your viewers' work emails or group emails, separated by commas. Entra object IDs work too. To share with your whole organisation instead, run `npx ms app share link create`. It creates a link that gives anyone in your organisation who opens it the Microsoft App Reader role on the app.
+
+Viewers open [managedapps.cloud.microsoft](https://managedapps.cloud.microsoft), choose **Consumption Central**, then choose **Change data** and drop in their CSV exports (see [Data](#data)).
+
+`ms.config.json` is gitignored because it's specific to your tenant. Keep it: later deploys use it to update the same app.
+
+#### Update
+
+From this `app` folder:
+
+```
+git pull
+npm ci
+npx ms app deploy
+```
+
+#### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `npm` or `npx` won't run in PowerShell ("running scripts is disabled on this system") | Run the same commands in Command Prompt. |
+| The CLI won't create the app | An admin turns on **Allow app creation with the Copilot Managed Runtime command line interface (CLI)** (see [Admin settings](#admin-settings)). |
+| `npx ms app deploy` fails and tells you to contact an administrator | An admin turns on **External artifacts in managed apps** (see [Admin settings](#admin-settings)). |
+| `npx ms app init` times out looking up your environment | Add `-e` followed by the environment ID, from the environment's page in the Power Platform admin center. |
+| `npx ms app share` is refused | An admin checks the group's **Sharing** rule in the Microsoft 365 admin center, under **Apps** › **Settings** › **Environment groups**. |
+| A viewer you shared it with can't open the app | They need Power Apps Premium or Copilot Credits (see [Licensing](#licensing)). Sharing alone isn't enough. |
+| `npx ms` complains about the Node.js version | Install Node.js 24.11 or later. To check your version, run `node --version`. |
+
+<a id="as-a-fabric-app-in-a-fabric-workspace"></a>
+
+### As a Fabric App *(alternative)*
+
+Use this if you'd rather host the same app in a Fabric workspace. You need a workspace on Fabric capacity (F2 or larger, or a trial; *My workspace* won't work) and the **Fabric Apps (preview)** tenant setting turned on. The project config is [`rayfin/rayfin.yml`](rayfin/rayfin.yml). The app keeps no server-side data, so only auth and static hosting are on.
 
 ```powershell
+npm ci
 npx rayfin up --dry-run
 npx rayfin up --tenant <tenant-id> --workspace-id <workspace-id> -y
 ```
 
 It prints the item's portal link. People need access to the item (share it, or give them a workspace role) to open it. To update, run `npx rayfin up` again. The deploy state it writes (`rayfin/.deployments.json`, `rayfin/.env`) is gitignored.
-
-### As a Copilot Managed App
-
-You need the `ms` CLI, signed in to the target tenant. `ms app init` writes `ms.config.json` with your tenant's app and environment IDs. The file is gitignored, so each deployer runs it once.
-
-```powershell
-ms app init -n "Consumption Central" --repo none -b ./dist -S "npm run build"   # add -e <environment-id> if environment lookup times out
-ms app deploy
-```

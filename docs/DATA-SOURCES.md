@@ -262,7 +262,8 @@ treat `ServiceName` as an open list — Consumption Central groups by whatever v
 > `MCSMessages` is the entitlement id for Copilot Credits; the product rename did not change it.
 > Two paths use it instead of the CSV: the Fabric notebook
 > [`Ingest_Studio_Consumption.ipynb`](../2.%20Fabric/notebooks/Ingest_Studio_Consumption.ipynb) and the
-> flows in [4. Power Automate + Dataverse](../4.%20Power%20Automate%20%2B%20Dataverse).
+> flows in the archived, unsupported
+> [Power Automate + Dataverse](../archive/4.%20Power%20Automate%20%2B%20Dataverse/README.md) route.
 > [`Ingest_Studio.ipynb`](../2.%20Fabric/notebooks/Ingest_Studio.ipynb) can also read daily files a
 > flow saves from it (`READ_API_FILES`, off by default), but no flow in this repository saves them yet.
 >

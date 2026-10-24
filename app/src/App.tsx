@@ -133,7 +133,7 @@ export default function App() {
       <main id="main" className="main" tabIndex={-1}>
         <Page route={route} />
       </main>
-      <footer className="foot">Consumption Central App Edition. Everything is calculated in your browser and never leaves it.</footer>
+      <footer className="foot">Consumption Central app. Everything is calculated in your browser and never leaves it.</footer>
       <DataSourceDialog open={sheet === 'source'} onClose={() => setSheet(null)} />
       <SettingsSheet open={sheet === 'settings'} onClose={() => setSheet(null)} />
     </div>
