@@ -92,7 +92,7 @@ The pull request that added the route built it in steps, so each change from Val
 4. **The org file only.** The `userInfo` mode described below.
 5. **`3f26af1`.** A resumed load carries on exactly where it stopped.
 6. **Tests, wiring and packaging.** The runner's Python tests; the CLI, prerequisites and page, from `f0a2e04`; the exe and zip, from `6ea4f0e`; the JavaScript tests; the docs.
-7. **`521ab22`.** Each date window after the first starts a day early, to cover PAX's time-zone seams. The org file reads no dates, so it has no windows and no early day. It's a commit of its own, so it can be reverted on its own.
+7. **`521ab22`.** Each date window after the first starts a day early, to cover PAX's time-zone seams. The org file reads no dates, so it has no windows and no early day. It's a commit of its own, so it can be reverted on its own: its code and tests revert cleanly, and only this file's notes need editing by hand.
 8. **Checks before the upload.** The org file's UPN column, row and drop checks, and `run --accept-drop`.
 9. **The Viva questions.** The Viva Insights partition and query IDs, asked as the Fabric route asks them, and the prices under Advanced settings.
 
