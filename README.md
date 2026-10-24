@@ -153,9 +153,30 @@ default. Two are worth thinking about:
 
 ## The Fabric App *(alternative)*
 
-On Microsoft Fabric already? Host the same app in a Fabric workspace as a Fabric App, instead of a
-Copilot Managed App ([steps](app/README.md#as-a-fabric-app-in-a-fabric-workspace)), or have the
-report refresh on Fabric with the [2. Fabric](2.%20Fabric/) path.
+On Microsoft Fabric already, with the [2. Fabric](2.%20Fabric/) path's model published?
+**[`fabric-app/`](fabric-app/)** deploys Consumption Central into your Fabric workspace as a web app,
+in the same design. It reads your published semantic model live, as the person viewing it, so
+row-level security applies, and it keeps no copy of your data.
+
+Consumption Central on its own, from `fabric-app/` (Node.js 22.22+ or 24.15+):
+
+```powershell
+npm install
+npm run deploy:cc -- --workspace-uri "https://app.fabric.microsoft.com/groups/<workspace-id>/list"
+```
+
+Add `--dry-run` first to see which model it found without deploying. It needs a workspace on Fabric
+capacity and the **Fabric Apps (preview)** and **Semantic Model Execute Queries REST API** tenant
+settings.
+
+Have [ValueLens](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot) too? The same folder
+deploys a joined app with a product switcher (`npm run deploy:both`), or ValueLens alone
+(`npm run deploy:vl`). The joined app hides the tab of a product that isn't installed. The folder is
+kept identical in both repos. **[Fabric App details →](fabric-app/README.md)**
+
+No published model? Host the CSV app above in a Fabric workspace instead of as a Copilot Managed App
+([steps](app/README.md#as-a-fabric-app-in-a-fabric-workspace)), or have the report refresh on Fabric
+with the [2. Fabric](2.%20Fabric/) path.
 
 > **Also see [Analytics Hub for Microsoft Copilot](https://github.com/microsoft/AnalyticsHub-Dashboard):**
 > one installer sets up an app on Microsoft Fabric or Azure that shows Copilot and agent adoption,
@@ -184,6 +205,7 @@ report refresh on Fabric with the [2. Fabric](2.%20Fabric/) path.
 | [Every measure explained](docs/MEASURES.md) | Reference |
 | [Advanced setup](docs/ADVANCED-SETUP.md) | Scheduling, service principals, gateway refresh |
 | [The app](app/README.md) | Deploy, admin settings, licensing, tabs, data detection and development |
+| [Fabric App](fabric-app/README.md) | The app on your published Fabric model: deploy, share, settings |
 
 ---
 

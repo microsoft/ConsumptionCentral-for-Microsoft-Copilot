@@ -68,8 +68,13 @@ jobs:
               text = re.sub(r"[^\w\s-]", "", text)
               return re.sub(r"[ \t]", "-", text)
 
+          # Vendored coding-agent skills, kept byte-identical with ValueLens:
+          # agent instructions, not reader docs, so their links aren't ours to fix.
+          SKIP_SOURCES = (os.path.normpath("fabric-app/.agents") + os.sep,)
+
           docs = {}
           for dirpath, dirnames, filenames in os.walk("."):
+              dirnames[:] = [d for d in dirnames if d != "node_modules"]
               if ".git" in dirpath:
                   continue
               for fn in filenames:
@@ -83,6 +88,8 @@ jobs:
           ok = 0
 
           for path in docs:
+              if path.startswith(SKIP_SOURCES):
+                  continue
               text = open(path, encoding="utf-8").read()
               for label, target in LINK.findall(text):
                   if target.startswith(("http", "mailto:")):
