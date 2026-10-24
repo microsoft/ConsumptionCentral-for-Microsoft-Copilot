@@ -158,10 +158,13 @@ python ".\1. Local CSV\test_pull_azure_ai.py"
    the report rather than treating the absence of an error as success.
 7. In an isolated test output folder/Lakehouse, simulate denied access or a failed API call.
    Require a failed collection and blocked downstream refresh, not a successful empty/stale
-   report. Then test a genuinely successful empty collection so prior rows do not linger.
-8. Test a second run, retained zeros, schedule identity and output freshness. Avoid overlapping
-   writers and refresh during publication. After a partial batch write, rerun the whole
-   collection before refreshing. Record the scheduled run and Service refresh outcomes.
+   report. Then test a genuinely successful empty collection so prior rows for those days do
+   not linger.
+8. Test a second run, retained zeros, schedule identity and output freshness. In Fabric, a run
+   a day later must keep the rows older than its window, and a run with `DAYS` lowered must
+   keep the rows beyond the new window. Avoid overlapping writers and refresh during
+   publication. After a partial batch write, rerun the whole collection before refreshing.
+   Record the scheduled run and Service refresh outcomes.
 
 The current automation does not populate whole-solution spend, expanded deployment-health,
 or billing-reconciliation prototype feeds. The deployment inventory CSV is not a shipped

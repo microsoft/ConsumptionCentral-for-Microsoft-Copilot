@@ -31,9 +31,9 @@ from the application's Azure permissions. Validate the scheduled/Notebook activi
 identity, which can differ from the interactive user.
 
 Schedule a Fabric pipeline **Notebook activity → on success → semantic-model refresh**.
-The notebook overwrites `azure_ai_spend` and `azure_ai_tokens` for its rolling complete-UTC-day
-window, including legitimately empty results. All collection completes before writes, but the two
-table writes are not a single transaction. On any failure, stop downstream refresh and retry the
+The notebook replaces only its complete-UTC-day window in `azure_ai_spend` and `azure_ai_tokens`,
+including legitimately empty results, and keeps older rows. All collection completes before writes,
+but the writes are not a single transaction. On any failure, stop downstream refresh and retry the
 whole ingestion with bounded backoff; do not run overlapping writers. Verify initial SQL endpoint
 visibility before refreshing. Scheduling Power BI refresh alone does not ingest Azure data.
 
@@ -120,7 +120,7 @@ click download; it is someone downloading it and putting it somewhere the pipeli
 ## Re-runs are safe
 
 Re-run behavior is source-specific: some ingesters merge natural keys, while snapshot ingesters
-replace their tables. Azure AI replaces its rolling window, not a growing history archive.
+replace their tables. Azure AI replaces only its collection window and keeps older rows.
 Do not assume that keeping or pruning landing files is harmless for every ingester; check the
 matching notebook's load behavior before deleting source files.
 
