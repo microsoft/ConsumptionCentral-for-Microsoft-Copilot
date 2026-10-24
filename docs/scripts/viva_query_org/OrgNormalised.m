@@ -20,7 +20,10 @@ let
         // Group By, and each would still cost a column in Org and Org Attribute Source.
         "id", "employeeid", "onpremisesimmutableid", "givenname", "surname",
         "employeehiredate", "createddatetime", "managermail", "assignedlicenses",
-        "proxyaddressesprimary", "proxyaddressesall", "proxyaddressescount"
+        "proxyaddressesprimary", "proxyaddressesall", "proxyaddressescount",
+        // Nor are its postal code and account flags: they describe the directory
+        // entry, not where someone sits in the organisation.
+        "postalcode", "accountenabled", "onpremisessyncenabled", "externaluserstate"
     },
     Aliases = {
         {"DisplayName", {"displayname", "name", "fullname", "preferredname"}},

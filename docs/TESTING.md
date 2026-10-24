@@ -148,8 +148,12 @@ python ".\1. Local CSV\test_pull_azure_ai.py"
    average utilisation with Azure Monitor. Check one equivalent metric family, not both
    current and legacy aliases. Verify deployment names where supported and preserve real
    zero utilisation. Missing telemetry must remain missing.
-5. Inspect billing units before using `[Foundry Tokens (M)]` or cost-per-million. Do not use
-   those figures with provisioned-hour quantities, mixed units or mixed currencies.
+5. Check the Foundry meter names before using `[Foundry Tokens (M)]` or cost-per-million. The
+   measure divides per-1K token meters by 1,000, counts `1M Tokens` meters as they are and leaves
+   out meters that aren't tokens, so a token meter whose name lacks `Token` goes uncounted. For a
+   deployment with known activity, compare its billed tokens with the quantity and unit of measure
+   in Azure Cost Analysis for the same dates. Cost-per-million divides all Foundry cost, so filter
+   to token meters for a per-token rate, and never mix currencies.
    `[Total Tokens]` requires the model's input/output metric families; a standalone
    `TotalTokens` row does not populate it.
 6. Refresh each template you intend to deploy. Local CSV and Viva Direct need `DataFolder`;
@@ -310,6 +314,24 @@ The Cowork KPI card and Period slicer fixes (`fix_cowork_kpi_cards.py`) were che
 | Fresh Local CSV template | Keith loaded the shipped template against the sample data and confirmed both Cowork pages: Avg weekly active below Users, the four tiles with seat counts and the Period slicers on "Current period (4 weeks)" |
 
 Fabric, Viva Direct and Dataverse were not refreshed against live endpoints.
+
+### Cowork Tasks page rebuild verification record
+
+The Desktop rebuild that ships the restyled Cowork Tasks page from `report.py`, with Viva Direct's
+narrower Group By list and the limit and Foundry token measures (`fix_limit_and_token_measures.py`),
+was checked on 24 October 2026.
+
+| Check | Observed result |
+|---|---|
+| Native template construction | Local CSV, Fabric and Viva Direct were each prepared as a dedicated offline PBIP project, applied and exported in its own Desktop instance, then repaired from its own reference with `fix_pbit_defaults.py`. `archive/` was not rebuilt |
+| Package diff against the previous templates | Report: 13 Cowork Tasks parts and 2 "How to read — Cowork & Work IQ" parts, as `report.py` produces them. Model: the eight Cowork Task table descriptions from `model.py`; `UnappliedChanges` unchanged. SecurityBindings re-signed in all three; no offline markers |
+| Exported page against `report.py` | All 18 Cowork Tasks parts present; 9 differ only by Desktop's `$schema` 2.14.0 and `active` projection flag |
+| Preview types | Offline, Desktop stored Viva Direct's `SourceFiles` preview type as `Exception`. `fix_pbit_defaults.py` restored the reference's type in both model parts; the Cowork task contract now rejects any that remain |
+| Shipped spec replay | Every idempotent repair, including the Viva Direct sources, refresh-time cuts, Cowork KPI cards, Org query and limit and token measures, reports nothing outstanding. Every `checks.yml` step passes |
+| Fresh Local CSV template | Opened in a new Desktop instance with the neutral parameter defaults, then refreshed against `1. Local CSV/sample-data`. Azure: Spend & Consumption and Cowork / WorkIQ: Tasks rendered; Tasks showed 10 tasks, 38 credits, 3.80 credits per task, 3.9 expert-equivalent hours and 70.0% valuation coverage |
+
+Only those two Local CSV pages were viewed. Fabric and Viva Direct were not refreshed against live
+endpoints.
 
 ## Things we know we cannot test here
 

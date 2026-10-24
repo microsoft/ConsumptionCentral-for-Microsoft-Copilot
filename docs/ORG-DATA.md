@@ -114,7 +114,7 @@ this:
 | `employeeOrgData_costCenter` | Cost Center |
 | `employeeOrgData_division`, then `companyName` | Business Unit |
 | `manager_displayName`, then the manager's id or UPN | Manager |
-| `id`, `employeeId`, `onPremisesImmutableId`, `givenName`, `surname`, `employeeHireDate`, `createdDateTime`, `assignedLicenses`, `proxyAddresses_*`, `manager_mail` | Ignored |
+| `id`, `employeeId`, `onPremisesImmutableId`, `givenName`, `surname`, `employeeHireDate`, `createdDateTime`, `assignedLicenses`, `proxyAddresses_*`, `manager_mail`, `postalCode`, `accountEnabled`, `onPremisesSyncEnabled`, `externalUserState` | Ignored |
 | `UserName`, `BusinessAreaLabel`, `CompanyCodeLabel`, `CostCentreLabel`, `CountryofEmployment` | Ignored: copies of the columns above, kept for AI-in-One |
 | Anything else, such as `employeeType`, `state` or `usageLocation` | A Group By of its own, once at least 5% of people have a value |
 

@@ -71,6 +71,8 @@ PROFILES = {
                 "90cb52b38541fb2bb268d48e492af230aaf40deefb4e503fafca152126b56ee6",
                 # Before PAX's Entra aliases (docs/scripts/fix_viva_direct_sources.py).
                 "04e88e974a8778603ac3c93944e2cf4847c1b6b48cd668ca0c5c3421ed516214",
+                # With them, before PAX's postal code and account flags were dropped.
+                "300423f0a26c26a5a299c3887d21c2145103c4d60d05205aeb647e79c0c9de8d",
             ),
         },
     },

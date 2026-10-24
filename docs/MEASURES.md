@@ -826,8 +826,8 @@ loaded). The gate sits on the base measures, so everything derived from them inh
 | `Foundry Cost` | Spend filtered to the exact service name `Foundry Models`; not all AI services or whole-solution Azure spend. |
 | `Foundry Input Cost` / `Foundry Output Cost` | Split by token direction, parsed from the meter name |
 | `Foundry Output Cost Share %` | Output tokens cost several times input, so a rising share explains a rising bill that token counts alone would not |
-| `Foundry Tokens (M)` | Sums billing `UsageQuantity` without conversion. Only means millions of tokens when every selected quantity uses that unit; not valid for provisioned hours or mixed units. |
-| `Foundry Cost per 1M Tokens` | Cost divided by that billing quantity. Only a per-million-token rate for a compatible token-meter selection in one currency. |
+| `Foundry Tokens (M)` | Millions of tokens billed. Each row's `UsageQuantity` is converted by its meter's name: meters that say `1M Tokens` count as they are, other token meters are billed per 1K tokens and are divided by 1,000, and meters that aren't tokens (pages, images, provisioned hours) are left out. |
+| `Foundry Cost per 1M Tokens` | `Foundry Cost` divided by `Foundry Tokens (M)`. The cost still includes meters that aren't tokens, so it's only a per-million-token rate for a selection of token meters in one currency. |
 | `Foundry Days Observed` | Days with spend inside the selected window |
 | `Foundry Daily Run Rate` / `Foundry Cost /mo` | Run rate, and that rate over 30 days |
 | `Foundry Billing Period` | The dates the page currently covers |

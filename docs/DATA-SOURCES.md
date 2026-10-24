@@ -483,11 +483,13 @@ produce these tables. The notebook also writes Copilot Studio and Cowork pay-as-
 - `[Foundry Cost]` filters specifically to `ServiceName = "Foundry Models"`. The collectors
   can also return legacy/other AI services and Studio billing rows; these are not all
   included in that card. Do not relabel service names merely to force them into its total.
-- `[Foundry Tokens (M)]` sums billing `UsageQuantity` without unit conversion.
-  **Only interpret it and cost-per-million as token metrics when the selected meters'
-  quantities are all in millions of tokens.** Provisioned hours, other units and mixed
-  billing units do not meet that condition. The current readers do not retain a unit
-  column, so adding one to a CSV alone cannot fix this measure.
+- `[Foundry Tokens (M)]` converts each billing row by its meter's name, because Azure bills
+  older token meters per 1K tokens and newer ones per 1M (their names say `1M Tokens`).
+  Per-1K quantities are divided by 1,000, and meters that aren't tokens (pages, images,
+  provisioned hours) are left out. A token meter whose name doesn't say `Token` would be
+  left out too, so check the meter names in your feed.
+  **`[Foundry Cost per 1M Tokens]` divides all Foundry cost by that count**, including the cost
+  of meters that aren't tokens. Filter to token meters before reading it as a per-million-token rate.
 - Costs have **no currency conversion**. Keep each report's Azure feed in one currency,
   or explicitly filter the model to one currency before aggregating; do not combine
   currencies because a visual happens to display a dollar symbol.

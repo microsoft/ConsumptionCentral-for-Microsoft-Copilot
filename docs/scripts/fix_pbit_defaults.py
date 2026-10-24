@@ -46,6 +46,8 @@ PARTS = (SCHEMA, UNAPPLIED)
 MARKER = "IsParameterQuery=true"
 SEPARATOR = " meta "
 NULL = "null"
+RESULT_TYPE = "PBI_ResultType"
+FAILED = "Exception"
 
 # Desktop writes DataModelSchema indented with CRLF and UnappliedChanges
 # compact; the layout is confirmed against the original bytes before use.
@@ -107,8 +109,8 @@ def value_of(text, name, label):
     return text.split(SEPARATOR, 1)[0].strip()
 
 
-def reference_schema(path, reference):
-    """The decoded DataModelSchema to restore from."""
+def reference_parts(path, reference):
+    """The decoded DataModelSchema and UnappliedChanges to restore from."""
     if reference is None:
         relative = path.relative_to(ROOT).as_posix()
         result = subprocess.run(["git", "-C", str(ROOT), "show", f"HEAD:{relative}"],
@@ -119,8 +121,13 @@ def reference_schema(path, reference):
     else:
         raw = Path(reference).read_bytes()
 
-    schema, _ = layout_for(Package(raw, parts=PARTS).contents[SCHEMA], SCHEMA)
-    return schema
+    package = Package(raw, parts=PARTS)
+    return tuple(layout_for(package.contents[part], part)[0] for part in PARTS)
+
+
+def reference_schema(path, reference):
+    """The decoded DataModelSchema to restore from."""
+    return reference_parts(path, reference)[0]
 
 
 def reference_defaults(schema):
@@ -238,12 +245,43 @@ def patch_query_bodies(unapplied, source):
     return changed
 
 
+def result_types(value):
+    """Each stored preview type in a decoded part, as (name, holder, key)."""
+    if "model" in value:
+        for expression in value["model"].get("expressions", []):
+            for annotation in expression.get("annotations", []):
+                if annotation.get("name") == RESULT_TYPE:
+                    yield expression["name"], annotation, "value"
+    else:
+        for query in value.get("queries", []):
+            if "resultType" in query:
+                yield query["name"], query, "resultType"
+
+
+def patch_result_types(value, source):
+    """Restore preview types that an offline evaluation stored as Exception.
+
+    Desktop stores, in both model parts, the type each query last evaluated
+    to. An offline export evaluates without the real sources, so a query that
+    still reads one - Viva Direct's SourceFiles lists DataFolder - is stored
+    as Exception. That is not a modelling change, so the reference's type
+    wins; any other type Desktop stored is kept.
+    """
+    wanted = {name: holder[key] for name, holder, key in result_types(source)}
+    changed = []
+    for name, holder, key in result_types(value):
+        if holder[key] == FAILED and wanted.get(name, FAILED) != FAILED:
+            holder[key] = wanted[name]
+            changed.append(name)
+    return changed
+
+
 def patch(path, reference=None, dry_run=False):
     path = Path(path).resolve()
     require(path.is_file(), f"Source does not exist: {path}")
     raw = path.read_bytes()
     original = Package(raw, parts=PARTS)
-    source = reference_schema(path, reference)
+    source, source_unapplied = reference_parts(path, reference)
     defaults = reference_defaults(source)
 
     schema, encode_schema = layout_for(original.contents[SCHEMA], SCHEMA)
@@ -254,6 +292,8 @@ def patch(path, reference=None, dry_run=False):
     tables = patch_table_descriptions(schema, source)
     in_unapplied = patch_unapplied(unapplied, defaults)
     query_bodies = patch_query_bodies(unapplied, source)
+    schema_types = patch_result_types(schema, source)
+    query_types = patch_result_types(unapplied, source_unapplied)
 
     print(f"\n{path.name}")
     print(f"  {SCHEMA}: {len(in_schema)} parameters restored")
@@ -264,8 +304,12 @@ def patch(path, reference=None, dry_run=False):
         print(f"  {SCHEMA}: {name} table description restored")
     for name in query_bodies:
         print(f"  {UNAPPLIED}: {name} body synchronized")
+    for name in schema_types:
+        print(f"  {SCHEMA}: {name} preview type restored")
+    for name in query_types:
+        print(f"  {UNAPPLIED}: {name} preview type restored")
 
-    if not in_schema and not in_unapplied and not bodies and not tables and not query_bodies:
+    if not any((in_schema, in_unapplied, bodies, tables, query_bodies, schema_types, query_types)):
         print("  already at shipping defaults; left byte-for-byte unchanged")
         return 0
     require(sorted(in_schema) == sorted(in_unapplied),

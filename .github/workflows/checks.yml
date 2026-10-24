@@ -143,6 +143,11 @@ jobs:
           python docs/scripts/check_refresh_time_cuts.py
           python docs/scripts/test_refresh_time_cuts.py
 
+      - name: Limit and Foundry token measures match Analytics Hub
+        run: |
+          python docs/scripts/check_limit_and_token_measures.py
+          python docs/scripts/test_limit_and_token_measures.py
+
       - name: Viva Direct reads its files through SourceFiles
         run: |
           # The installer swaps SourceFiles for the SharePoint form; after the
