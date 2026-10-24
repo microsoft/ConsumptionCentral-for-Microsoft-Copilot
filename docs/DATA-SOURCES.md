@@ -502,8 +502,8 @@ yet. Columns: [data dictionary](../2.%20Fabric/docs/DATA-DICTIONARY.md#azure-tab
 
 Spend and Monitor data can arrive at different times and cover different available histories.
 Start with a short window, reconcile the same dates, service filters and currency in Azure,
-then increase the collection window. The Python collector keeps a rolling snapshot, not a
-permanent archive; the Fabric notebook replaces only its window and keeps older rows.
+then increase the collection window. The Python collector and the Fabric notebook both replace
+only their window and keep older rows, so history builds up from run to run.
 
 ### Where — spend
 

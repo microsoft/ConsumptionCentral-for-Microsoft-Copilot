@@ -52,13 +52,19 @@ python ".\1. Local CSV\pull_azure_ai.py" "C:\Consumption Central\Data" --subscri
 if ($LASTEXITCODE -ne 0) { throw "Azure collection failed; do not refresh Power BI." }
 ```
 
-`--days` accepts 1–90 complete UTC days before today (default 90). After accepting the first short
-run, choose the desired rolling window. `python pull_azure_ai.py <folder>` still works; without
-`--subscription` it uses the current Azure CLI account subscription. Run with `--help` for the full
-command reference.
+`--days` accepts 1–90 complete UTC days before today (default 90). Each run reads those days again
+and replaces only their rows in `AzureAiSpendDaily.csv` and `AzureAiTokensDaily.csv`; older rows
+stay, so history builds up from run to run. `AzureAiDeployments.csv` is the current inventory and
+is replaced whole. After accepting the first short run, choose how many days each run reads again.
+`python pull_azure_ai.py <folder>` still works; without `--subscription` it uses the current Azure
+CLI account subscription. Run with `--help` for the full command reference.
 
 Keep the folder dedicated to the selected subscription. Do not mix sample Azure files, old renamed
-copies, or output from another subscription into the same folder.
+copies, or output from another subscription into the same folder. The collector keeps every row
+older than its window, so sample or other-subscription rows already in the spend or token CSV
+would stay. To start over, for example after pointing the collector at another subscription,
+delete those two CSVs before the next run. A stored CSV that can't be read fails the run before
+anything is published: fix the file, or delete it to start it again.
 
 | File | Shipped template usage |
 |---|---|
@@ -90,8 +96,9 @@ immediately. Authentication and validation errors are not retried.
 
 The output files form one collection batch. Avoid refresh while files are being published:
 per-file replacement is not a transaction across the whole batch. After any interrupted
-publication, rerun collection successfully before refreshing. All queries must succeed before
-publication begins. A successful empty result writes headers rather than retaining stale rows.
+publication, rerun collection successfully before refreshing. All queries must succeed, and the
+stored spend and token CSVs must be readable, before publication begins. A successful empty
+result still replaces the window's days, so no stale rows linger for them; older rows stay.
 Real numeric zero metrics are kept; missing telemetry is not converted to zero.
 
 Power BI Desktop does not provide unattended refresh of an open local report. For Power BI Service,

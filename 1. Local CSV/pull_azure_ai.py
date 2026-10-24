@@ -11,7 +11,11 @@ metrics and deployment read permissions. Schedule daily after UTC midnight and
 refresh Power BI ONLY after exit code 0. Days are complete UTC days, not today.
 All queries and validation precede publication. Each CSV replacement is atomic,
 but the three replacements are NOT a transaction; serialize runs and readers.
-Historical windows replace rather than append; costs can arrive late.
+Each run replaces its window's days in the spend and token CSVs and keeps the
+older rows, since costs can arrive late and a rerun must not drop history.
+AzureAiDeployments.csv is the current inventory and is replaced whole. A stored
+CSV that can't be read is an error, not an empty file: nothing is published, so
+fix it, or delete it to start it again.
 """
 
 import argparse
@@ -24,7 +28,7 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import UUID, uuid4
@@ -452,6 +456,87 @@ def collect(client, subscription, start, end):
     }
 
 
+# The date column from which a run replaces each daily CSV's rows; older rows are kept.
+# AzureAiDeployments.csv is the current inventory, so it's replaced whole.
+RELOAD = {"AzureAiSpendDaily.csv": "UsageDate", "AzureAiTokensDaily.csv": "Date"}
+
+
+def as_day(value):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    raw = str(value or "")
+    for pattern in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(raw[:10] if "-" in raw else raw, pattern).date()
+        except ValueError:
+            continue
+    return None
+
+
+def stored_rows(path, headers, column):
+    """A published CSV's rows, keyed by `headers` (a column the file lacks is blank).
+
+    A missing file has no rows. A file that can't be read, or whose `column` holds something
+    other than a date, raises CollectionError: counting it as empty would drop its history.
+    """
+    path = Path(path)
+    try:
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            reader = csv.DictReader(handle)
+            if not reader.fieldnames:
+                return []
+            if column not in reader.fieldnames:
+                raise CollectionError(f"{path.name} has no {column} column")
+            rows = []
+            for row in reader:
+                if None in row or None in row.values():
+                    raise CollectionError(
+                        f"{path.name} line {reader.line_num} has the wrong number of fields")
+                if row[column].strip() and as_day(row[column]) is None:
+                    raise CollectionError(f"{path.name} line {reader.line_num}: {column} {row[column]!r} "
+                                          "isn't a yyyy-mm-dd date")
+                rows.append({h: row.get(h, "") for h in headers})
+            return rows
+    except FileNotFoundError:
+        return []
+    except (OSError, UnicodeDecodeError, csv.Error) as exc:
+        raise CollectionError(f"{path.name} can't be read ({exc})") from exc
+
+
+def keep_older(outdir, datasets, start):
+    """Adds each daily CSV's stored rows from before the window to its new rows, in `datasets`.
+
+    The new rows replace a CSV's stored rows from `start` on, and stored rows with no date;
+    new rows before `start` are dropped. A stored CSV that can't be read raises, before
+    anything is published. Returns the number of older rows kept for each CSV.
+    """
+    kept = {}
+    for filename, column in RELOAD.items():
+        if filename not in datasets:
+            continue
+        headers, rows = datasets[filename]
+        try:
+            stored = stored_rows(Path(outdir) / filename, headers, column)
+        except CollectionError as exc:
+            raise CollectionError(f"{exc}; nothing was published. Fix the file, or delete it "
+                                  "to start it again, then rerun.") from exc
+        older = []
+        for row in stored:
+            day = as_day(row[column])
+            if day is not None and day < start:
+                older.append(row)
+        newer = []
+        for row in rows:
+            day = as_day(row[column])
+            if day is None or day >= start:
+                newer.append(row)
+        datasets[filename] = (headers, older + newer)
+        kept[filename] = len(older)
+    return kept
+
+
 def publish(outdir, datasets):
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -519,9 +604,11 @@ def main(argv=None):
         start = end - timedelta(days=args.days)
         print(f"Subscription {subscription}; UTC window [{start}, {end})")
         datasets = collect(client, subscription, start, end)
+        kept = keep_older(args.outdir, datasets, start)
         publish(args.outdir, datasets)
         for filename, (_, rows) in datasets.items():
-            print(f"Wrote {filename}: {len(rows)} rows")
+            older = kept.get(filename, 0)
+            print(f"Wrote {filename}: {len(rows)} rows" + (f" ({older} older rows kept)" if older else ""))
         print("Success. Per-file atomic replacements; not a multi-file transaction.")
         return 0
     except (CollectionError, OSError, ValueError, TypeError, KeyError,
