@@ -8,13 +8,17 @@ import { APP_ROLES, CONSENT_ROLES } from '../../clients/graph.js';
 import { MODEL_NAME } from '../../config.js';
 import { ADMIN_STEPS, LINKS } from '../../managed-app/errors.js';
 import { APP_NAME, dataHint, NOT_READY_NAMES, THE_APP } from '../../managed-app/flow.js';
+import { askPrices, describePrices } from '../../prices.js';
 import { PRODUCT } from '../../product.js';
 import { copilotSeats, seatCount } from '../../seats.js';
 import { appName, PAX_AGENT365_PERMISSIONS, paxHostProblem, requiredPermissions } from '../../target.js';
+import { isVivaId } from '../../transform/dataflow.js';
+import { loadTemplateModel } from '../../transform/model.js';
 import { c } from '../../ui.js';
 import { accessReview, planAccess, VIEWER_GROUP_NAME } from '../access.js';
 import { askAdvanced, asksAdvanced } from '../advanced.js';
 import { foreignInstall, foreignWorkspaceMessage } from '../fabric.js';
+import { VIVA_QUERY_GUIDE, vivaOn } from '../next-steps.js';
 import { askAppId, askMoreHistory, blockedSettings, HISTORY_CHOICES, keepAwake, planAdminPack, PRICING, reloadLine, uniqueName, validateTime } from '../plan.js';
 import { checkHost, paxHostOf, PAX_RELEASE, secretStored, SEED_DAYS, TASK_AT, userInfoMode } from './local.js';
 import { refreshTimes, workspaceItems } from './publish.js';
@@ -190,10 +194,45 @@ async function chooseWorkspace(ctx, askName) {
 }
 
 /**
+ * Asks for the Viva Insights query the report reads Cowork credits from, as the Fabric route asks
+ * for the one its Dataflow reads. Both IDs or neither: a blank one forgets both, so the Done page
+ * keeps the step that asks a Viva Insights analyst for the query.
+ * @param {Ctx} ctx
+ */
+async function askVivaQuery(ctx) {
+  const { ui, config } = ctx;
+  const cc = config.consumption;
+  ui.heading('Viva Insights');
+  ui.info(
+    'The report reads Cowork and Work IQ credits from a Viva Insights query, through Power BI\'s Viva Insights connector. A Viva Insights analyst (someone with the Insights Analyst role) builds it in Viva Insights > Create analysis > Create custom query > Consumption query, with Auto-refresh on; then, in Analysis results, the link icon copies its partition and query IDs.',
+  );
+  ui.note(`Guide: ${VIVA_QUERY_GUIDE}`);
+  const guid = 'It looks like 00000000-0000-0000-0000-000000000000.';
+  const validate = (/** @type {string} */ v) => !v.trim() || isVivaId(v) || guid;
+  const tenant = config.tenantId ?? ctx.user?.tenantId;
+  const partition = (
+    await ui.input('Viva Insights partition ID (usually your tenant ID). Leave blank if you don\'t have the query yet.', {
+      default: cc.vivaPartition ?? (isVivaId(tenant) ? tenant : ''),
+      validate,
+    })
+  ).trim();
+  const query = partition ? (await ui.input('Viva Insights query ID. Leave blank if you don\'t have it yet.', { default: cc.vivaQuery ?? '', validate })).trim() : '';
+  if (partition && query) {
+    cc.vivaPartition = partition;
+    cc.vivaQuery = query;
+    ui.ok(`The report reads Cowork credits from Viva Insights query ${query}`);
+    return;
+  }
+  delete cc.vivaPartition;
+  delete cc.vivaQuery;
+  ui.note('Until the report has the query, its Cowork pages are blank. The Done page says how to get it.');
+}
+
+/**
  * The PAX route's questions. With a section, only that one, for Repair or change.
  * @param {Ctx} ctx
  * @param {PaxPreflight} pre
- * @param {string} [section]  data, placement, access, identity or schedule.
+ * @param {string} [section]  data, placement, access, sources, identity or schedule.
  */
 export async function paxPlan(ctx, pre, section) {
   const { ui, config, sources } = ctx;
@@ -209,10 +248,10 @@ export async function paxPlan(ctx, pre, section) {
       ui.info(
         `The org file, ${PRODUCT.pax.files.users}: your users and their departments, from Entra ID. PAX (the Portable Audit eXporter) reads them on this PC each day, and each run replaces the file whole. The report reads the rest through its own connectors.`,
       );
-      if (!section) await askAdvanced(ctx, 'who can view, the new workspace\'s name and when the refresh runs');
+      if (!section) await askAdvanced(ctx, 'who can view, the new workspace\'s name, your prices and when the refresh runs');
     } else {
       ui.info(`Copilot interactions, from the Purview audit log, and users, from Entra ID. PAX (the Portable Audit eXporter) reads them on this PC each day.`);
-      if (!section) await askAdvanced(ctx, 'the Agent 365 file, who can view, the new workspace\'s name, the first load\'s history and when the refresh runs');
+      if (!section) await askAdvanced(ctx, 'the Agent 365 file, who can view, the new workspace\'s name, your prices, the first load\'s history and when the refresh runs');
       if (advanced()) {
         ui.note(`The Agent 365 file lists your tenant's agents. It needs two more Microsoft Graph permissions: ${PAX_AGENT365_PERMISSIONS.join(' and ')}.`);
         pax.agent365 = await ui.confirm('Also collect the Agent 365 file?', !!pax.agent365);
@@ -255,6 +294,13 @@ export async function paxPlan(ctx, pre, section) {
 
   if (editing('access')) {
     if (sm.enabled || paxAppWanted(ctx)) await planAccess(ctx);
+  }
+
+  // The report's sources: the Viva Insights query and, behind Advanced settings, the prices. The app
+  // reads neither, so there's nothing to ask without the report.
+  if (editing('sources') && sm.enabled && sources.paxModelFile) {
+    await askVivaQuery(ctx);
+    if (advanced()) await askPrices(ctx, loadTemplateModel(sources.paxModelFile), 'vivaDirect');
   }
 
   if (editing('identity')) {
@@ -471,6 +517,8 @@ export async function confirmPaxPlan(ctx, pre) {
   ui.info(`Entra app:   ${config.app.appId ? config.app.appId : `${appName(config)} ${isNew}`}`);
   if (sm.enabled) {
     ui.info(`Power BI:    ${sm.name ?? PRODUCT.pax.model} in ${f.workspaceName ?? f.workspaceId ?? PRODUCT.pax.workspace} ${f.workspaceId ? '' : c.dim('(new workspace)')}`.trimEnd());
+    ui.info(`Cowork:      ${vivaOn(config) ? `Viva Insights query ${config.consumption.vivaQuery}` : c.dim('no Viva Insights query yet: the Done page says how to get one')}`);
+    ui.info(`Prices:      ${describePrices(config.prices, 'vivaDirect')}`);
   }
   ui.info(`App:         ${paxAppWanted(ctx) ? `${APP_NAME} ${config.managedApp?.appId ? '' : isNew}`.trimEnd() : c.dim('not deployed')}`);
   if (ctx.runFirstLoad) ui.info(`First load:  ${userInfoMode() ? 'the org file' : `${config.pax?.seedDays ?? SEED_DAYS} days of history`}, straight after setup`);

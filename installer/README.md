@@ -464,9 +464,10 @@ The **Prerequisites** panel (`prereqs --target pax` in the terminal) checks most
 
 The questions come in this order: **What it collects** (with **Change the advanced settings?**),
 the **SharePoint folder address**, the **Power BI workspace for the report**, **Deploy the
-Consumption Central app?** and **App registration**. The advanced settings add who can view, the
-new workspace's name, when the refresh runs and whether the first load runs straight after setup.
-There's no Fabric, price or history question.
+Consumption Central app?**, the **Viva Insights partition ID** and **query ID**, and **App
+registration**. The advanced settings add who can view, the new workspace's name, your
+[prices](#prices), when the refresh runs and whether the first load runs straight after setup.
+There's no Fabric or history question.
 
 ### Checks before it changes anything
 
@@ -591,14 +592,19 @@ Done page has **Ask for the app's access to the SharePoint site**, with a messag
   or **Stop and resume later**. If you stop, the Done page has
   **Publish the report from Power BI Desktop**. Desktop never replaces a model the installer
   didn't publish.
-- **Viva Insights.** The report reads Cowork credits through a Viva Insights query. Give the
-  installer its IDs with `install --viva-partition <id> --viva-query <id>`. Without them, the
-  Done page has **Ask a Viva Insights analyst for the Cowork credits query**, with a message to
-  send, and the Cowork pages are blank until you run the installer again with them.
-- **Prices.** This route doesn't ask for them. The report starts with the template's, or with the
-  install record's `prices` if it has them. A price changed in Power BI goes back to that when the
-  installer next updates the model, such as for a new template or another folder. See
-  [Commercial terms](../docs/COMMERCIAL-TERMS.md).
+- **Viva Insights.** The report reads Cowork credits through a Viva Insights query. The installer
+  asks for its partition ID, with your tenant ID as the default, and its query ID;
+  `install --viva-partition <id> --viva-query <id>` gives them in advance. Both are optional, and
+  it keeps both or neither. Leave them blank and the Done page has **Ask a Viva Insights analyst
+  for the Cowork credits query**, with a message to send, and the Cowork pages are blank until you
+  run the installer again and enter them. Running it again offers the saved IDs, and a blank
+  answer forgets them.
+- **Prices.** Under [Advanced settings](#advanced-settings), the installer asks the same
+  [price questions](#prices) as on the Fabric route, and sets the Viva Direct template's
+  parameters for each (`src/prices.js` lists them). Otherwise the report starts with the
+  template's, or with the install record's `prices` if it has them. A price changed in Power BI
+  goes back to that when the installer next updates the model, such as for a new template or
+  another folder. See [Commercial terms](../docs/COMMERCIAL-TERMS.md).
 
 **Sign the model in.** Once, after publishing, the model needs a sign-in to read the folder. The
 installer shows the steps: in the workspace, open the model's settings, then

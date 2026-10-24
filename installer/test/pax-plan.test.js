@@ -7,6 +7,7 @@ import { after, test } from 'node:test';
 import { emptyConfig } from '../src/config.js';
 import { THE_APP } from '../src/managed-app/flow.js';
 import { PRODUCT } from '../src/product.js';
+import { nextSteps, VIVA_QUERY_GUIDE } from '../src/steps/next-steps.js';
 import { PWSH_INSTALL, PYTHON_INSTALL, TASK_AT } from '../src/steps/pax/local.js';
 import { confirmPaxPlan, paxAppWanted, paxCollected, paxCollectedLabels, paxPlan, paxPlanReview, paxPreflight } from '../src/steps/pax/plan.js';
 import { describeFolder } from '../src/steps/pax/site.js';
@@ -22,8 +23,14 @@ const ADVANCED_Q = 'Change the advanced settings?';
 const FOLDER_Q = 'SharePoint folder address';
 const WORKSPACE_Q = 'Power BI workspace for the report';
 const DEPLOY_Q = `Deploy ${THE_APP}?`;
+const PARTITION_Q = 'Viva Insights partition ID (usually your tenant ID). Leave blank if you don\'t have the query yet.';
+const QUERY_Q = 'Viva Insights query ID. Leave blank if you don\'t have it yet.';
 const APP_REG_Q = 'The scheduled refresh signs in to Microsoft Graph and SharePoint as an app.';
 const PWSH_OK = { version: '7.4.6', policy: 'RemoteSigned', languageMode: 'FullLanguage', timeZone: 'GMT Standard Time' };
+const TENANT = '11111111-2222-3333-4444-555555555555';
+const PARTITION = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+const QUERY = '66666666-7777-8888-9999-000000000000';
+const NO_QUERY_NOTE = 'Until the report has the query, its Cowork pages are blank. The Done page says how to get it.';
 
 /** @type {string[]} */
 const temps = [];
@@ -41,8 +48,9 @@ function appBuild() {
 
 /**
  * A ctx for planning a new PAX install on a fake tenant and PC. fakeCtx fills in a Fabric
- * install's ids, which a new PAX install doesn't have.
- * @param {{ answers?: any[], yes?: boolean, host?: any, app?: boolean, admin?: boolean, workspaces?: { id: string, name: string }[] }} [o]
+ * install's ids, which a new PAX install doesn't have. `defaults` records each input's default.
+ * The prices form takes its defaults, and `prices` over them.
+ * @param {{ answers?: any[], yesTo?: string[], yes?: boolean, host?: any, app?: boolean, report?: boolean, admin?: boolean, tenantId?: string, prices?: Record<string, string>, workspaces?: { id: string, name: string }[] }} [o]
  */
 function planCtx(o = {}) {
   const graph = fakeAzureGraph();
@@ -52,19 +60,33 @@ function planCtx(o = {}) {
   g.subscribedSkus = async () => [];
   const pbi = fakePowerBi();
   pbi.workspaces.push(...(o.workspaces ?? []));
-  const ui = fakeUi({ yes: o.yes, answers: o.answers });
-  const sources = o.app ? { ...realSources(), appDist: appBuild() } : realSources();
+  const ui = fakeUi({ yes: o.yes, answers: o.answers, yesTo: o.yesTo });
+  const u = /** @type {any} */ (ui.ui);
+  /** @type {Record<string, string | undefined>} */
+  const defaults = {};
+  const input = u.input;
+  u.input = async (/** @type {string} */ message, /** @type {{ default?: string }} */ opts = {}) => {
+    defaults[message] = opts.default;
+    return input(message, opts);
+  };
+  // fakeUi doesn't answer forms, and Advanced settings asks for the prices in one.
+  u.form = async (/** @type {string} */ message, /** @type {{ id: string, default: string }[]} */ fields) => {
+    ui.asked.push(message);
+    return { ...Object.fromEntries(fields.map((f) => [f.id, f.default])), ...o.prices };
+  };
+  let sources = o.app ? { ...realSources(), appDist: appBuild() } : realSources();
+  if (o.report === false) sources = { ...sources, paxModelFile: undefined };
   const { ctx, config } = fakeCtx({ ui: ui.ui, graph: g, powerBi: pbi.api, fabric: fakeFabric().api, sources });
   const c = /** @type {any} */ (config);
   for (const key of ['workspaceId', 'lakehouseId', 'lakehouseName']) delete c.fabric[key];
   for (const key of ['appId', 'objectId', 'servicePrincipalId']) delete c.app[key];
   delete c.keyVault.uri;
   c.target = 'pax';
-  c.tenantId = 'tenant-1';
+  c.tenantId = o.tenantId ?? 'tenant-1';
   const pax = fakePaxHost({ now: () => ctx.now(), ...o.host });
   if (pax.base) temps.push(pax.base);
   /** @type {any} */ (ctx).paxHost = pax.host;
-  return { ctx, config: c, ui, graph, pbi, pax };
+  return { ctx, config: c, ui, graph, pbi, pax, defaults };
 }
 
 /**
@@ -201,7 +223,7 @@ test(
 
 test('pax plan: a new setup asks for the folder and workspace, and turns the app on by default', { timeout: 10_000 }, async () => {
   const { ctx, config, ui } = await planned({ app: true });
-  assert.deepEqual(ui.asked, [ADVANCED_Q, FOLDER_Q, WORKSPACE_Q, DEPLOY_Q, APP_REG_Q]);
+  assert.deepEqual(ui.asked, [ADVANCED_Q, FOLDER_Q, WORKSPACE_Q, DEPLOY_Q, PARTITION_Q, APP_REG_Q]);
   const text = plain(ui.text());
   assert.equal(config.sharePoint.siteUrl, SITE_URL);
   assert.ok(text.includes(`Files: ${describeFolder(config.sharePoint)}`), text);
@@ -243,6 +265,95 @@ test('pax plan: an existing workspace can be chosen', { timeout: 10_000 }, async
   assert.equal(config.fabric.workspaceId, 'ws-team');
   assert.equal(config.fabric.workspaceName, 'Team reports');
   assert.ok(!config.fabric.createdWorkspace);
+});
+
+test('pax plan: asks for the Viva Insights query, with the tenant as the partition by default', { timeout: 10_000 }, async () => {
+  const { config, ui, defaults } = await planned({ tenantId: TENANT, answers: [false, FOLDER, '', TENANT, ` ${QUERY} `] });
+  assert.deepEqual(ui.asked, [ADVANCED_Q, FOLDER_Q, WORKSPACE_Q, PARTITION_Q, QUERY_Q, APP_REG_Q]);
+  assert.equal(defaults[PARTITION_Q], TENANT);
+  assert.equal(defaults[QUERY_Q], '');
+  assert.equal(config.consumption.vivaPartition, TENANT);
+  assert.equal(config.consumption.vivaQuery, QUERY, 'trimmed');
+  const text = plain(ui.text());
+  assert.ok(text.includes('Viva Insights > Create analysis > Create custom query > Consumption query'), text);
+  assert.ok(text.includes(`Guide: ${VIVA_QUERY_GUIDE}`), text);
+  assert.ok(text.includes(`The report reads Cowork credits from Viva Insights query ${QUERY}`), text);
+  assert.ok(!text.includes(NO_QUERY_NOTE), text);
+  assert.ok(!nextSteps(config).some((s) => s.id === 'viva-query'), 'no step to ask an analyst for it');
+});
+
+test('pax plan: saved or --viva-partition and --viva-query IDs are the defaults, so a rerun keeps them', { timeout: 10_000 }, async () => {
+  const s = planCtx({ tenantId: TENANT, answers: [false, FOLDER, ''] });
+  s.config.consumption.vivaPartition = PARTITION;
+  s.config.consumption.vivaQuery = QUERY;
+  await paxPlan(s.ctx, await paxPreflight(s.ctx));
+  assert.equal(s.defaults[PARTITION_Q], PARTITION, 'the saved partition, not the tenant');
+  assert.equal(s.defaults[QUERY_Q], QUERY);
+  assert.equal(s.config.consumption.vivaPartition, PARTITION);
+  assert.equal(s.config.consumption.vivaQuery, QUERY);
+});
+
+test('pax plan: a blank Viva Insights answer forgets the query, so the Done page still asks an analyst for it', { timeout: 10_000 }, async () => {
+  // A blank partition: the query isn't asked, and the IDs saved before are forgotten.
+  const blank = planCtx({ tenantId: TENANT, answers: [false, FOLDER, '', ''] });
+  blank.config.consumption.vivaPartition = PARTITION;
+  blank.config.consumption.vivaQuery = QUERY;
+  await paxPlan(blank.ctx, await paxPreflight(blank.ctx));
+  assert.ok(blank.ui.asked.includes(PARTITION_Q));
+  assert.ok(!blank.ui.asked.includes(QUERY_Q));
+  // A partition with no query, as --viva-partition alone gives: it's both or neither.
+  const half = await planned({ tenantId: TENANT, answers: [false, FOLDER, '', TENANT, ''] });
+  assert.ok(half.ui.asked.includes(QUERY_Q));
+  // A tenant ID that isn't a GUID, and nothing saved: the default is blank.
+  const none = await planned();
+  assert.equal(none.defaults[PARTITION_Q], '');
+  for (const [name, { config, ui }] of Object.entries({ blank, half, none })) {
+    assert.equal(config.consumption.vivaPartition, undefined, name);
+    assert.equal(config.consumption.vivaQuery, undefined, name);
+    assert.ok(plain(ui.text()).includes(NO_QUERY_NOTE), `${name}: ${ui.text()}`);
+    const viva = nextSteps(config).find((s) => s.id === 'viva-query');
+    assert.equal(viva?.who, 'A Viva Insights analyst', name);
+    assert.match(String(viva?.why), /run the installer again and enter them when it asks, or pass --viva-partition and --viva-query/, name);
+  }
+});
+
+test('pax plan: the Viva Insights IDs must look like GUIDs', { timeout: 10_000 }, async () => {
+  const hint = 'It looks like 00000000-0000-0000-0000-000000000000.';
+  for (const [answers, question] of /** @type {const} */ ([
+    [[false, FOLDER, '', 'contoso'], PARTITION_Q],
+    [[false, FOLDER, '', TENANT, 'not-a-query'], QUERY_Q],
+  ])) {
+    const { ctx } = planCtx({ tenantId: TENANT, answers: [...answers] });
+    const pre = await paxPreflight(ctx);
+    await assert.rejects(paxPlan(ctx, pre), { message: `${question}: ${hint}` });
+  }
+});
+
+test('pax plan: without the report there is no Viva Insights question', { timeout: 10_000 }, async () => {
+  const { config, ui } = await planned({ report: false, tenantId: TENANT });
+  assert.equal(config.semanticModel.enabled, false);
+  assert.ok(!ui.asked.includes(PARTITION_Q), ui.asked.join('\n'));
+  assert.doesNotMatch(plain(ui.text()), /Viva Insights/);
+});
+
+test('pax plan: the prices are asked only behind Advanced settings, and only changed ones are kept', { timeout: 10_000 }, async () => {
+  const basic = await planned();
+  assert.ok(!basic.ui.asked.includes('Prices'));
+  assert.equal(basic.config.prices, undefined);
+
+  const advanced = planCtx({ yesTo: [ADVANCED_Q], answers: [FOLDER], prices: { creditRate: '0.012' } });
+  const pre = await paxPreflight(advanced.ctx);
+  await paxPlan(advanced.ctx, pre);
+  const { asked } = advanced.ui;
+  assert.ok(asked.includes('Prices'), asked.join('\n'));
+  assert.ok(asked.indexOf(PARTITION_Q) < asked.indexOf('Prices'), 'after the Viva Insights query');
+  assert.ok(asked.indexOf('Prices') < asked.indexOf(APP_REG_Q), 'before the app registration');
+  assert.match(plain(advanced.ui.text()), /Choose Yes to change who can view, the new workspace's name, your prices and when the refresh runs/);
+  assert.deepEqual(advanced.config.prices, { creditRate: 0.012 });
+  const from = advanced.ui.out.length;
+  assert.equal(await confirmPaxPlan(advanced.ctx, pre), true);
+  const text = plain(advanced.ui.out.slice(from).join(''));
+  assert.ok(text.includes('Prices:      CoworkRatePerCredit/StudioRatePerCredit/GitHubRatePerCredit 0.012'), text);
 });
 
 test('pax plan: the folder address is checked', { timeout: 10_000 }, async () => {
@@ -298,10 +409,20 @@ test('pax plan: confirming shows the plan and asks to go ahead', { timeout: 10_0
   assert.ok(text.includes(`Refresh:     daily at ${TASK_AT} on this PC (${PRODUCT.pax.task})`), text);
   assert.ok(text.includes(`App:         ${PRODUCT.managedApp.name} (new)`), text);
   assert.ok(text.includes('First load:  the org file, straight after setup'), text);
+  assert.ok(text.includes('Cowork:      no Viva Insights query yet: the Done page says how to get one'), text);
+  assert.ok(text.includes('Prices:      the template\'s defaults'), text);
   assert.doesNotMatch(text, /History:|days of (audit )?history/);
   assert.match(text, /Costs: +Power BI Pro/);
   assert.equal(ui.asked.at(-1), 'Go ahead?');
   assert.doesNotMatch(text, /App Edition/i);
+});
+
+test('pax plan: confirming names the Viva Insights query when there is one', { timeout: 10_000 }, async () => {
+  const { ctx, pre, ui } = await planned({ tenantId: TENANT, answers: [false, FOLDER, '', TENANT, QUERY] });
+  const from = ui.out.length;
+  assert.equal(await confirmPaxPlan(ctx, pre), true);
+  const text = plain(ui.out.slice(from).join(''));
+  assert.ok(text.includes(`Cowork:      Viva Insights query ${QUERY}`), text);
 });
 
 test('pax plan: saying no to the plan stops, and an app left out says so', { timeout: 10_000 }, async () => {

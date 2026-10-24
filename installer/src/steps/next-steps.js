@@ -106,7 +106,7 @@ const appLabel = (config) => config.app?.displayName ?? appName(config);
  * credits through.
  * @param {import('../config.js').InstallConfig} config
  */
-const vivaOn = (config) => isVivaId(config.consumption?.vivaPartition) && isVivaId(config.consumption?.vivaQuery);
+export const vivaOn = (config) => isVivaId(config.consumption?.vivaPartition) && isVivaId(config.consumption?.vivaQuery);
 
 const VIVA_ANALYST = 'a Viva Insights analyst: someone who can open the query in Viva Insights';
 const VIVA_SIGN_IN = `Sign Viva Insights in the same way, as ${VIVA_ANALYST}.`;
@@ -452,7 +452,7 @@ function vivaConnectorStep(config, user) {
   return {
     id: 'viva-query',
     title: 'Ask a Viva Insights analyst for the Cowork credits query',
-    why: `The report reads Cowork and Work IQ credits from a Viva Insights query, through Power BI's Viva Insights connector. Until it has one, its Cowork pages are blank. Once you have the partition and query IDs, run the installer again with --viva-partition and --viva-query.`,
+    why: `The report reads Cowork and Work IQ credits from a Viva Insights query, through Power BI's Viva Insights connector. Until it has one, its Cowork pages are blank. Once you have the partition and query IDs, run the installer again and enter them when it asks, or pass --viva-partition and --viva-query.`,
     who: 'A Viva Insights analyst',
     link: VIVA_QUERY_GUIDE,
     linkText: 'The guide',

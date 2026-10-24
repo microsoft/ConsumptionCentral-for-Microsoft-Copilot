@@ -91,19 +91,22 @@ When it finishes: [Check it worked](#check-it-worked).
    limits PowerShell. If this PC can't run the refresh, it says what to install or change, and
    stops. Then it asks, one question at a time:
    - **What it collects**, then **Change the advanced settings?** **No** keeps the defaults for
-     who can view, the new workspace's name, when the refresh runs (02:00 on this PC) and the
-     first load straight after setup.
+     who can view, the new workspace's name, your prices, when the refresh runs (02:00 on this PC)
+     and the first load straight after setup.
    - **SharePoint folder address**: a folder in a SharePoint document library, for your exports
      and the org file.
    - **Power BI workspace for the report**: a new one, or one you're in.
    - **Deploy the Consumption Central app?** Yes by default. See
      [The app](../installer/README.md#the-app).
+   - **Viva Insights partition ID** and **Viva Insights query ID**, for the report's Cowork
+     pages. The partition ID is usually your tenant ID, and is the default. Both are optional:
+     leave them blank if you don't have the query yet, and the Done page says how to get it from
+     a Viva Insights analyst. See [the Viva query](VIVA-QUERY.md).
    - **App registration**: create `Consumption Central (PAX)`, or use one you already have. If
      you can't create one or approve its permissions, an admin can register it for you.
 
-   It asks nothing about prices or Viva Insights. To give it the Viva Insights query for the
-   Cowork pages, start it with `install --target pax --viva-partition <id> --viva-query <id>`.
-   See [The report](../installer/README.md#the-report).
+   `install --target pax --viva-partition <id> --viva-query <id>` gives the Viva Insights IDs in
+   advance. See [The report](../installer/README.md#the-report).
 6. Check the plan and approve it. Nothing is created until you do.
    - **Fabric.** The plan shows every setting, including the defaults, and a **Costs** list of
      what's billed (the Fabric capacity, Power Automate Premium for the Studio flow, Azure Key
