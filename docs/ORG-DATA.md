@@ -93,6 +93,11 @@ the script. The template finds that name too once it's in `DataFolder`: the
 newest copy wins. Signing in and scheduling are covered in PAX's own
 documentation.
 
+For the Viva Direct template, the installer's
+[No Fabric route](../installer/README.md#no-fabric-sharepoint--pax-route) sets
+this up for you: a daily task on a Windows PC runs PAX as its own app and
+replaces `entra_org.csv` at the top of the SharePoint folder.
+
 > **Don't add `-Deidentify`.** It replaces names and UPNs with one-way tokens,
 > so no row matches your consumption data and every attribute shows as
 > *(Not set)*.

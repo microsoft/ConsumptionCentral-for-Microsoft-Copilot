@@ -1,6 +1,6 @@
 # Where the installer comes from
 
-The installer is ported from the Analytics Hub installer in [microsoft/AnalyticsHub-Dashboard](https://github.com/microsoft/AnalyticsHub-Dashboard), at commit [`1af87db`](https://github.com/microsoft/AnalyticsHub-Dashboard/tree/1af87db/installer). It keeps that installer's code and the way it works for people, so fixes made there can be brought here. This file records what was ported, what changed, and which Analytics Hub changes to follow.
+The installer is ported from the Analytics Hub installer in [microsoft/AnalyticsHub-Dashboard](https://github.com/microsoft/AnalyticsHub-Dashboard), at commit [`1af87db`](https://github.com/microsoft/AnalyticsHub-Dashboard/tree/1af87db/installer). It keeps that installer's code and the way it works for people, so fixes made there can be brought here. This file records what was ported, what changed, and which Analytics Hub changes to follow. The No Fabric route comes from the ValueLens installer instead: see [The No Fabric route](#the-no-fabric-route).
 
 ## How the port was made
 
@@ -80,4 +80,55 @@ These were open or planned in Analytics Hub when the port was made.
 
 ## The No Fabric route
 
-The No Fabric route (PAX and SharePoint) is ported from the ValueLens installer in a later pull request, which records the ValueLens commit here.
+The No Fabric route, "No Fabric: SharePoint + PAX", is ported from the ValueLens installer in [microsoft/ValueLens-for-Microsoft-Copilot](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot): its pull request [ValueLens-for-Microsoft-Copilot#216](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot/pull/216) at commit [`5910a84`](https://github.com/microsoft/ValueLens-for-Microsoft-Copilot/tree/5910a8422b07bf3a521f71c9f742d94551eb89fa/installer), and that pull request's next commit, `3f26af1`. The route's wiring (`f0a2e04`, with `1e355b0`'s wording) and packaging (`6ea4f0e`) are earlier commits of the same pull request, unchanged at `5910a84`.
+
+### How the route was ported
+
+The pull request that added the route built it in steps, so each change from ValueLens shows as a diff:
+
+1. **Copy.** `src/steps/pax/` and `src/transform/template.js`, unchanged from `5910a84`.
+2. **Closure.** What they import, ported by hand into Consumption Central's files, keeping its names and its Fabric route.
+3. **Wrappers.** The PAX wrapper scripts from ValueLens's `4. SharePoint/scripts/`, beside the runner.
+4. **The org file only.** The `userInfo` mode described below.
+5. **`3f26af1`.** A resumed load carries on exactly where it stopped.
+6. **Tests, wiring and packaging.** The runner's Python tests; the CLI, prerequisites and page, from `f0a2e04`; the exe and zip, from `6ea4f0e`; the JavaScript tests; the docs.
+
+To bring a ValueLens change across, diff it against `3f26af1`, then apply it to the files the [No Fabric file map](#no-fabric-file-map) lists.
+
+### What changed for Consumption Central
+
+- **PAX makes the org file only.** The report reads the exports in the SharePoint folder, and Viva Insights, through its own connectors. PAX only keeps the org file, `entra_org.csv`, up to date. `PRODUCT.pax.mode` is `userInfo`, so the daily task runs `Run-PAX-AIBV.ps1 -OnlyUserInfo` once, with no audit log query, date window, rollup or Python. It uploads the file to the top of the folder as the PAX app (`Sites.Selected`), replacing the copy there whole.
+- **Reloads.** The org file is a whole snapshot, so a new PC or a reinstall has nothing to carry on from or restore. There's no Interactions or Agent 365 file, no question about more history and no `--backfill-days`. `refresh.ps1` refuses `-Days` in this mode, and the installer refuses a history reload.
+- **Permissions.** The PAX app gets `Organization.Read.All`, `User.Read.All` and `Sites.Selected`. `AuditLogsQuery.Read.All` is only for ValueLens's audit mode (`PAX_AUDIT_PERMISSIONS` in `src/target.js`). Only this route takes back permissions for a choice since switched off.
+- **The template.** The route publishes `3. Viva Direct/Consumption Central - Viva Direct.pbit`, with its source files query swapped for `SourceFiles.SharePoint.m` (`PRODUCT.pax.expressions`), Organizational privacy, and `SharePointSiteUrl` and `DataFolder` set to the folder. Prices follow the Viva Direct layout in `src/prices.js`. The route asks nothing about prices or Viva Insights: `--viva-partition` and `--viva-query` set the Viva Insights IDs, and the Done page has a card when the install has none.
+- **The app.** The app step is on by default on this route. If the tenant isn't ready, because app creation with the managed apps CLI or external artifacts in managed apps is off, it says what's missing and the install finishes at the report. The Fabric route still sets up the report only, so `deploy-app` is for this route. The app's data hint also points viewers at the Viva Insights query's download for its Cowork pages.
+- **The wrapper scripts.** Pinned PAX releases only: `-PaxReleaseTag` and `-PaxSha256` are required, and `latest` is refused. PAX's own `-Dashboard` values sit on one line, `$script:PaxDashboardValues`, which the name check skips.
+- **Packaging.** The exe builds the app from the folder `installer-assets.json` names. This repo commits the app's sample under `app/public/sample`, so there's no step to prepare it. The exe carries the Viva Direct template and `SourceFiles.SharePoint.m`, and a Windows CI job runs the PAX script tests.
+- **Names.** The route is "No Fabric: SharePoint + PAX", and its items take their names from `src/product.js`.
+
+### Kept as they were
+
+- ValueLens's audit mode stays in the runner, the wrapper scripts and `src/steps/pax/` as it was ported, with its date windows, rollups, Agent 365 file and history reload. Consumption Central doesn't run it, but keeping it means ValueLens's fixes port as they are.
+- The runner's tests keep ValueLens's fixtures and names.
+
+### No Fabric file map
+
+Paths are relative to `installer/`. A path that starts with `/` is relative to the root of the ValueLens repo.
+
+**Verbatim (17).** Unchanged from `3f26af1`: `src/managed-app/cli.js`, `src/managed-app/errors.js`, `src/managed-app/steps.js`, `src/seats.js`, `src/steps/pax/publish.js`, `src/steps/pax/runner/credential.ps1`, `src/steps/pax/runner/task.ps1`, `src/steps/pax/site.js`, `src/steps/pax/upload.js`, `src/transform/template.js`, `test/pax-site.test.js`, and `test/python/fixtures/pax_runner/` (was `/tests/fixtures/pax_runner/`) `ast-dump.ps1`, `harness.ps1`, `stub-credential.ps1`, `stub-upload.ps1`, `task-check.ps1` and `task-harness.ps1`.
+
+**Renamed (4).** Changed only by the product's name: `managed-cli/package-lock.json`, `managed-cli/package.json`, `test/pax-fakes.js` and `test/pax-upload.test.js`.
+
+**Adapted (20).** `src/managed-app/flow.js`, `src/steps/pax/flow.js`, `src/steps/pax/local.js`, `src/steps/pax/plan.js`, `src/steps/pax/runner/refresh.ps1`, `src/steps/pax/runner/Run-PAX-AIBV.ps1` (was `/4. SharePoint/scripts/Run-PAX-AIBV.ps1`), `src/steps/pax/runner/Upload-Rollups-SharePoint.ps1` (was `/4. SharePoint/scripts/Upload-Rollups-SharePoint.ps1`), `src/target.js`, `test/managed-app.test.js`, `test/pax-flow.test.js`, `test/pax-local.test.js`, `test/pax-plan.test.js`, `test/pax-publish.test.js`, `test/seats.test.js`, `test/target.test.js`, `test/template.test.js`, `test/python/fixtures/pax_runner/stub-pax.ps1`, and `test/python/` (was `/tests/`) `test_pax_runner.py`, `test_sharepoint_pax_append.py` and `test_sharepoint_pax_dashboard.py`.
+
+**Ported into Consumption Central's files.** The closure, wiring and packaging, and their tests: `/installer-assets.json` and `/.github/workflows/installer.yml` in this repo, `packaging/build-exe.js`, `packaging/payload.js`, `src/cli.js`, `src/clients/graph.js`, `src/clients/powerbi.js`, `src/config.js`, `src/install.js`, `src/other-installs.js`, `src/prereqs.js`, `src/prices.js`, `src/product.js`, `src/setup.js`, `src/sources.js`, `src/steps/access.js`, `src/steps/fabric.js`, `src/steps/identity.js`, `src/steps/next-steps.js`, `src/steps/plan.js`, `src/steps/report.js`, `src/transform/model.js`, `src/transform/zip.js`, `src/web-session.js`, `src/web/app.js`, `test/access.test.js`, `test/fakes.js`, `test/install-verdict.test.js`, `test/packaging.test.js`, `test/product.test.js`, `test/record.test.js` and `test/steps.test.js`.
+
+### ValueLens changes to follow
+
+- **Follow:** later fixes to the PAX route in ValueLens: `src/steps/pax/`, its runner, `4. SharePoint/scripts/` and the app step (`src/managed-app/`). If ValueLens's audit mode comes to keep older Interactions rows on a reload, replacing them only from the reload's first day, take that too, so the audit path stays as ValueLens has it.
+- **`521ab22`,** the next commit of ValueLens-for-Microsoft-Copilot#216: each date window after the first starts a day early, to cover PAX's time-zone seams. Only the audit mode reads date windows.
+- **Skip,** because they change ValueLens's Fabric and Azure loads, not the PAX route: `f8ebea6`, "Fabric backfill keeps older parsed rows", and `0cb3b5e`, "Azure AI tables keep older rows on reload".
+
+### Changes to offer back to ValueLens
+
+- **The org file only.** `PRODUCT.pax.mode`, with `audit` for ValueLens and `userInfo` here, and `-OnlyUserInfo` in the runner and `Run-PAX-AIBV.ps1`, with their tests. It's offered to ValueLens as a patch that keeps ValueLens on `audit`.
