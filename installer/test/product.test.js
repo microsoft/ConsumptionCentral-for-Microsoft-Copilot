@@ -145,7 +145,8 @@ const allFiles = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) 
 test('product: no ValueLens or Analytics Hub names are left in what the installer shows, writes or deploys', () => {
   const other = /value ?lens|analytics ?hub/i;
   // Analytics Hub's lineage-tag seed for the pay-as-you-go table: internal, and kept so the port stays diffable.
-  const allowed = [/`valuelens:payg:\$\{key\}`/];
+  // PAX's own -Dashboard values for its rollup (runner/Run-PAX-AIBV.ps1): PAX's parameter, never shown.
+  const allowed = [/`valuelens:payg:\$\{key\}`/, /^\s*\$script:PaxDashboardValues = @\('ValueLens', 'AIBV'\)$/];
   // The one file that names another product on purpose: it tells that product's installs apart from this one's.
   const guard = join(ROOT, 'src', 'other-installs.js');
   const files = ['bin', 'src', 'packaging', 'assets'].flatMap((d) => allFiles(join(ROOT, d))).filter((f) => f !== guard);
