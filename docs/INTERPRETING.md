@@ -139,7 +139,9 @@ colleagues. In a heavily-adopted tenant a Light user may still be spending real 
 | **Over Limit** | Above 100%, *or* any usage against a zero limit |
 
 That last clause matters: someone consuming credits with **no** limit set counts as Over Limit, not
-Under. It's usually a policy gap rather than a spending problem.
+Under. It's usually a policy gap rather than a spending problem. The `Users Over Limit` count leaves
+those people out: it counts only people who have a limit and went over it, so it can be lower than
+the Over Limit bucket.
 
 ### Forecast
 

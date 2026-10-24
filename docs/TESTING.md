@@ -148,8 +148,12 @@ python ".\1. Local CSV\test_pull_azure_ai.py"
    average utilisation with Azure Monitor. Check one equivalent metric family, not both
    current and legacy aliases. Verify deployment names where supported and preserve real
    zero utilisation. Missing telemetry must remain missing.
-5. Inspect billing units before using `[Foundry Tokens (M)]` or cost-per-million. Do not use
-   those figures with provisioned-hour quantities, mixed units or mixed currencies.
+5. Check the Foundry meter names before using `[Foundry Tokens (M)]` or cost-per-million. The
+   measure divides per-1K token meters by 1,000, counts `1M Tokens` meters as they are and leaves
+   out meters that aren't tokens, so a token meter whose name lacks `Token` goes uncounted. For a
+   deployment with known activity, compare its billed tokens with the quantity and unit of measure
+   in Azure Cost Analysis for the same dates. Cost-per-million divides all Foundry cost, so filter
+   to token meters for a per-token rate, and never mix currencies.
    `[Total Tokens]` requires the model's input/output metric families; a standalone
    `TotalTokens` row does not populate it.
 6. Refresh each template you intend to deploy. Local CSV and Viva Direct need `DataFolder`;
