@@ -452,7 +452,7 @@ function vivaConnectorStep(config, user) {
   return {
     id: 'viva-query',
     title: 'Ask a Viva Insights analyst for the Cowork credits query',
-    why: `The report reads Cowork and Work IQ credits from a Viva Insights query, through Power BI's Viva Insights connector. Until it has one, its Cowork pages are blank. Once you have the partition and query IDs, run the installer again and enter them.`,
+    why: `The report reads Cowork and Work IQ credits from a Viva Insights query, through Power BI's Viva Insights connector. Until it has one, its Cowork pages are blank. Once you have the partition and query IDs, run the installer again with --viva-partition and --viva-query.`,
     who: 'A Viva Insights analyst',
     link: VIVA_QUERY_GUIDE,
     linkText: 'The guide',

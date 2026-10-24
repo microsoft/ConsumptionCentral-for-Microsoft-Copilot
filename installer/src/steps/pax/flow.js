@@ -7,6 +7,7 @@ import { HttpError } from '../../http.js';
 import { commandLine } from '../../launch.js';
 import { deployTheApp, removeTheApp } from '../../managed-app/flow.js';
 import { PRODUCT } from '../../product.js';
+import { ROUTE_NAMES } from '../../target.js';
 import { c } from '../../ui.js';
 import {
   accessCommand, ensureViewerGroup, grantModelAccess, shareReport, workspaceUrl,
@@ -723,7 +724,7 @@ export async function paxCommand(ctx, command, opts = {}) {
     case 'uninstall':
       return paxUninstall(ctx);
     default:
-      throw new Error(`"${command}" isn't a command on the PAX + SharePoint route.`);
+      throw new Error(`"${command}" isn't a command on the ${ROUTE_NAMES.pax} route.`);
   }
 }
 
