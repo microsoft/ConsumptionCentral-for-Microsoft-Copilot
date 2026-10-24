@@ -1,0 +1,7 @@
+node_modules/
+consumption-central-setup*.json
+*.draft.json
+*.tmp
+consumption-central-preview/
+dist-exe/
+consumption-central-feedback-flow.json

@@ -1,0 +1,56 @@
+// @ts-check
+/**
+ * Loads what the installer deploys from a Consumption Central checkout: installer-assets.json, the
+ * notebooks it lists, and the Fabric template. The helper notebooks ship with the installer itself.
+ */
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { MANIFEST_FILE, resolveNotebooks } from './catalog.js';
+
+/** The installer folder, which holds the helper notebooks (`assets/notebooks`). */
+export const INSTALLER_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+/** The source folder: the repo root when the installer runs from a checkout, `f` in the exe. */
+export const DEFAULT_SOURCE_DIR = resolve(INSTALLER_ROOT, '..');
+
+/**
+ * @typedef {object} Sources
+ * @property {string} dir
+ * @property {any} manifest  installer-assets.json.
+ * @property {import('./catalog.js').NotebookInfo[]} catalog  Every notebook the installer can deploy, in pipeline order.
+ * @property {Record<import('./catalog.js').NotebookKey, import('./transform/notebook.js').Notebook>} notebooks
+ * @property {string} modelFile  `Consumption Central - Fabric.pbit`.
+ */
+
+/**
+ * @param {string} [dir]  The root of a Consumption Central checkout.
+ * @returns {Sources}
+ */
+export function loadSources(dir = DEFAULT_SOURCE_DIR) {
+  const root = resolve(dir);
+  const manifestFile = join(root, MANIFEST_FILE);
+  if (!existsSync(manifestFile)) throw new Error(`No ${MANIFEST_FILE} at ${root}. Point --source at the root of the repo.`);
+  const manifest = readJson(manifestFile);
+  const catalog = resolveNotebooks(manifest);
+  /** @type {any} */
+  const notebooks = {};
+  for (const nb of catalog) {
+    const file = join(nb.asset ? INSTALLER_ROOT : root, nb.path);
+    if (!existsSync(file)) throw new Error(`Missing notebook ${file}.`);
+    notebooks[nb.key] = readJson(file);
+  }
+  const template = manifest.templates?.fabric?.path;
+  if (!template) throw new Error(`${manifestFile} has no templates.fabric.`);
+  const modelFile = join(root, template);
+  if (!existsSync(modelFile)) throw new Error(`Missing template ${modelFile}.`);
+  return { dir: root, manifest, catalog, notebooks, modelFile };
+}
+
+/** @param {string} file */
+export function readJson(file) {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    throw new Error(`${file} is not valid JSON: ${/** @type {Error} */ (err).message}`);
+  }
+}

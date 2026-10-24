@@ -1,0 +1,501 @@
+// @ts-check
+/**
+ * The install record, `consumption-central-setup.json`. It holds IDs and choices so a
+ * re-run picks up where the last one stopped. It never holds a secret.
+ */
+import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
+import { foreignRecord } from './other-installs.js';
+import { normaliseDataSources } from './uploads.js';
+import { PRODUCT_NAME, RECORD_FILE, RECORD_PRODUCT, SECRET_NAME } from './product.js';
+
+export const CONFIG_VERSION = 1;
+export const DEFAULT_CONFIG_FILE = RECORD_FILE;
+
+/**
+ * @typedef {object} InstallConfig
+ * @property {number} version
+ * @property {string} product  Which installer made the record: always RECORD_PRODUCT.
+ * @property {'fabric'} [target]
+ * @property {string} [tenantId]
+ * @property {import('./uploads.js').DataSourceModes} dataSources  How each source arrives: API, uploaded CSV, or skipped.
+ * @property {UploadsConfig} uploads
+ * @property {import('./prices.js').Prices} [prices]  The commercial terms the model prices usage with. Each one absent keeps the template's default.
+ * @property {GithubConfig} [github]  Reading GitHub Copilot billing from the API. Absent until it's asked for.
+ * @property {CommercialTermsConfig} [commercialTerms]  The billing scope Ingest_CommercialTerms reads the credit rate from.
+ * @property {{ frequency: 'daily' | 'weekly', time: string, weekday: string, timeZone: string }} schedule
+ * @property {{ appId?: string, objectId?: string, servicePrincipalId?: string, displayName?: string, secretExpires?: string, secretKeyId?: string, retiredSecretKeyIds?: string[], pendingSecretKeyIds?: string[], secretAttempts?: { ref: string, at: string }[], existing?: boolean, adminPack?: string, secretDays?: number }} app  pendingSecretKeyIds: notebook secrets created by a run that hadn't finished writing them. secretAttempts: notebook secrets asked of Entra whose key ID isn't saved yet; the ref is in the secret's name. secretDays: how long a secret kept in the notebooks lasts (--secret-days). 90 when absent.
+ * @property {{ subscriptionId?: string, resourceGroup?: string, name?: string, id?: string, uri?: string, location?: string, secretName: string, existing?: boolean, rbac?: boolean, private?: boolean, secretSetAt?: string, mode?: SecretMode, handoff?: SecretHandoff } & import('./steps/secrets.js').SecretSlot} keyVault  The secret* fields track the app secrets made for the vault (see steps/secrets.js); previousSecretKeyIds are replaced ones left on the app until they expire.
+ * @property {{ capacityId?: string, workspaceId?: string, workspaceName?: string, lakehouseId?: string, lakehouseName?: string, notebooks: Partial<Record<import('./catalog.js').NotebookKey, string>>, notebookNames?: Partial<Record<import('./catalog.js').NotebookKey, string>>, notebookHashes?: Partial<Record<import('./catalog.js').NotebookKey, string>>, pipelineId?: string, pipelineName?: string, pipelineModules?: string, pipelineVersion?: number, scheduleId?: string, vaultEndpointId?: string, deployedRouter?: string, secretInNotebooks?: boolean, createdWorkspace?: boolean, pendingItems?: Record<string, { name: string, ref: string, at?: string, operation?: string }> }} fabric  pendingItems: the name and description ref of each item being created, and when, so a run stopped mid-create finds that item again and nothing else. operation: Fabric's URL for the create once it accepted it, to ask how it went. pipelineModules: what the deployed pipeline was built for (fabric.js pipelineSignature).
+ * @property {{ jobId?: string, status?: string, startedAt?: string, finishedAt?: string, coworkSkipped?: boolean }} [firstRun]  coworkSkipped: the first load left out the Cowork Dataflow, which wasn't signed in yet.
+ * @property {SemanticModelConfig} semanticModel
+ * @property {AccessConfig} [access]  Who can view Consumption Central. Absent until the installer has set it up.
+ * @property {ConsumptionConfig} consumption
+ * @property {{ completed: string[], runFirstLoad?: boolean, baseRevision?: string, approved?: boolean, uploads?: { token?: string, name: string }[] }} [setup] Browser setup draft progress; never contains secrets. runFirstLoad is kept only in the draft, never in the install record.
+ */
+
+/**
+ * Ingest_GitHub_API's settings. The token itself is never saved: it's in Key Vault, or in the notebook.
+ * @typedef {object} GithubConfig
+ * @property {string} [enterprise]  The enterprise slug, as in github.com/enterprises/<slug>.
+ * @property {string} [secretName]  The Key Vault secret the token is in, when it isn't GITHUB_PAT_SECRET.
+ * @property {string} [tokenSetAt]  When a token was last written to Key Vault or the notebook.
+ * @property {string} [tokenExpires]  When that token expires, as GitHub reported it. Absent for one that doesn't.
+ * @property {boolean} [tokenInNotebook]  The deployed notebook holds the token as plain text.
+ */
+
+/**
+ * Ingest_CommercialTerms reads the effective Copilot credit rate from Cost Management, once.
+ * @typedef {object} CommercialTermsConfig
+ * @property {string} [scope]  The billing account, billing profile or subscription it reads.
+ * @property {string} [scopeName]
+ * @property {string} [ranAt]  When it last finished.
+ * @property {string} [status]  How that run ended.
+ */
+
+/**
+ * The one Entra group whose members can view Consumption Central.
+ * @typedef {object} AccessConfig
+ * @property {string} [groupId]
+ * @property {string} [groupName]
+ * @property {boolean} [createdGroup]  The installer created the group, rather than being given one.
+ * @property {string} [contact]  Who people ask for access. Defaults to the installer.
+ * @property {string} [requestUrl]  Optional link for access requests, e.g. a My Access package or a form.
+ * @property {string[]} [grantedModels]  Semantic model IDs the group has Build (ReadExplore) on.
+ * @property {string} [reportShared]  The report ID the user said they shared with the group. The API can't, so they do it by hand; until then the Done page reminds them and Repair asks again.
+ */
+
+/**
+ * Where the app's client secret lives and who puts it there.
+ * - `keyvault`: the installer writes it to Key Vault (the default when absent).
+ * - `keyvault-admin`: a vault admin writes it to Key Vault; the user only needs read access.
+ * - `notebook`: no Key Vault. The installer writes it into the notebooks as plain text, where anyone
+ *   with a role in the workspace can read it. It lasts 90 days by default and every install, repair
+ *   or update replaces it.
+ * @typedef {'keyvault' | 'keyvault-admin' | 'notebook'} SecretMode
+ */
+
+/**
+ * The vault admin handoff. It never holds the secret value.
+ * @typedef {object} SecretHandoff
+ * @property {string} [shownAt]  When the admin steps were last shown.
+ * @property {string} [adminEmail]  The admin who was added as an owner of the app, if any.
+ * @property {string} [confirmedAt]  When the user said the admin had added the secret.
+ * @property {boolean} [grantRead]  The user couldn't give themselves read access, so the admin is asked to.
+ */
+
+/** @param {InstallConfig} config @returns {SecretMode} */
+export const secretMode = (config) => config.keyVault?.mode ?? 'keyvault';
+
+/**
+ * Who the Power Automate flows write to OneLake as.
+ *  - user: a person signs in to an HTTP with Microsoft Entra ID connection. No secret, no Key Vault.
+ *  - app: the app registration, with its secret read from Key Vault by the Key Vault connector.
+ * @typedef {'user' | 'app'} FlowIdentity
+ */
+
+/**
+ * Who the flows write as.
+ * @param {InstallConfig} config @returns {FlowIdentity}
+ */
+export const flowIdentity = (config) => (config.uploads?.flowIdentity === 'app' ? 'app' : 'user');
+
+/**
+ * The upload drop folder and the optional extras around it.
+ * @typedef {object} UploadsConfig
+ * @property {boolean} [folders]  The drop folder and the folders the loads read exist in the Lakehouse.
+ * @property {FlowIdentity} [flowIdentity]  Who the flows write to OneLake as. Default user.
+ * @property {FlowEnvironment} [flowEnvironment]  The Power Platform environment the flows are created in.
+ * @property {Partial<Record<'studio', string>>} [flowIds]  The flows, once created.
+ * @property {Partial<Record<'studio', string>>} [flowSignatures]  What each created flow was built from.
+ * @property {Partial<Record<'studio', string>>} [flowFiles]  Where a flow was written when it couldn't be created.
+ * @property {Record<string, string>} [flowConnections]  The connections the installer made for the flows, by connection reference.
+ * @property {Partial<Record<'studio', string>>} [flowsConnected]  The flow IDs the installer signed in and turned on.
+ */
+
+/**
+ * A Power Platform environment to create flows in.
+ * @typedef {object} FlowEnvironment
+ * @property {string} url  The Dataverse org URL, without a trailing slash.
+ * @property {string} [id]  The Power Platform environment ID.
+ * @property {string} [name]
+ */
+
+/**
+ * A semantic model the installer deploys and refreshes.
+ * @typedef {object} ModelConfig
+ * @property {string} [id]
+ * @property {string} name
+ * @property {string} [signature]  What the deployed definition was built from.
+ * @property {boolean} [bound]  Reads the Lakehouse through the installer's connection.
+ * @property {ModelReload} [reload]  Owed a reload: its definition was, or may have been, replaced and no refresh has finished since.
+ * @property {ReportConfig} [report]  The report published on the model.
+ */
+
+/**
+ * Recorded before a request that can change a model's definition; taken back only once the
+ * installer's own whole-model refresh, requested after the change settled, finishes cleanly.
+ * @typedef {object} ModelReload
+ * @property {string} since  When the change last settled, or, while `unsettled`, when the request was made.
+ * @property {boolean} [cleared]  Fabric was allowed to clear its data, so it shows nothing until then.
+ * @property {boolean} [unsettled]  The request may or may not have changed the model; the next run applies it again before reloading.
+ * @property {string} [ours]  The whole-model refresh the installer requested after the change settled, which can be its reload. Cleared when it ends badly.
+ */
+
+/**
+ * A Power BI report published from a template and bound to one of the installer's models.
+ * @typedef {object} ReportConfig
+ * @property {string} [id]
+ * @property {string} name
+ * @property {string} [signature]  A hash of the template's report files when it was published.
+ * @property {string} [modelId]  The model it reads.
+ */
+
+/**
+ * Azure AI and pay-as-you-go access, the landing folders and the Cowork credits Dataflow.
+ * @typedef {object} ConsumptionConfig
+ * @property {string} [azureSubscriptionId]  Where the Azure AI resources are. Empty when Azure AI was left out.
+ * @property {string} [azureSubscriptionName]
+ * @property {boolean} [azureAccess]  The app has the Azure roles the notebook needs there.
+ * @property {PaygSubscription[]} [paygSubscriptions]  Other subscriptions that billing policies charge Copilot pay-as-you-go to.
+ * @property {string} [deployedPayg]  The pay-as-you-go subscriptions in the deployed Azure AI notebook, comma-separated.
+ * @property {boolean} [landing]  The landing folders exist.
+ * @property {string} [vivaPartition]  The Viva Insights partition the Cowork credits Dataflow reads.
+ * @property {string} [vivaQuery]  The Viva Insights query it reads.
+ * @property {string} [dataflowId]  The Cowork credits Dataflow.
+ * @property {string} [dataflowName]
+ * @property {string} [dataflowSignature]  What the deployed Dataflow definition was built from.
+ */
+
+/**
+ * An Azure subscription that Power Platform billing policies charge Copilot Studio and Cowork pay-as-you-go to.
+ * @typedef {object} PaygSubscription
+ * @property {string} subscriptionId
+ * @property {string} [name]
+ * @property {string[]} policies  The billing policies' names.
+ * @property {boolean} [access]  The app has Cost Management Reader there.
+ */
+
+/**
+ * The semantic model built from `2. Fabric/Consumption Central - Fabric.pbit`, and the connection it reads the Lakehouse through.
+ * @typedef {object} SemanticModelConfig
+ * @property {boolean} [enabled]
+ * @property {string} [id]
+ * @property {string} name
+ * @property {string} [server]  SQL analytics endpoint the model points at.
+ * @property {string} [database]
+ * @property {string} [signature]  What the deployed definition was built from.
+ * @property {string} [connectionId]
+ * @property {string} [connectionName]
+ * @property {string} [secretKeyId]  The app secret that only the connection holds.
+ * @property {string} [secretExpires]
+ * @property {{ ref: string, at: string }[]} [secretAttempts]  Connection secrets asked of Entra, key ID not saved yet (see steps/secrets.js).
+ * @property {string[]} [pendingSecretKeyIds]  Connection secrets made but not yet confirmed in use.
+ * @property {string[]} [retiredSecretKeyIds]  Replaced connection secrets still to remove from the app.
+ * @property {boolean} [bound]
+ * @property {ModelReload} [reload]  Owed a reload: its definition was, or may have been, replaced and no refresh has finished since.
+ * @property {boolean} [reports]  Publish the Power BI report on the model.
+ * @property {ReportConfig} [report]  The Consumption Central report.
+ */
+
+// Names for items a new install creates. An existing install keeps the names saved in its record.
+export const MODEL_NAME = `${PRODUCT_NAME} Model`;
+export const REPORT_NAME = PRODUCT_NAME;
+
+/** @returns {InstallConfig} */
+export function emptyConfig() {
+  return {
+    version: CONFIG_VERSION,
+    product: RECORD_PRODUCT,
+    target: 'fabric',
+    dataSources: normaliseDataSources(undefined),
+    uploads: {},
+    schedule: { frequency: 'daily', time: '02:00', weekday: 'Sunday', timeZone: 'UTC' },
+    app: {},
+    keyVault: { secretName: SECRET_NAME },
+    fabric: { notebooks: {} },
+    semanticModel: { name: MODEL_NAME },
+    consumption: {},
+  };
+}
+
+/**
+ * @param {string} file
+ * @returns {{ config: InstallConfig, existed: boolean }}
+ */
+export function loadConfig(file) {
+  if (!existsSync(file)) {
+    const config = emptyConfig();
+    remember(config, file, null, JSON.stringify(config));
+    return { config, existed: false };
+  }
+  /** @type {string} */
+  let text;
+  /** @type {any} */
+  let raw;
+  try {
+    text = readFileSync(file, 'utf8');
+    raw = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`${file} is not valid JSON: ${/** @type {Error} */ (err).message}`);
+  }
+  const config = normaliseConfig(raw, file);
+  remember(config, file, text, JSON.stringify(config));
+  return { config, existed: true };
+}
+
+/**
+ * A record as read from disk, with the defaults for anything it doesn't have yet.
+ * @param {any} raw
+ * @param {string} file
+ * @returns {InstallConfig}
+ */
+function normaliseConfig(raw, file) {
+  if (!isRecord(raw)) throw new Error(`${file} isn't an install record.`);
+  const foreign = foreignRecord(raw, file);
+  if (foreign) throw new Error(foreign);
+  if (raw.version !== CONFIG_VERSION) throw new Error(`${file} has version ${raw.version}; this installer reads version ${CONFIG_VERSION}.`);
+  if (raw.target !== undefined && raw.target !== 'fabric') throw new Error(`${file} is for the ${raw.target} target; this installer installs only on Fabric.`);
+  const base = emptyConfig();
+  /** @type {InstallConfig} */
+  const config = {
+    ...base,
+    ...raw,
+    target: raw.target ?? 'fabric',
+    dataSources: normaliseDataSources(raw.dataSources, raw.uploads),
+    // studioFlow and feedbackFlow are read once, above: each flow is now its source's api mode.
+    uploads: Object.fromEntries(Object.entries(raw.uploads ?? {}).filter(([k]) => k !== 'studioFlow' && k !== 'feedbackFlow')),
+    schedule: { ...base.schedule, ...(raw.schedule ?? {}) },
+    app: { ...(raw.app ?? {}) },
+    keyVault: { ...base.keyVault, ...(raw.keyVault ?? {}) },
+    fabric: { ...base.fabric, ...(raw.fabric ?? {}), notebooks: { ...(raw.fabric?.notebooks ?? {}) } },
+    semanticModel: { ...base.semanticModel, ...(raw.semanticModel ?? {}) },
+    ...(raw.access
+      ? {
+          access: { ...raw.access, grantedModels: [...(raw.access.grantedModels ?? [])] },
+        }
+      : {}),
+    consumption: { ...(raw.consumption ?? {}) },
+    ...(raw.prices ? { prices: { ...raw.prices } } : {}),
+    ...(raw.github ? { github: { ...raw.github } } : {}),
+    ...(raw.commercialTerms ? { commercialTerms: { ...raw.commercialTerms } } : {}),
+  };
+  assertNoSecrets(config);
+  return config;
+}
+
+/**
+ * For each record loadConfig returned, by file: the text it last read or wrote there (null when there was
+ * no file), and the record as it stood then. Another command can write the record meanwhile, such as
+ * access while an install waits hours for its first load; saveConfig merges what it changed.
+ * @type {WeakMap<object, Map<string, { read: string | null, base: string }>>}
+ */
+const lastSeen = new WeakMap();
+
+/** @param {object} config @param {string} file @param {string | null} read @param {string} base */
+function remember(config, file, read, base) {
+  let files = lastSeen.get(config);
+  if (!files) lastSeen.set(config, (files = new Map()));
+  files.set(resolve(file), { read, base });
+}
+
+/** @param {unknown} v @returns {v is Record<string, any>} */
+const isRecord = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * A three-way merge, field by field: each side keeps what only it changed since `base`. When both changed
+ * the same field to different values, `ours` wins, as the later save. A field one side removed and the
+ * other left alone stays removed. Lists are merged whole.
+ * @param {any} base
+ * @param {any} ours
+ * @param {any} theirs
+ * @returns {any}
+ */
+function mergeRecord(base, ours, theirs) {
+  if (isDeepStrictEqual(ours, base)) return theirs;
+  if (isDeepStrictEqual(theirs, base) || isDeepStrictEqual(ours, theirs)) return ours;
+  if (!isRecord(ours) || !isRecord(theirs)) return ours;
+  const was = isRecord(base) ? base : {};
+  /** @type {Record<string, any>} */
+  const merged = {};
+  for (const key of new Set([...Object.keys(ours), ...Object.keys(theirs)])) {
+    const value = mergeRecord(was[key], ours[key], theirs[key]);
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged;
+}
+
+/**
+ * Brings the record in memory up to date with what was saved, changing only the fields the merge changed,
+ * in place, so code holding part of it (a `const sm = config.semanticModel`, say) sees them too.
+ * @param {Record<string, any>} live
+ * @param {Record<string, any>} ours  What `live` held, as JSON.
+ * @param {Record<string, any>} merged
+ */
+function adopt(live, ours, merged) {
+  for (const key of Object.keys(ours)) if (!Object.hasOwn(merged, key)) delete live[key];
+  for (const [key, value] of Object.entries(merged)) {
+    if (isDeepStrictEqual(value, ours[key])) continue;
+    const held = live[key];
+    if (isRecord(value) && isRecord(ours[key]) && isRecord(held)) adopt(held, ours[key], value);
+    else if (Array.isArray(value) && Array.isArray(held)) held.splice(0, held.length, ...value);
+    else live[key] = value;
+  }
+}
+
+/**
+ * What to save when another command has written the record since `config` last read or wrote it: both
+ * sets of changes, merged. Undefined when nobody else has written it, or what's there can't be read as a
+ * record, so the save writes `config` as it is.
+ * @param {string} file
+ * @param {InstallConfig} config
+ * @param {{ read: string | null, base: string }} last
+ * @param {(ms: number) => void} wait
+ * @returns {{ ours: Record<string, any>, merged: Record<string, any> } | undefined}
+ */
+function mergeTheirs(file, config, last, wait) {
+  for (let attempt = 1; ; attempt++) {
+    /** @type {any} */
+    let theirs;
+    try {
+      const disk = readFileSync(file, 'utf8');
+      if (disk === last.read) return undefined;
+      theirs = JSON.parse(disk);
+    } catch (err) {
+      if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') return undefined;
+      // Half-written or held open: the other command may be writing it in place (see saveConfig). Give it
+      // a moment; if it still can't be read, this command's own changes are saved rather than lost.
+      if (attempt >= 3) return undefined;
+      wait(100 * attempt);
+      continue;
+    }
+    try {
+      theirs = JSON.parse(JSON.stringify(normaliseConfig(theirs, file)));
+    } catch {
+      return undefined;
+    }
+    const ours = JSON.parse(JSON.stringify(config));
+    return { ours, merged: mergeRecord(JSON.parse(last.base), ours, theirs) };
+  }
+}
+
+/** Errors Windows gives while a sync client, indexer or antivirus briefly holds the file open. */
+const LOCKED = new Set(['EPERM', 'EBUSY', 'EACCES']);
+
+/** @param {number} ms */
+function pause(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Writes atomically so an interrupted run never leaves a half-written file.
+ * In a OneDrive-synced folder the rename can fail for a moment while the file
+ * is being synced, so it's retried. If it still fails, the record is written
+ * in place so the run's progress isn't lost. Either way it is read back, so a
+ * step is only counted as done once its record is really on disk.
+ * For a record from loadConfig, another command may have saved the same file
+ * since this one last read or wrote it (access while an install waits on
+ * its first load): their changes are merged in, field by field, and the record
+ * in memory gets them too.
+ * @param {string} file
+ * @param {InstallConfig} config
+ * @param {{ rename?: (from: string, to: string) => void, wait?: (ms: number) => void, tries?: number, read?: (file: string) => string }} [io]
+ */
+export function saveConfig(file, config, io = {}) {
+  assertNoSecrets(config);
+  const { rename = renameSync, wait = pause, tries = 8, read = (/** @type {string} */ f) => readFileSync(f, 'utf8') } = io;
+  const last = lastSeen.get(config)?.get(resolve(file));
+  const merge = last ? mergeTheirs(file, config, last, wait) : undefined;
+  if (merge) assertNoSecrets(merge.merged);
+  const text = `${JSON.stringify(merge ? merge.merged : config, null, 2)}\n`;
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, text, 'utf8');
+  let renamed = false;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      rename(tmp, file);
+      renamed = true;
+      break;
+    } catch (err) {
+      const code = /** @type {NodeJS.ErrnoException} */ (err).code ?? '';
+      if (!LOCKED.has(code)) throw err;
+      if (attempt >= tries) break;
+      wait(Math.min(100 * attempt, 500));
+    }
+  }
+  if (!renamed) {
+    writeFileSync(file, text, 'utf8');
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // A leftover .tmp is harmless; the next save overwrites it.
+    }
+  }
+  if (read(file) !== text) {
+    throw new Error(`The install record ${file} didn't save: it reads back different from what was written. Check the folder isn't read-only or full, then run the installer again.`);
+  }
+  if (!last) return;
+  if (merge) adopt(config, merge.ours, merge.merged);
+  remember(config, file, text, text);
+}
+
+/**
+ * Sets an install record aside so the next install starts fresh. It's renamed beside itself, as
+ * `consumption-central-setup.<yyyyMMdd-HHmmss>.json`, so nothing in it is lost.
+ * A synced folder can hold the file for a moment, so the rename is retried like saveConfig's.
+ * @param {string} file
+ * @param {Date} [now]
+ * @param {{ rename?: (from: string, to: string) => void, wait?: (ms: number) => void, tries?: number }} [io]
+ * @returns {string} where the record went
+ */
+export function archiveConfig(file, now = new Date(), io = {}) {
+  const { rename = renameSync, wait = pause, tries = 8 } = io;
+  const p = (/** @type {number} */ n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
+  const base = file.replace(/\.json$/i, '');
+  let to = `${base}.${stamp}.json`;
+  for (let i = 2; existsSync(to); i++) to = `${base}.${stamp}-${i}.json`;
+  retryLocked(() => rename(file, to), wait, tries);
+  return to;
+}
+
+/**
+ * Deletes a file, retrying while a sync client, indexer or antivirus holds it.
+ * @param {string} file
+ * @param {{ unlink?: (file: string) => void, wait?: (ms: number) => void, tries?: number }} [io]
+ * @returns {boolean} false if it is still locked; the caller can leave it for the next run
+ */
+export function removeFile(file, io = {}) {
+  const { unlink = unlinkSync, wait = pause, tries = 8 } = io;
+  try {
+    retryLocked(() => unlink(file), wait, tries);
+    return true;
+  } catch (err) {
+    const code = /** @type {NodeJS.ErrnoException} */ (err).code ?? '';
+    if (code === 'ENOENT') return true;
+    if (LOCKED.has(code)) return false;
+    throw err;
+  }
+}
+
+/** @param {() => void} fn @param {(ms: number) => void} wait @param {number} tries */
+function retryLocked(fn, wait, tries) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return fn();
+    } catch (err) {
+      const code = /** @type {NodeJS.ErrnoException} */ (err).code ?? '';
+      if (!LOCKED.has(code) || attempt >= tries) throw err;
+      wait(Math.min(100 * attempt, 500));
+    }
+  }
+}
+
+/** @param {unknown} config */
+function assertNoSecrets(config) {
+  const text = JSON.stringify(config);
+  if (/"(secret|secretText|clientSecret|password)"\s*:/i.test(text)) {
+    throw new Error('Refusing to keep a secret in the install record.');
+  }
+}
