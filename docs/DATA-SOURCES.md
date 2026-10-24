@@ -468,12 +468,10 @@ The Azure pages (**9. Azure: Spend & Consumption**, **10. Azure: Capacity & Heal
 **10.1. Billing: Reconciliation**) read three further tables: whole-solution spend, deployment
 health and billing reconciliation. On Fabric, `Ingest_Azure_AI` writes them as
 `azure_solution_spend`, `azure_deployment_health` and `azure_billing_reconciliation`, on a
-best-effort basis: if one of those sections fails, the run logs a warning and leaves that table as
-it was. The exception is an append that fails after the table's window was deleted: the run says
-so, and that window stays empty until the next successful run. The Python collector does not
-produce these tables. The notebook also writes Copilot Studio and Cowork pay-as-you-go to
-`copilot_payg_spend`, which no template reads yet. Columns:
-[data dictionary](../2.%20Fabric/docs/DATA-DICTIONARY.md#azure-tables).
+best-effort basis: if one of those sections fails, its write included, the run logs a warning and
+leaves that table as it was. The Python collector does not produce these tables. The notebook also
+writes Copilot Studio and Cowork pay-as-you-go to `copilot_payg_spend`, which no template reads
+yet. Columns: [data dictionary](../2.%20Fabric/docs/DATA-DICTIONARY.md#azure-tables).
 
 ### Important limits of the shipped Azure page
 
@@ -504,8 +502,8 @@ produce these tables. The notebook also writes Copilot Studio and Cowork pay-as-
 
 Spend and Monitor data can arrive at different times and cover different available histories.
 Start with a short window, reconcile the same dates, service filters and currency in Azure,
-then increase the collection window. The Python collector keeps a rolling snapshot, not a
-permanent archive; the Fabric notebook replaces only its window and keeps older rows.
+then increase the collection window. The Python collector and the Fabric notebook both replace
+only their window and keep older rows, so history builds up from run to run.
 
 ### Where — spend
 

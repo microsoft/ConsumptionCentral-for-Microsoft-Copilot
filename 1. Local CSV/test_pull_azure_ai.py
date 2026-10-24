@@ -12,8 +12,9 @@ import io
 import json
 import os
 import subprocess
+import tempfile
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -35,6 +36,11 @@ RESOURCE_ID = (
 )
 ACCOUNT = {"id": RESOURCE_ID, "name": "ExampleAI", "resourceGroup": "Example", "location": "eastus"}
 FILENAMES = {"AzureAiSpendDaily.csv", "AzureAiTokensDaily.csv", "AzureAiDeployments.csv"}
+SPEND, TOKENS, INVENTORY = "AzureAiSpendDaily.csv", "AzureAiTokensDaily.csv", "AzureAiDeployments.csv"
+HEADERS = {SPEND: collector.SPEND_HEADERS, TOKENS: collector.TOKEN_HEADERS,
+           INVENTORY: collector.DEPLOYMENT_HEADERS}
+JUNE_12 = date(2026, 6, 12)
+NOTHING_PUBLISHED = "; nothing was published. Fix the file, or delete it to start it again, then rerun."
 
 
 def cost_page(rows=None, columns=None, next_link=None):
@@ -616,22 +622,25 @@ class CollectionAndMainTests(OfflineTestCase):
         with patch.object(collector, "AzureCLI") as azure:
             client = azure.return_value
             with patch.object(collector, "collect", side_effect=lambda *args: events.append(("collect", args)) or datasets):
-                with patch.object(collector, "publish", side_effect=lambda *args: events.append(("publish", args))):
-                    result = collector.main(["ignored-output", "--subscription", SUBSCRIPTION, "--days", "7"])
+                with patch.object(collector, "keep_older",
+                                  side_effect=lambda *args: events.append(("keep_older", args)) or {}):
+                    with patch.object(collector, "publish", side_effect=lambda *args: events.append(("publish", args))):
+                        result = collector.main(["ignored-output", "--subscription", SUBSCRIPTION, "--days", "7"])
         self.assertEqual(result, 0)
-        self.assertEqual([event[0] for event in events], ["collect", "publish"])
+        self.assertEqual([event[0] for event in events], ["collect", "keep_older", "publish"])
         _, args = events[0]
         self.assertIs(args[0], client)
         self.assertEqual(args[1], SUBSCRIPTION)
         self.assertEqual((args[3] - args[2]).days, 7)
-        self.assertEqual(events[1][1], (Path("ignored-output"), datasets))
+        self.assertEqual(events[1][1], (Path("ignored-output"), datasets, args[2]))
+        self.assertEqual(events[2][1], (Path("ignored-output"), datasets))
         client.run.assert_not_called()
 
     def test_default_subscription_and_ninety_day_window(self):
         with patch.object(collector, "AzureCLI") as azure:
             azure.return_value.run.return_value = {"id": SUBSCRIPTION}
             with patch.object(collector, "collect", return_value=self.datasets()) as collect:
-                with patch.object(collector, "publish"):
+                with patch.object(collector, "keep_older", return_value={}), patch.object(collector, "publish"):
                     self.assertEqual(collector.main(["ignored-output"]), 0)
         command = azure.return_value.run.call_args.args[0]
         self.assertEqual(command[:2], ["account", "show"])
@@ -720,6 +729,188 @@ class PublicationTests(OfflineTestCase):
             with self.assertRaisesRegex(collector.CollectionError, "Publication partially completed"):
                 collector.publish(self.outdir, self.datasets)
         self.assertEqual(len(self.disk.replacements), 1)
+
+
+class ReloadTests(unittest.TestCase):
+    """A reload keeps older rows. These use real files, but only in a new temporary folder."""
+
+    def setUp(self):
+        self.enterContext(patch.object(collector.subprocess, "run",
+                                       side_effect=AssertionError("Unmocked Azure call")))
+        self.outdir = Path(self.enterContext(tempfile.TemporaryDirectory()))
+
+    def row(self, filename, **values):
+        return {h: values.get(h, "") for h in HEADERS[filename]}
+
+    def store(self, filename, rows):
+        collector.publish(self.outdir, {filename: (HEADERS[filename], rows)})
+
+    def read(self, filename, outdir=None):
+        with ((outdir or self.outdir) / filename).open(encoding="utf-8", newline="") as handle:
+            return list(csv.DictReader(handle))
+
+    def files(self, outdir=None):
+        return {p.name: p.read_bytes() for p in (outdir or self.outdir).iterdir()}
+
+    def main(self, seen, outdir=None):
+        def collect(client, subscription, start, end):
+            self.assertEqual(subscription, SUBSCRIPTION)
+            seen.append(start)
+            return {SPEND: (HEADERS[SPEND], [self.row(SPEND, UsageDate=start, Meter="new")]),
+                    TOKENS: (HEADERS[TOKENS], []), INVENTORY: (HEADERS[INVENTORY], [])}
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(collector, "AzureCLI"), patch.object(collector, "collect", side_effect=collect):
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                result = collector.main([str(outdir or self.outdir), "--subscription", SUBSCRIPTION])
+        return result, stdout.getvalue(), stderr.getvalue()
+
+    def test_keeps_rows_older_than_the_window_and_replaces_the_rest(self):
+        self.store(SPEND, [self.row(SPEND, UsageDate=d, Meter=f"old {d or 'undated'}")
+                           for d in ("2026-06-01", "2026-06-11", "2026-06-12", "")])
+        self.store(INVENTORY, [self.row(INVENTORY, Deployment="retired")])
+        datasets = {
+            SPEND: (HEADERS[SPEND], [self.row(SPEND, UsageDate="2026-06-12", Meter="new"),
+                                     self.row(SPEND, UsageDate="2026-06-10", Meter="before the window"),
+                                     self.row(SPEND, UsageDate="", Meter="new undated")]),
+            TOKENS: (HEADERS[TOKENS], [self.row(TOKENS, Date=JUNE_12, Metric="new")]),
+            INVENTORY: (HEADERS[INVENTORY], [self.row(INVENTORY, Deployment="current")]),
+        }
+        self.assertEqual(collector.keep_older(self.outdir, datasets, JUNE_12), {SPEND: 2, TOKENS: 0})
+        self.assertEqual([r["Meter"] for r in datasets[SPEND][1]],
+                         ["old 2026-06-01", "old 2026-06-11", "new", "new undated"])
+        self.assertEqual([r["Metric"] for r in datasets[TOKENS][1]], ["new"])
+        self.assertEqual([r["Deployment"] for r in datasets[INVENTORY][1]], ["current"])
+        collector.publish(self.outdir, datasets)
+        self.assertEqual([(r["UsageDate"], r["Meter"]) for r in self.read(SPEND)], [
+            ("2026-06-01", "old 2026-06-01"), ("2026-06-11", "old 2026-06-11"),
+            ("2026-06-12", "new"), ("", "new undated")])
+        self.assertEqual([r["Date"] for r in self.read(TOKENS)], ["2026-06-12"])
+        self.assertEqual([r["Deployment"] for r in self.read(INVENTORY)], ["current"])
+
+    def test_daily_runs_and_a_smaller_window_build_up_history(self):
+        def run(start, days):
+            window = [(start + timedelta(days=i)).isoformat() for i in range(days)]
+            datasets = {
+                SPEND: (HEADERS[SPEND], [self.row(SPEND, UsageDate=d, Meter=f"run {start}") for d in window]),
+                TOKENS: (HEADERS[TOKENS], [self.row(TOKENS, Date=d, Metric=f"run {start}") for d in window]),
+                INVENTORY: (HEADERS[INVENTORY], []),
+            }
+            kept = collector.keep_older(self.outdir, datasets, start)
+            collector.publish(self.outdir, datasets)
+            return kept
+
+        self.assertEqual(run(date(2026, 6, 1), 3), {SPEND: 0, TOKENS: 0})
+        self.assertEqual(run(date(2026, 6, 2), 3), {SPEND: 1, TOKENS: 1})  # the next day
+        self.assertEqual(run(date(2026, 6, 4), 1), {SPEND: 3, TOKENS: 3})  # then --days 1
+        expected = [("2026-06-01", "run 2026-06-01"), ("2026-06-02", "run 2026-06-02"),
+                    ("2026-06-03", "run 2026-06-02"), ("2026-06-04", "run 2026-06-04")]
+        self.assertEqual([(r["UsageDate"], r["Meter"]) for r in self.read(SPEND)], expected)
+        self.assertEqual([(r["Date"], r["Metric"]) for r in self.read(TOKENS)], expected)
+
+    def test_a_rerun_with_the_same_rows_changes_nothing(self):
+        self.store(SPEND, [self.row(SPEND, UsageDate="2026-06-01", Meter="old", Cost=1.5)])
+
+        def run():
+            datasets = {
+                SPEND: (HEADERS[SPEND], [self.row(SPEND, UsageDate="2026-06-12", Meter="new", Cost=0.1 + 0.2)]),
+                TOKENS: (HEADERS[TOKENS], [self.row(TOKENS, Date="2026-06-13", Metric="InputTokens", Value=42.0)]),
+                INVENTORY: (HEADERS[INVENTORY], [self.row(INVENTORY, Deployment="chat", Capacity=10)]),
+            }
+            collector.keep_older(self.outdir, datasets, JUNE_12)
+            collector.publish(self.outdir, datasets)
+            return self.files()
+
+        first = run()
+        self.assertEqual(run(), first)
+        self.assertEqual([r["Meter"] for r in self.read(SPEND)], ["old", "new"])
+
+    def test_an_unreadable_stored_csv_fails_before_anything_is_published(self):
+        cases = [
+            (b"\xff\xfeUsageDate\r\n", "AzureAiSpendDaily.csv can't be read ("),
+            (b"UsageDate,Meter\r\n06/12/2026,m\r\n",
+             "AzureAiSpendDaily.csv line 2: UsageDate '06/12/2026' isn't a yyyy-mm-dd date"),
+            (b"UsageDate,Meter\r\n2026-06-01,m\r\n2026-06-02,m,extra\r\n",
+             "AzureAiSpendDaily.csv line 3 has the wrong number of fields"),
+            (b"UsageDate,Meter\r\n2026-06-01\r\n", "AzureAiSpendDaily.csv line 2 has the wrong number of fields"),
+            (b"Day,Meter\r\n2026-06-01,m\r\n", "AzureAiSpendDaily.csv has no UsageDate column"),
+            (None, "AzureAiSpendDaily.csv can't be read ("),  # a folder where the CSV should be
+        ]
+        for index, (content, message) in enumerate(cases):
+            with self.subTest(message=message):
+                outdir = self.outdir / f"case {index}"
+                outdir.mkdir()
+                if content is None:
+                    (outdir / SPEND).mkdir()
+                else:
+                    (outdir / SPEND).write_bytes(content)
+                datasets = {SPEND: (HEADERS[SPEND], [self.row(SPEND, UsageDate="2026-06-12")])}
+                with self.assertRaises(collector.CollectionError) as caught:
+                    collector.keep_older(outdir, datasets, JUNE_12)
+                self.assertIn(message, str(caught.exception))
+                self.assertTrue(str(caught.exception).endswith(NOTHING_PUBLISHED), str(caught.exception))
+
+    def test_stored_rows(self):
+        path = self.outdir / SPEND
+        self.assertEqual(collector.stored_rows(path, HEADERS[SPEND], "UsageDate"), [])  # no file yet
+        path.write_bytes(b"")
+        self.assertEqual(collector.stored_rows(path, HEADERS[SPEND], "UsageDate"), [])
+        path.write_bytes("\ufeffUsageDate,Meter,Retired\r\n2026-06-01,m,x\r\n,blank,y\r\n".encode("utf-8"))
+        rows = collector.stored_rows(path, HEADERS[SPEND], "UsageDate")
+        self.assertEqual([list(r) for r in rows], [HEADERS[SPEND]] * 2)  # a missing column is blank; extra ones go
+        self.assertEqual([(r["UsageDate"], r["Meter"], r["Cost"]) for r in rows],
+                         [("2026-06-01", "m", ""), ("", "blank", "")])
+
+    def test_as_day(self):
+        for value, expected in [("2026-06-12", JUNE_12), ("20260612", JUNE_12), (JUNE_12, JUNE_12),
+                                ("2026-06-12T00:00:00", JUNE_12), ("", None), (None, None),
+                                ("06/12/2026", None), ("yesterday", None)]:
+            with self.subTest(value=value):
+                self.assertEqual(collector.as_day(value), expected)
+
+    def test_the_deployment_inventory_is_replaced_whole_and_never_read(self):
+        self.assertEqual(collector.RELOAD, {SPEND: "UsageDate", TOKENS: "Date"})
+        for filename, column in collector.RELOAD.items():
+            self.assertIn(column, HEADERS[filename])
+        (self.outdir / INVENTORY).write_bytes(b"not, a\r\n\xff\xfe valid inventory\r\n")
+        datasets = {INVENTORY: (HEADERS[INVENTORY], [self.row(INVENTORY, Deployment="current")])}
+        self.assertEqual(collector.keep_older(self.outdir, datasets, JUNE_12), {})
+        collector.publish(self.outdir, datasets)
+        self.assertEqual([r["Deployment"] for r in self.read(INVENTORY)], ["current"])
+
+    def test_main_keeps_older_rows(self):
+        self.store(SPEND, [self.row(SPEND, UsageDate="2000-01-03", Meter="older"),
+                           self.row(SPEND, UsageDate="2999-01-01", Meter="replaced")])
+        seen = []
+        result, out, _ = self.main(seen)
+        self.assertEqual(result, 0)
+        self.assertIn(f"Wrote {SPEND}: 2 rows (1 older rows kept)\n", out)
+        self.assertIn(f"Wrote {TOKENS}: 0 rows\n", out)
+        self.assertEqual([(r["UsageDate"], r["Meter"]) for r in self.read(SPEND)],
+                         [("2000-01-03", "older"), (str(seen[0]), "new")])
+
+    def test_main_publishes_nothing_when_a_stored_csv_is_unreadable(self):
+        self.store(SPEND, [self.row(SPEND, UsageDate="2000-01-03", Meter="older")])
+        (self.outdir / TOKENS).write_bytes(b"Date,Metric\r\nyesterday,x\r\n")
+        before = self.files()
+        result, out, err = self.main([])
+        self.assertEqual(result, 1)
+        self.assertIn("ERROR: AzureAiTokensDaily.csv line 2: Date 'yesterday' isn't a yyyy-mm-dd date"
+                      + NOTHING_PUBLISHED, err)
+        self.assertNotIn("Wrote", out)
+        self.assertEqual(self.files(), before)
+
+    def test_first_run_with_no_stored_files(self):
+        outdir = self.outdir / "Data"
+        seen = []
+        result, out, _ = self.main(seen, outdir)
+        self.assertEqual(result, 0)
+        self.assertIn(f"Wrote {SPEND}: 1 rows\n", out)
+        self.assertNotIn("older rows kept", out)
+        self.assertEqual(set(self.files(outdir)), set(HEADERS))
+        self.assertEqual([(r["UsageDate"], r["Meter"]) for r in self.read(SPEND, outdir)],
+                         [(str(seen[0]), "new")])
+        self.assertEqual(self.read(TOKENS, outdir), [])
 
 
 if __name__ == "__main__":
