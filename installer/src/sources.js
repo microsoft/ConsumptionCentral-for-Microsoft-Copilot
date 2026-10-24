@@ -5,7 +5,7 @@
  * PAX scripts and the app's build. The helper notebooks and the PAX scripts ship with the installer itself.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MANIFEST_FILE, resolveNotebooks } from './catalog.js';
 import { RUNNER_DIR } from './steps/pax/local.js';
@@ -19,10 +19,18 @@ export const DEFAULT_SOURCE_DIR = resolve(INSTALLER_ROOT, '..');
 export const PAX_SCRIPTS = Object.freeze(['Run-PAX-AIBV.ps1', 'Upload-Rollups-SharePoint.ps1']);
 
 /**
- * The app's build, which the PAX route deploys as a Copilot managed app. The exe ships it; in a
- * checkout, `npm ci` then `npm run build` in `app` makes it.
+ * The app's build, which the PAX route deploys as a Copilot managed app: this folder in the app
+ * folder installer-assets.json lists. The exe ships it; in a checkout, `npm ci` then `npm run build`
+ * in the app folder makes it.
  */
-export const APP_DIST = 'app/dist';
+export const APP_BUILD = 'dist';
+
+/**
+ * The app's build relative to the source folder, with forward slashes.
+ * @param {any} manifest  installer-assets.json.
+ * @returns {string | undefined}
+ */
+export const appDistOf = (manifest) => (manifest?.app?.path ? posix.join(String(manifest.app.path).replaceAll('\\', '/'), APP_BUILD) : undefined);
 
 /**
  * @typedef {object} Sources
@@ -60,7 +68,8 @@ export function loadSources(dir = DEFAULT_SOURCE_DIR) {
   const viva = manifest.templates?.vivaDirect?.path;
   const paxModelFile = viva ? join(root, viva) : undefined;
   const paxScripts = PAX_SCRIPTS.map((s) => join(RUNNER_DIR, s));
-  const appDist = join(root, APP_DIST);
+  const app = appDistOf(manifest);
+  const appDist = app ? join(root, app) : undefined;
   return {
     dir: root,
     manifest,
@@ -69,7 +78,7 @@ export function loadSources(dir = DEFAULT_SOURCE_DIR) {
     modelFile,
     ...(paxModelFile && existsSync(paxModelFile) ? { paxModelFile } : {}),
     ...(paxScripts.every((s) => existsSync(s)) ? { paxScripts } : {}),
-    ...(existsSync(join(appDist, 'index.html')) ? { appDist } : {}),
+    ...(appDist && existsSync(join(appDist, 'index.html')) ? { appDist } : {}),
   };
 }
 

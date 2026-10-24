@@ -2,14 +2,16 @@
 /**
  * What goes into ConsumptionCentralInstaller.exe, kept apart from the build so it can be tested.
  * The payload unpacks to:
- *   node/node.exe            Node.js, which runs everything below
- *   f/installer/             the installer, with its production dependencies and helper notebooks
- *   f/<templates>            installer-assets.json and the notebooks and template it lists
+ *   node/node.exe              Node.js, which runs everything below
+ *   f/installer/               the installer, with its production dependencies, helper notebooks and PAX scripts
+ *   f/installer/managed-cli/   the Copilot managed apps CLI that deploys the app, with its dependencies
+ *   f/app/dist/                the app, built
+ *   f/<templates>              installer-assets.json and the notebooks and templates it lists
  * `f` stands in for the repo root, which keeps paths short when unpacked under the user's profile.
  */
 import { posix } from 'node:path';
 import { MANIFEST_FILE, resolveNotebooks } from '../src/catalog.js';
-import { EXE_NAME } from '../src/product.js';
+import { EXE_NAME, PRODUCT } from '../src/product.js';
 
 export { EXE_NAME };
 /** The source folder (the repo root) inside the payload. */
@@ -27,31 +29,55 @@ export const MAX_PAYLOAD_PATH = 200;
  * paths under 260 characters, so these must fit even under a long user name.
  */
 export const MAX_NATIVE_PATH = 120;
+/** The folder under the installer that pins the managed apps CLI. The build installs its dependencies. */
+export const MANAGED_CLI_DIR = 'managed-cli';
+/**
+ * The list of sample files the built app fetches when it opens (app/src/data/load.ts), relative to
+ * the build. The app's public folder holds them, committed, and the build copies them.
+ */
+export const APP_SAMPLE_MANIFEST = 'sample/manifest.json';
 export { MIRROR_REGISTRY, PUBLIC_REGISTRY, publicRegistry } from './registry.js';
 
 /** @param {string} p */
 const slash = (p) => p.replaceAll('\\', '/');
 
 /**
- * The files under the source folder that `loadSources` reads, relative to it. The helper notebooks
- * ship under the installer folder instead (`installerFile`).
+ * The files under the source folder that `loadSources` reads, relative to it: the Fabric route's
+ * notebooks and template, and the PAX route's template with the queries it swaps in, which it reads
+ * from beside the template. The helper notebooks and PAX scripts ship under the installer folder
+ * instead (`installerFile`), and the app's build is made by the exe build.
  * @param {any} manifest  installer-assets.json
  * @returns {string[]}
  */
 export function sourceFiles(manifest) {
+  const viva = manifest.templates.vivaDirect?.path;
+  if (!viva) throw new Error(`${MANIFEST_FILE} has no templates.vivaDirect, the PAX route's template.`);
   return [
     MANIFEST_FILE,
     ...resolveNotebooks(manifest).filter((nb) => !nb.asset).map((nb) => posix.normalize(slash(nb.path))),
     manifest.templates.fabric.path,
+    viva,
+    ...paxQueryFiles().map((f) => posix.join(posix.dirname(slash(viva)), f)),
   ].map(slash);
 }
+
+/** The files of the queries the PAX route swaps into its template (`PRODUCT.pax.expressions`). */
+export const paxQueryFiles = () => Object.values(PRODUCT.pax.expressions ?? {}).flatMap((v) => (typeof v === 'string' ? [] : [v.file]));
+
+/**
+ * The sample files the built app fetches when it opens: the list, then each file on it.
+ * @param {string[]} names  The list's entries.
+ */
+export const appSampleFiles = (names) => [APP_SAMPLE_MANIFEST, ...names.map((n) => posix.join(posix.dirname(APP_SAMPLE_MANIFEST), n))];
 
 /**
  * Whether a tracked installer file ships, given its path relative to the installer folder.
  * @param {string} rel
  */
 export function installerFile(rel) {
-  return /^(assets|bin|src)\//.test(rel) || ['package.json', 'package-lock.json', 'README.md'].includes(rel);
+  return /^(assets|bin|src)\//.test(rel)
+    || ['package.json', 'package-lock.json', 'README.md'].includes(rel)
+    || [`${MANAGED_CLI_DIR}/package.json`, `${MANAGED_CLI_DIR}/package-lock.json`].includes(rel);
 }
 
 /**
@@ -73,13 +99,29 @@ export function fileVersion(version) {
   return `${parts.join('.')}.0`;
 }
 
+/** The folder under @azure/msal-node-runtime's dist/windows for each Node.js architecture. */
+const MSAL_ARCH = /** @type {Record<string, string>} */ ({ x64: 'x64', arm64: 'arm64', ia32: 'x86' });
+const MSAL_RUNTIME = /(?:^|\/)node_modules\/@azure\/msal-node-runtime\/dist\/(windows|macos|linux)\/(.+)$/i;
+
+/**
+ * The folder of the sign-in broker's Windows binaries that a Node.js architecture loads.
+ * @param {string} [arch]
+ */
+export const msalRuntimeArch = (arch = process.arch) => MSAL_ARCH[arch] ?? arch;
+
 /**
  * Whether an installed package's file can be left out of the payload: source maps, which nothing
- * reads when the installer runs.
+ * reads when the installer runs, and the sign-in broker's binaries for other platforms. The managed
+ * apps CLI's @azure/msal-node-runtime ships every platform's (about 36 MB), where npm installs the
+ * other native packages for the building PC's platform only.
  * @param {string} rel  Relative to the payload root.
+ * @param {string} [arch]  The Node.js architecture the payload runs on: the one that builds it.
  */
-export function prunable(rel) {
-  return /(^|\/)node_modules\/.+\.map$/i.test(rel);
+export function prunable(rel, arch = process.arch) {
+  if (/(^|\/)node_modules\/.+\.map$/i.test(rel)) return true;
+  const msal = MSAL_RUNTIME.exec(rel);
+  if (!msal) return false;
+  return msal[1].toLowerCase() !== 'windows' || !msal[2].startsWith(`${msalRuntimeArch(arch)}/`);
 }
 
 /**
