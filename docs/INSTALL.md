@@ -1,20 +1,31 @@
 # Install
 
-The installer sets Consumption Central up in your tenant and loads the first data, then you check
-it worked. It has two routes:
+The installer sets Consumption Central up in your tenant, loads the first data, and refreshes it
+every day. To set it up by hand instead, see [Manual](../README.md#manual) in the main README.
 
-- **Fabric** sets up the [Fabric option](../2.%20Fabric/README.md): a workspace, Lakehouse,
-  notebooks, a pipeline on a schedule, the semantic model and the report.
-- **No Fabric: SharePoint + PAX** publishes the [Viva Direct](../3.%20Viva%20Direct/README.md)
-  report on a SharePoint folder of your exports, keeps the org file in that folder up to date with
-  a daily task on a Windows PC, and deploys [the app](../app/README.md).
+In short:
 
-To set one up by hand instead, follow its guide. [Local CSV](../1.%20Local%20CSV/README.md) needs
-no installer.
+1. [Pick a route](#pick-a-route), and check what it needs.
+2. [Start the installer](#start-the-installer).
+3. [Answer its questions and approve the plan](#run-it).
+4. [Check it worked](#check-it-worked).
 
-Check what your route needs first: [Before you start](../installer/README.md#before-you-start)
-for Fabric, or [What it needs](../installer/README.md#what-it-needs) for No Fabric. Then start the
-installer one of these ways. They all run the same installer and ask the same questions.
+## Pick a route
+
+After you sign in, the installer asks **Where should Consumption Central run?** On the command
+line, `--target fabric` or `--target pax` answers it. An install stays on the route it started on.
+
+| Route | What it sets up | Needs |
+|---|---|---|
+| **Fabric** | The [Fabric option](../2.%20Fabric/README.md): a workspace, Lakehouse, notebooks, a pipeline that loads the data each day, the semantic model and the report | A Fabric capacity (F2 or larger, or a trial). [Full list](../installer/README.md#before-you-start) |
+| **No Fabric: SharePoint + PAX** | The [Viva Direct](../3.%20Viva%20Direct/README.md) report on a SharePoint folder of your exports, a daily task on a Windows PC that keeps the org file there up to date, and [the app](../app/README.md), which reads the same folder | Power BI Pro, and PowerShell 7.2 or later on the PC that will run the task. Azure Cloud Shell can't set it up. [Full list](../installer/README.md#what-it-needs) |
+
+[Local CSV](../1.%20Local%20CSV/README.md) needs no installer. More in the
+[installer's README](../installer/README.md).
+
+## Start the installer
+
+Pick one way. They all run the same installer and ask the same questions.
 
 | Your PC | Start with |
 |---|---|
@@ -27,21 +38,6 @@ installer one of these ways. They all run the same installer and ask the same qu
 
 If your organisation's policy blocks one of these ways, don't work around it. Use another, or ask
 your IT team.
-
-**Which route.** After you sign in, the installer asks **Where should Consumption Central run?**
-On the command line, `--target fabric` or `--target pax` answers it.
-
-- **Fabric.** Notebooks and a pipeline in a Fabric workspace load the data into a Lakehouse each
-  day, for the report. Needs a Fabric capacity (F2 or larger, or a trial).
-- **No Fabric: SharePoint + PAX.** The report reads the exports in a SharePoint folder, and Viva
-  Insights, each time it refreshes. A daily task on this Windows PC runs PAX for the org file. The
-  app reads the same folder. Needs Power BI Pro and PowerShell 7.2 or later. Run the installer on
-  the PC that will run the task. Azure Cloud Shell can't set it up.
-
-An install stays on the route it started on. More in the
-[installer's README](../installer/README.md).
-
-When it finishes: [Check it worked](#check-it-worked).
 
 ## Run it
 
@@ -56,12 +52,12 @@ When it finishes: [Check it worked](#check-it-worked).
    gives its command, and the
    [installer releases](https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/releases?q=consumption-central-installer-v)
    list them all. To check the exe, see [Check the download](#check-the-download). If your
-   organisation blocks either, use another way in the table above.
+   organisation blocks either, use another way in [Start the installer](#start-the-installer).
 2. The first time, it takes a moment to unpack. Then it opens in your browser. Keep its window
    open while you use the page, and keep the PC awake and plugged in until it finishes. If you
    close the page, go back to that window and press **Enter** to open it again.
 3. Choose **Set up Consumption Central** and sign in.
-4. Choose the route: **Fabric** or **No Fabric: SharePoint + PAX**. See **Which route** above.
+4. Choose the route: **Fabric** or **No Fabric: SharePoint + PAX**. See [Pick a route](#pick-a-route).
 5. Answer the questions. On the **Fabric** route:
    1. **Data sources.** Each source has a card: connected (through an API, a flow or a Dataflow),
       **Upload CSV** or **Skip**. **Copilot Cowork and Work IQ credits** and **Copilot Studio
