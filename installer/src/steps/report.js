@@ -12,8 +12,12 @@ import { createItem, modelKey } from './fabric.js';
 /** @typedef {import('../install.js').Ctx} Ctx */
 /** @typedef {import('../config.js').ModelConfig} ModelConfig */
 
-/** @param {string} workspaceId @param {string} reportId */
-export const reportUrl = (workspaceId, reportId) => `https://app.powerbi.com/groups/${workspaceId}/reports/${reportId}`;
+/**
+ * The report. With the tenant, it opens in that tenant even for someone signed in to another.
+ * @param {string} workspaceId @param {string} reportId @param {string} [tenantId]
+ */
+export const reportUrl = (workspaceId, reportId, tenantId) =>
+  `https://app.powerbi.com/groups/${workspaceId}/reports/${reportId}${tenantId ? `?ctid=${tenantId}` : ''}`;
 
 /**
  * The reports are published: the user chose them, with the semantic model.
@@ -117,6 +121,6 @@ export function reportsSummary(ctx) {
   const ws = /** @type {string} */ (ctx.config.fabric.workspaceId);
   for (const w of reportsWanted(ctx)) {
     const r = w.model.report;
-    if (r?.id) ctx.ui.info(`Report:     ${r.name}  ${c.dim(reportUrl(ws, r.id))}`);
+    if (r?.id) ctx.ui.info(`Report:     ${r.name}  ${c.dim(reportUrl(ws, r.id, ctx.config.tenantId))}`);
   }
 }

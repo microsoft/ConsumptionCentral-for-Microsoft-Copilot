@@ -5,7 +5,7 @@
 // tenant is ready for it.
 import { HttpError } from '../../http.js';
 import { commandLine } from '../../launch.js';
-import { deployTheApp, removeTheApp } from '../../managed-app/flow.js';
+import { deployTheApp, removeTheApp, sampleDataNote } from '../../managed-app/flow.js';
 import { PRODUCT } from '../../product.js';
 import { ROUTE_NAMES } from '../../target.js';
 import { c } from '../../ui.js';
@@ -14,6 +14,7 @@ import {
 } from '../access.js';
 import { SECRET_LIFETIME_MONTHS, addMonths, ensureApp, ensureConsent, isResumeLater } from '../identity.js';
 import { modelUrl } from '../model.js';
+import { reportUrl } from '../report.js';
 import { nextSteps, stepsLeftTitle } from '../next-steps.js';
 import { addTrackedSecret, promoteSecret, removeRetired, settleFailedSecret } from '../secrets.js';
 import {
@@ -599,13 +600,18 @@ export function paxSummary(ctx, { ok }) {
     ui.info(`Secret:     Credential Manager, ${pax.credentialTarget}${expires}`);
   }
   if (ws?.workspaceId) {
-    ui.info(`Workspace:  ${ws.workspaceName ?? PRODUCT.pax.workspace}, ${workspaceUrl(ws.workspaceId, user?.tenantId)}`);
+    const tenant = config.tenantId ?? user?.tenantId;
+    ui.info(`Workspace:  ${ws.workspaceName ?? PRODUCT.pax.workspace}, ${workspaceUrl(ws.workspaceId, tenant)}`);
     if (sm?.id) {
       const at = [config.powerBi?.refreshAt ?? []].flat();
-      ui.info(`Model:      ${modelUrl(ws.workspaceId, sm.id)}${at.length ? `, refreshes at ${at.join(' and ')}` : ''}`);
+      ui.info(`Model:      ${modelUrl(ws.workspaceId, sm.id, tenant)}${at.length ? `, refreshes at ${at.join(' and ')}` : ''}`);
     }
+    if (sm?.report?.id) ui.info(`Report:     ${reportUrl(ws.workspaceId, sm.report.id, tenant)}`);
   }
-  if (config.managedApp?.url) ui.info(`App:        ${config.managedApp.url}`);
+  if (config.managedApp?.url) {
+    ui.info(`App:        ${config.managedApp.url}`);
+    ui.info(`            ${sampleDataNote(config)}`);
+  }
   ui.info(`Keep ${c.bold(PRODUCT.recordFile)}. It holds no secrets; re-run the installer with it to change or repair the set-up.`);
 }
 

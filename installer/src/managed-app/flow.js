@@ -169,6 +169,15 @@ export function dataHint(config) {
 }
 
 /**
+ * For the summary: the app shows its bundled sample until someone picks their own files, and where those are.
+ * @param {import('../config.js').InstallConfig} config
+ */
+export function sampleDataNote(config) {
+  const folder = config.sharePoint?.folderUrl;
+  return `It shows sample data, labelled Sample data in its header, until you choose Change data and pick your own CSV files: the ones in ${folder ? `the SharePoint folder ${folder}` : 'the SharePoint folder'}, and for the Cowork pages the Viva Insights query's download (Analysis results, the query, then Download).`;
+}
+
+/**
  * Deletes the app, then its folder on this PC and its part of the record. When the app can't be
  * deleted from here, the record keeps it and this says where to delete it.
  * @param {Ctx} ctx

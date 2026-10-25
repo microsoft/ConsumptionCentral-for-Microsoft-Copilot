@@ -29,7 +29,9 @@ test('describeRecord: the data sources as the home page lists them, and whether 
   assert.equal(rec.app, false);
   assert.equal(rec.installed, true);
   assert.equal(rec.target, 'fabric', "the home page is told the record's target");
-  assert.equal(rec.workspaceUrl, 'https://app.fabric.microsoft.com/groups/ws-1');
+  assert.equal(rec.workspaceUrl, 'https://app.fabric.microsoft.com/groups/ws-1?ctid=tenant-1', "opens in the install's tenant");
+  assert.equal(rec.modelUrl, undefined, 'no model yet');
+  assert.equal(rec.reportUrl, undefined, 'no report yet');
 
   config.dataSources.studioCredits = 'api';
   config.dataSources.github = 'api';
@@ -39,6 +41,30 @@ test('describeRecord: the data sources as the home page lists them, and whether 
   assert.ok(after.data.includes('Copilot Studio credits: Connected (Power Automate flow)'));
   assert.ok(after.data.includes('GitHub Copilot: Connected (GitHub API)'));
   assert.equal(after.app, true);
+});
+
+test("describeRecord: the model and report links, in the install's tenant", () => {
+  const config = installed();
+  config.semanticModel.enabled = true;
+  config.semanticModel.id = 'sm-1';
+  config.semanticModel.report = { name: 'Consumption Central', id: 'rp-1' };
+  config.semanticModel.reports = false;
+  let rec = describeRecord(config);
+  assert.equal(rec.modelUrl, 'https://app.powerbi.com/groups/ws-1/datasets/sm-1/details?ctid=tenant-1');
+  assert.equal(rec.reportUrl, undefined, 'the report is turned off');
+  config.semanticModel.reports = true;
+  rec = describeRecord(config);
+  assert.equal(rec.reportUrl, 'https://app.powerbi.com/groups/ws-1/reports/rp-1?ctid=tenant-1');
+
+  config.target = 'pax';
+  rec = describeRecord(config);
+  assert.equal(rec.workspaceUrl, 'https://app.powerbi.com/groups/ws-1?ctid=tenant-1');
+  assert.equal(rec.modelUrl, 'https://app.powerbi.com/groups/ws-1/datasets/sm-1/details?ctid=tenant-1');
+  assert.equal(rec.reportUrl, 'https://app.powerbi.com/groups/ws-1/reports/rp-1?ctid=tenant-1');
+
+  delete config.tenantId;
+  rec = describeRecord(config);
+  assert.equal(rec.reportUrl, 'https://app.powerbi.com/groups/ws-1/reports/rp-1', 'no tenant, no ctid');
 });
 
 test("describeRecord: the secret that expires first, the app's only while a source signs in as the app, the model connection's only while there is one", () => {

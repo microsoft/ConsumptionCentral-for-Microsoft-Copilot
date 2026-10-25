@@ -55,7 +55,7 @@ import { buildModel, loadTemplateModel } from './transform/model.js';
 import { buildPipeline } from './transform/pipeline.js';
 import { c } from './ui.js';
 import { fabricUninstall } from './steps/fabric-uninstall.js';
-import { accessCommand, ensureViewerGroup, grantModelAccess, myGroupsUrl, shareReport, shareReportPending } from './steps/access.js';
+import { accessCommand, ensureViewerGroup, grantModelAccess, myGroupsUrl, shareReport, shareReportPending, workspaceUrl } from './steps/access.js';
 import { askGithubToken, githubSecretName, tokenLine, TOKENS_URL } from './steps/github.js';
 import { nextSteps, stepsLeftTitle } from './steps/next-steps.js';
 import { paxCommand, paxInstall } from './steps/pax/flow.js';
@@ -837,7 +837,7 @@ export async function summary(ctx, opts = {}) {
   }
   const left = nextSteps(config, ctx.user, { now: ctx.now() });
   if (left.length) ui.nextSteps(stepsLeftTitle(left), left);
-  ui.info(`Workspace:  ${f.workspaceName}  ${c.dim(`https://app.fabric.microsoft.com/groups/${ws}`)}`);
+  ui.info(`Workspace:  ${f.workspaceName}  ${c.dim(workspaceUrl(ws, config.tenantId))}`);
   ui.info(`Lakehouse:  ${f.lakehouseName}`);
   ui.info(`Pipeline:   ${f.pipelineName ?? PIPELINE_NAME}, ${describeSchedule(config.schedule)}`);
   const mode = secretMode(config);
@@ -853,7 +853,7 @@ export async function summary(ctx, opts = {}) {
   const sm = config.semanticModel;
   const secrets = secretNote(config);
   if (sm.enabled && sm.id) {
-    ui.info(`Model:      ${sm.name}  ${c.dim(modelUrl(ws, sm.id))}`);
+    ui.info(`Model:      ${sm.name}  ${c.dim(modelUrl(ws, sm.id, config.tenantId))}`);
     if (sm.connectionName) ui.info(`            ${c.dim(`Reads the Lakehouse through "${sm.connectionName}"${sm.secretExpires ? `, whose secret expires ${sm.secretExpires.slice(0, 10)}` : ''}.`)}`);
     reportsSummary(ctx);
 

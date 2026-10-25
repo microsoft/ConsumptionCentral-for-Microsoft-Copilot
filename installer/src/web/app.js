@@ -1645,7 +1645,7 @@ function renderHome() {
     ['Lakehouse', rec.lakehouse],
     ['Files', rec.files ? link(rec.files, rec.filesUrl) : null],
     ['Collects', rec.data.map((d) => h('div', null, d))],
-    ['Semantic model', rec.model ?? 'Not deployed'],
+    ['Semantic model', rec.model ? link(rec.model, rec.modelUrl) : 'Not deployed'],
     ['Report', rec.reportUrl ? link('Open the report', rec.reportUrl) : null],
     ['The app', rec.theApp ? link(rec.theApp, rec.theAppUrl) : null],
     ['Schedule', rec.schedule ?? 'Not set'],
