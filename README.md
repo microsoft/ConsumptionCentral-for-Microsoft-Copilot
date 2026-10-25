@@ -27,7 +27,16 @@ value, consumption and governance in one place. It includes Consumption Central 
 
 <br>
 
-![Consumption Central](Images/ConsumptionCentral-Preview.gif)
+<table>
+<tr>
+<th width="50%">The app</th>
+<th width="50%">The Power BI report</th>
+</tr>
+<tr>
+<td><img src="Images/ConsumptionCentral-App-Overview.png" alt="The Consumption Central app's Overview tab, on the built-in sample data"></td>
+<td><img src="Images/ConsumptionCentral-Preview.gif" alt="The Consumption Central Power BI report, animated preview"></td>
+</tr>
+</table>
 
 </div>
 
@@ -53,6 +62,19 @@ Both play here in the page. Where a video differs from the written steps, follow
 - **A Power BI report** with the same numbers, if you prefer Power BI.
 - **Four products:** Cowork / Work IQ, Copilot Studio, GitHub Copilot and Azure AI Foundry.
   One is enough. The rest stay empty.
+
+More of the app, on its synthetic sample data:
+
+<table>
+<tr>
+<td width="50%"><img src="Images/ConsumptionCentral-App-Cowork.png" alt="The app's Cowork and Work IQ tab: credits by department and over time"></td>
+<td width="50%"><img src="Images/ConsumptionCentral-App-Studio.png" alt="The app's Copilot Studio tab: credits by agent and over time"></td>
+</tr>
+<tr>
+<td align="center">Cowork &amp; Work IQ</td>
+<td align="center">Copilot Studio</td>
+</tr>
+</table>
 
 ## Before you start
 
