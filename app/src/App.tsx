@@ -9,9 +9,12 @@ import { Guide } from './pages/Guide'
 import { Overview } from './pages/Overview'
 import { StudioConsumption, StudioCost, StudioForecast, StudioOptimization } from './pages/Studio'
 import { TABS, useRoute, type Route } from './routes'
+import type { SourceKind } from './data/types'
 import { DataSourceDialog } from './ui/DataSourceDialog'
+import { ErrorBoundary } from './ui/ErrorBoundary'
 import { dateLabel } from './ui/format'
-import { Segmented } from './ui/primitives'
+import { Note, Segmented } from './ui/primitives'
+import { NotSupplied } from './ui/notSupplied'
 import { SettingsSheet } from './ui/SettingsSheet'
 
 function Page({ route }: { route: Route }) {
@@ -42,6 +45,42 @@ function Page({ route }: { route: Route }) {
     default:
       return <Guide view={view} />
   }
+}
+
+/** Files each view needs. Overview, Guide and Tasks (which has its own notice) are left out. */
+function viewSources({ tab, view }: Route): SourceKind[] | null {
+  switch (tab.id) {
+    case 'cowork':
+      return view === 'tasks' ? null : ['coworkMetrics']
+    case 'studio':
+      return ['studioTenant', 'studioAgent', 'studioUser']
+    case 'github':
+      return ['ghUsage', 'ghUsers']
+    case 'azure':
+      if (view === 'health') return ['azureHealth']
+      if (view === 'recon') return ['recon']
+      return ['azureSolution']
+    default:
+      return null
+  }
+}
+
+function View({ route }: { route: Route }) {
+  const { ds } = useData()
+  const kinds = viewSources(route)
+  const missing = !!kinds && !ds.sources.some((s) => kinds.includes(s.kind) && s.rows > 0)
+  return (
+    <NotSupplied.Provider value={missing}>
+      {missing && (
+        <Note title="Not supplied">
+          No {route.tab.label} data is loaded, so this view shows dashes. Add the {route.tab.label} files from Change data in the header.
+        </Note>
+      )}
+      <ErrorBoundary key={`${route.tab.id}/${route.view}`} resetKey={ds}>
+        <Page route={route} />
+      </ErrorBoundary>
+    </NotSupplied.Provider>
+  )
 }
 
 export default function App() {
@@ -131,7 +170,7 @@ export default function App() {
         <FilterBar route={route} />
       </div>
       <main id="main" className="main" tabIndex={-1}>
-        <Page route={route} />
+        <View route={route} />
       </main>
       <footer className="foot">Consumption Central app. Everything is calculated in your browser and never leaves it.</footer>
       <DataSourceDialog open={sheet === 'source'} onClose={() => setSheet(null)} />
