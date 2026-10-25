@@ -143,6 +143,7 @@ test('deployReport: publishes on the model, then leaves it alone', async () => {
   assert.deepEqual(t.fabric.calls, ['createReport Consumption Central']);
   assert.match(t.ui.text(), /The Consumption Central report is in place/);
   assert.equal(reportUrl('ws-1', 'r-1'), 'https://app.powerbi.com/groups/ws-1/reports/r-1');
+  assert.equal(reportUrl('ws-1', 'r-1', 'tenant-1'), 'https://app.powerbi.com/groups/ws-1/reports/r-1?ctid=tenant-1', 'opens in the install\'s tenant');
 });
 
 test('deployReport: a same-name report that is not ours is left alone', async () => {

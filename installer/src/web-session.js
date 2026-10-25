@@ -9,13 +9,15 @@ import { connect as realConnect, createCtx, runCommand, showPrereqs } from './in
 import { bundled, commandLine, installerWindow, launcher, reopenHint, updateHint } from './launch.js';
 import { checkPrereqs } from './prereqs.js';
 import { loadSources } from './sources.js';
+import { workspaceUrl } from './steps/access.js';
 import { appSecretKept, coworkDataflowOn, describeSchedule, modelDeployed, recordWorkspaceGone, staleRecordMessage } from './steps/fabric.js';
 import { isResumeLater } from './steps/identity.js';
+import { modelUrl } from './steps/model.js';
 import { defaultPaxHost, readState } from './steps/pax/local.js';
 import { endedSince } from './steps/pax/flow.js';
 import { paxCollectedLabels } from './steps/pax/plan.js';
 import { describeFolder } from './steps/pax/site.js';
-import { reportUrl } from './steps/report.js';
+import { reportsOn, reportUrl } from './steps/report.js';
 import { isPax, TARGETS } from './target.js';
 import { describeSources, routedSources, routerWanted } from './uploads.js';
 import { SETUP_SECTIONS, setupRecovery } from './setup.js';
@@ -51,11 +53,13 @@ export function describeRecord(config, local) {
     target: config.target,
     installed,
     workspace: f.workspaceName ?? f.workspaceId,
-    workspaceUrl: f.workspaceId ? `https://app.fabric.microsoft.com/groups/${f.workspaceId}` : undefined,
+    workspaceUrl: f.workspaceId ? workspaceUrl(f.workspaceId, config.tenantId) : undefined,
     lakehouse: f.lakehouseName,
     schedule: f.scheduleId ? describeSchedule(config.schedule) : undefined,
     data: describeSources(ds),
     model: sm.id ? sm.name : undefined,
+    modelUrl: f.workspaceId && sm.id ? modelUrl(f.workspaceId, sm.id, config.tenantId) : undefined,
+    reportUrl: f.workspaceId && reportsOn(config) && sm.report?.id ? reportUrl(f.workspaceId, sm.report.id, config.tenantId) : undefined,
     app: !!config.app.appId,
     // The app's own secret, or the model connection's: whichever expires first.
     secretExpires: earliest(appSecretKept(config) ? config.app.secretExpires : undefined, sm.connectionId ? sm.secretExpires : undefined),
@@ -116,14 +120,15 @@ function describePaxRecord(config, local) {
     target: config.target,
     installed,
     workspace: config.fabric.workspaceName ?? wsId,
-    workspaceUrl: wsId ? `https://app.powerbi.com/groups/${wsId}` : undefined,
+    workspaceUrl: wsId ? `https://app.powerbi.com/groups/${wsId}${config.tenantId ? `?ctid=${config.tenantId}` : ''}` : undefined,
     lakehouse: undefined,
     files: sp ? describeFolder(sp) : undefined,
     filesUrl: sp?.folderUrl,
     schedule: task?.name ? `${task.name}, daily at ${task.at}${task.logonType === 'Interactive' ? ", while you're signed in to this PC" : ''}` : undefined,
     data: paxCollectedLabels(config),
     model: sm.id ? (signedIn ? sm.name : `${sm.name}, not signed in to SharePoint yet`) : undefined,
-    reportUrl: wsId && sm.report?.id ? reportUrl(wsId, sm.report.id) : undefined,
+    modelUrl: wsId && sm.id ? modelUrl(wsId, sm.id, config.tenantId) : undefined,
+    reportUrl: wsId && sm.report?.id ? reportUrl(wsId, sm.report.id, config.tenantId) : undefined,
     app: !!config.app.appId,
     secretExpires: pax.secretExpires?.slice(0, 10),
     firstRun: paxFirstRun(pax.firstRun, local),

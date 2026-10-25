@@ -290,7 +290,7 @@ function shareReportStep(config) {
       ? `Once only. Until it's shared, people in the group get "no access" when they open the report. After that, ${join}. They need no workspace role. ${PRO_VIEWERS}`
       : `Once only. Until it's shared, people in the group get "no access" when they open the report. After that, ${join}.`,
     who: 'You',
-    ...(ws && id ? { link: reportUrl(ws, id), linkText: 'Open the report' } : {}),
+    ...(ws && id ? { link: reportUrl(ws, id, config.tenantId), linkText: 'Open the report' } : {}),
     steps: shareReportSteps(config),
   };
 }

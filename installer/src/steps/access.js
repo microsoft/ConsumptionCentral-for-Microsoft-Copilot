@@ -320,7 +320,7 @@ export function shareReportSteps(config) {
   const group = config.access?.groupName ?? VIEWER_GROUP_NAME;
   const ws = config.fabric.workspaceId;
   const r = config.semanticModel.report;
-  const url = ws && r?.id ? reportUrl(ws, r.id) : undefined;
+  const url = ws && r?.id ? reportUrl(ws, r.id, config.tenantId) : undefined;
   return [
     `Open the ${r?.name ?? 'Consumption Central'} report${url ? ` (${url})` : ''}, or in ${config.fabric.workspaceName ?? 'the workspace'} choose … (More options) next to it.`,
     'Choose Manage permissions, then Add user.',

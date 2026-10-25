@@ -26,8 +26,12 @@ export const connectionName = (workspaceId) => `${PRODUCT_NAME} SQL ${workspaceI
 /** @param {string} workspaceId @param {string} modelId */
 export const modelSettingsUrl = (workspaceId, modelId) => `https://app.powerbi.com/groups/${workspaceId}/settings/datasets/${modelId}`;
 
-/** @param {string} workspaceId @param {string} modelId */
-export const modelUrl = (workspaceId, modelId) => `https://app.powerbi.com/groups/${workspaceId}/datasets/${modelId}/details`;
+/**
+ * The model's page. With the tenant, it opens in that tenant even for someone signed in to another.
+ * @param {string} workspaceId @param {string} modelId @param {string} [tenantId]
+ */
+export const modelUrl = (workspaceId, modelId, tenantId) =>
+  `https://app.powerbi.com/groups/${workspaceId}/datasets/${modelId}/details${tenantId ? `?ctid=${tenantId}` : ''}`;
 
 export const ENDPOINT_POLL_MS = 15_000;
 export const CONNECTION_RETRY_MS = 30_000;

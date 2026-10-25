@@ -1115,6 +1115,23 @@ test('pax flow: the summary says when the set-up is partly done', { timeout: 10_
   assert.ok(text.includes(`Keep ${PRODUCT.recordFile}`), text);
 });
 
+test("pax flow: the summary links the model and report in the install's tenant, and says the app shows sample data until you pick your files", { timeout: 10_000 }, async () => {
+  const s = await installed();
+  const { config } = s.ctx;
+  config.tenantId = 'tenant-1';
+  config.semanticModel.report = { ...config.semanticModel.report, name: PRODUCT.pax.report, id: config.semanticModel.report?.id ?? 'rp-1' };
+  config.managedApp = { ...config.managedApp, url: config.managedApp?.url ?? 'https://managedapps.example/app-1' };
+  paxSummary(s.ctx, { ok: true });
+  const text = plain(s.ui.text());
+  const ws = /** @type {string} */ (config.fabric.workspaceId);
+  assert.ok(text.includes(`, https://app.fabric.microsoft.com/groups/${ws}?ctid=tenant-1`), text);
+  assert.ok(text.includes(`Model:      https://app.powerbi.com/groups/${ws}/datasets/${config.semanticModel.id}/details?ctid=tenant-1`), text);
+  assert.ok(text.includes(`Report:     https://app.powerbi.com/groups/${ws}/reports/${config.semanticModel.report.id}?ctid=tenant-1`), text);
+  assert.ok(text.includes(`App:        ${config.managedApp.url}`), text);
+  assert.ok(text.includes('It shows sample data, labelled Sample data in its header, until you choose Change data and pick your own CSV files'), text);
+  assert.ok(text.includes(`the SharePoint folder ${config.sharePoint?.folderUrl}`), text);
+});
+
 test('pax flow: commands that need the refresh set up say how to set it up', { timeout: 10_000 }, async () => {
   const s = await paxSetup();
   const before = { pc: s.pax.calls.length, graph: s.graph.calls.length, pbi: s.pbi.calls.length };

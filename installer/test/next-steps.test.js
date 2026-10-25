@@ -236,6 +236,21 @@ test('summary: what is left comes first, as cards, before the next steps', async
   assert.match(text, /Until the report is shared with the group \(the step above\)/);
 });
 
+test("summary: the workspace, model and report links open in the install's tenant", async () => {
+  const t = installed();
+  t.config.dataSources.coworkCredits = 'skip';
+  withReport(t.config);
+  t.config.tenantId = 'tenant-1';
+  await summary(t.ctx);
+  const text = t.text();
+  const ws = t.config.fabric.workspaceId;
+  assert.ok(text.includes(`https://app.fabric.microsoft.com/groups/${ws}?ctid=tenant-1`), text);
+  assert.ok(text.includes(`https://app.powerbi.com/groups/${ws}/datasets/sm-1/details?ctid=tenant-1`), text);
+  assert.match(text, new RegExp(`Report: +Consumption Central +https://app\\.powerbi\\.com/groups/${ws}/reports/rep-1\\?ctid=tenant-1`));
+  const share = nextSteps(t.config, USER, { now: NOW }).find((s) => s.id === 'share-report');
+  assert.equal(share?.link, `https://app.powerbi.com/groups/${ws}/reports/rep-1?ctid=tenant-1`);
+});
+
 test("summary: after a failed step it says the setup is partly done, not set up", async () => {
   const t = installed();
   await summary(t.ctx);

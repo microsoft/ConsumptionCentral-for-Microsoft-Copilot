@@ -685,6 +685,12 @@ The Done page shows only the cards that apply:
 - **Ask for the app's access to the old site(s) to be taken back** (optional), if you moved the
   folder to another site and your account couldn't take that access back.
 
+Below the cards it lists what was set up, with links to the workspace, model, report and app.
+The links open in your tenant, so they work even if your browser is signed in to another one.
+The app shows its bundled sample data, labelled **Sample data**, until you choose **Change data**
+and pick your own CSV files: the ones in the SharePoint folder, and for the Cowork pages the Viva
+Insights query's download.
+
 ### Uninstalling this route
 
 `uninstall` asks first, then removes the task, the app and the app's access to the SharePoint
