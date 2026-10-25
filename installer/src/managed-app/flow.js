@@ -20,7 +20,7 @@ import { PRODUCT } from '../product.js';
 import { paxHostOf } from '../steps/pax/local.js';
 import { CLI_PACKAGE_DIR, cliBin, createCli, installedVersion, MIN_NODE, nodeOk, pinnedVersion } from './cli.js';
 import { ADMIN_STEPS, deployAgain, LINKS, notReady } from './errors.js';
-import { authStatus, createApp, deleteApp, deployApp, login, playUrl, readAppConfig, shareApp, switchAccount, verifyShare } from './steps.js';
+import { authStatus, createApp, deleteApp, deployApp, listApps, login, playUrl, readAppConfig, shareApp, switchAccount, verifyShare } from './steps.js';
 
 /** @typedef {import('../install.js').Ctx} Ctx */
 /** @typedef {import('./cli.js').RunCli} RunCli */
@@ -117,6 +117,20 @@ export async function deployTheApp(ctx, deps = {}, opts = {}) {
   if (!existing) {
     if (record.appId) {
       ui.warn(`This PC doesn't have the settings for the app deployed before (${record.appId}), so a new app is made. Delete the old one at ${LINKS.portal}.`);
+    }
+    // This PC has no app settings, but the tenant may already have the app, made from another PC or
+    // an earlier install. Making another would leave two apps with the same name.
+    const listed = await listApps(run, { environmentId: wanted ?? record.environmentId });
+    const same = listed.ok ? listed.apps.filter((a) => a.displayName.trim().toLowerCase() === APP_NAME.toLowerCase()) : [];
+    if (same.length) {
+      const which = same.map((a) => `${a.appId}${a.url ? ` (${a.url})` : ''}`).join(', ');
+      return skip(ctx, {
+        why: `the tenant already has an app named ${APP_NAME} (${which}), and this PC doesn't have its settings, so a second one isn't made.`,
+        steps: [
+          `To replace it, delete it at ${LINKS.portal}, then run: ${deployAgain()}`,
+          'To keep it, carry on using it. Deploy updates to it from the PC that made it.',
+        ],
+      });
     }
     mkdirSync(appDir, { recursive: true });
     copyBuild(dist, join(appDir, 'dist'));

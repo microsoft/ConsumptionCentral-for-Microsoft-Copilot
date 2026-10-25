@@ -195,3 +195,21 @@ test('run page: a load failure the install counts shows as failed with Rerun fai
   assert.deepEqual(other.waiting, ['Sign in to the Dataflow', null]);
   assert.match(other.outcome, /Some loads failed/);
 });
+
+test('a missing optional prerequisite is neutral, not a failure; a missing required one stays red', () => {
+  const context = page();
+  const root = runInContext(`renderPrereqs([
+    { status: 'missing', label: 'Key Vault', optional: true, detail: 'none found' },
+    { status: 'missing', label: 'Fabric capacity', detail: 'none found' },
+    { status: 'met', label: 'Power BI', optional: true, detail: 'yes' },
+  ])`, context);
+  const [vault, fabric, pbi] = root.children;
+  assert.equal(vault.className, 'prereq missing optional');
+  assert.match(vault.text, /Not found, optional/);
+  assert.doesNotMatch(vault.text, /Missing/);
+  assert.equal(fabric.className, 'prereq missing');
+  assert.match(fabric.text, /Missing/);
+  assert.match(pbi.text, /You have it, optional/);
+  const css = readFileSync(new URL('../src/web/app.css', import.meta.url), 'utf8');
+  assert.match(css, /\.prereq\.optional\.missing \{ background: transparent; \}/);
+});

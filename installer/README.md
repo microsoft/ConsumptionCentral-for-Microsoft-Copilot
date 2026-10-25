@@ -609,8 +609,9 @@ Done page has **Ask for the app's access to the SharePoint site**, with a messag
 **Sign the model in.** Once, after publishing, the model needs a sign-in to read the folder. The
 installer shows the steps: in the workspace, open the model's settings, then
 **Data source credentials** > **Edit credentials**. Choose **OAuth2** and privacy level
-**Organizational**, then **Sign in**. Do the same for each source. If a site fails the test,
-select **Skip test connection**. Sign Viva Insights in the same way, as someone who can open the
+**Organizational**, and tick **Skip test connection**: the folder has no files until the first
+load writes them, so the test fails until then. Then **Sign in**. Do the same for each source.
+Sign Viva Insights in the same way, as someone who can open the
 query. Then choose **I've signed it in**. **Later** leaves
 **Sign Consumption Central in to SharePoint** on the Done page. Until it's done, the report has
 no data.
@@ -663,8 +664,11 @@ finishes. When the deploy itself failed, the install ends as partly set up. For 
 - **AADSTS53003.** Conditional Access blocked the CLI's sign-in. Ask for its app ID,
   `9cee029c-6210-4654-90bb-17e6e9d36617`, to be allowed.
 - **No developer environment.** Pass `--environment-id` with the environment to use.
-- **An app with that name already exists.** Rename or delete it at
-  [managedapps.cloud.microsoft](https://managedapps.cloud.microsoft/).
+- **An app with that name already exists.** Before it makes the app, the installer checks for
+  one with the same name, such as one made from another PC. If there is one, it doesn't make a
+  second: the card says to delete it at
+  [managedapps.cloud.microsoft](https://managedapps.cloud.microsoft/) and choose
+  **Deploy the app**, or to keep it and deploy updates from the PC that made it.
 
 The Fabric route doesn't deploy the app yet: it sets up the report only.
 
