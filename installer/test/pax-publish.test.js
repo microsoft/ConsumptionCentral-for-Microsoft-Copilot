@@ -686,10 +686,10 @@ test('pax publish: credentialSteps walks through signing the model in to SharePo
   assert.deepEqual(credentialSteps(url), [
     `Open the model's settings: ${url}`,
     'Expand Data source credentials, and select Edit credentials beside a source.',
-    'Choose OAuth2 and the privacy level Organizational, then select Sign in and sign in with your work account.',
-    "Do the same for each source it lists. If a site's address fails the connection test, edit it again and tick Skip test connection.",
+    'Choose OAuth2 and the privacy level Organizational, and tick Skip test connection: the folder has no files until the first load writes them, so the test fails until then. Select Sign in and sign in with your work account.',
+    'Do the same for each source it lists.',
   ]);
-  assert.equal(credentialSteps(url, 'None')[2], 'Choose OAuth2 and the privacy level None, then select Sign in and sign in with your work account.');
+  assert.equal(credentialSteps(url, 'None')[2], 'Choose OAuth2 and the privacy level None, and tick Skip test connection: the folder has no files until the first load writes them, so the test fails until then. Select Sign in and sign in with your work account.');
 });
 
 /** The install record's powerBi section, or an empty one. @param {Setup} t @returns {any} */

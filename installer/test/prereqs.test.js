@@ -6,6 +6,7 @@ import { FABRIC_ADMIN_ROLE, graphApi } from '../src/clients/graph.js';
 import { emptyConfig } from '../src/config.js';
 import { HttpError } from '../src/http.js';
 import { canAssignDirectoryRoles, checkPrereqs } from '../src/prereqs.js';
+import { createUi } from '../src/ui.js';
 
 const GA = '62e90394-69f5-4237-9190-012177145e10';
 const USER = /** @type {any} */ ({ id: 'user-1', upn: 'admin@contoso.com', tenantId: 't-1' });
@@ -265,4 +266,18 @@ test('canAssignDirectoryRoles: true only with Global Administrator or Privileged
   assert.equal(await canAssignDirectoryRoles(fakeApis({ roles: [{ roleTemplateId: 'e8611ab8-c189-46e8-94e1-60213ab1f814', displayName: 'Privileged Role Administrator' }] })), true);
   assert.equal(await canAssignDirectoryRoles(fakeApis({ roles: [{ roleTemplateId: FABRIC_ADMIN_ROLE, displayName: 'Fabric Administrator' }] })), false);
   assert.equal(await canAssignDirectoryRoles(fakeApis({ roles: [] })), false);
+});
+
+test('terminal: a missing optional prerequisite gets a neutral mark, not the red cross', () => {
+  /** @type {string[]} */
+  const out = [];
+  const item = { detail: 'd', neededFor: 'n', howTo: 'h' };
+  createUi({ write: (s) => out.push(s) }).prereqs(/** @type {any} */ ([
+    { ...item, status: 'missing', label: 'Key Vault', optional: true },
+    { ...item, status: 'missing', label: 'Fabric capacity' },
+  ]));
+  const text = out.join('');
+  assert.match(text, /– Key Vault \(optional\)/);
+  assert.match(text, /✗ Fabric capacity/);
+  assert.doesNotMatch(text, /✗ Key Vault/);
 });
