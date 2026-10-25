@@ -355,8 +355,8 @@ reads the last `DAYS` complete UTC days again (90 by default) and replaces only 
 window's first day on. Older rows stay, so history builds up from run to run. `azure_ai_spend`
 and `azure_ai_tokens` feed the Foundry figures; their columns are listed in
 [Azure ingestion in Fabric](../../docs/ADVANCED-SETUP.md#azure-ingestion-in-fabric). The last three
-below are best effort: if a run cannot read their source, it logs a warning and leaves the table as
-it was.
+below are best effort: if a run cannot read their source or write the table, it logs a warning and
+leaves the table as it was.
 
 The two monthly tables, `azure_deployment_health` and `azure_billing_reconciliation`, replace whole
 months from the first month the window covers in full. When the window starts part-way through a

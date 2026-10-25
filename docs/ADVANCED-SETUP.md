@@ -52,13 +52,19 @@ python ".\1. Local CSV\pull_azure_ai.py" "C:\Consumption Central\Data" --subscri
 if ($LASTEXITCODE -ne 0) { throw "Azure collection failed; do not refresh Power BI." }
 ```
 
-`--days` accepts 1–90 complete UTC days before today (default 90). After accepting the first short
-run, choose the desired rolling window. `python pull_azure_ai.py <folder>` still works; without
-`--subscription` it uses the current Azure CLI account subscription. Run with `--help` for the full
-command reference.
+`--days` accepts 1–90 complete UTC days before today (default 90). Each run reads those days again
+and replaces only their rows in `AzureAiSpendDaily.csv` and `AzureAiTokensDaily.csv`; older rows
+stay, so history builds up from run to run. `AzureAiDeployments.csv` is the current inventory and
+is replaced whole. After accepting the first short run, choose how many days each run reads again.
+`python pull_azure_ai.py <folder>` still works; without `--subscription` it uses the current Azure
+CLI account subscription. Run with `--help` for the full command reference.
 
 Keep the folder dedicated to the selected subscription. Do not mix sample Azure files, old renamed
-copies, or output from another subscription into the same folder.
+copies, or output from another subscription into the same folder. The collector keeps every row
+older than its window, so sample or other-subscription rows already in the spend or token CSV
+would stay. To start over, for example after pointing the collector at another subscription,
+delete those two CSVs before the next run. A stored CSV that can't be read fails the run before
+anything is published: fix the file, or delete it to start it again.
 
 | File | Shipped template usage |
 |---|---|
@@ -90,8 +96,9 @@ immediately. Authentication and validation errors are not retried.
 
 The output files form one collection batch. Avoid refresh while files are being published:
 per-file replacement is not a transaction across the whole batch. After any interrupted
-publication, rerun collection successfully before refreshing. All queries must succeed before
-publication begins. A successful empty result writes headers rather than retaining stale rows.
+publication, rerun collection successfully before refreshing. All queries must succeed, and the
+stored spend and token CSVs must be readable, before publication begins. A successful empty
+result still replaces the window's days, so no stale rows linger for them; older rows stay.
 Real numeric zero metrics are kept; missing telemetry is not converted to zero.
 
 Power BI Desktop does not provide unattended refresh of an open local report. For Power BI Service,
@@ -195,25 +202,24 @@ package is required.
 - Numeric zero points are retained. Null or missing telemetry is omitted, not converted to zero.
   HTTP, authentication and per-metric errors propagate. A successful empty collection empties the
   window and keeps the older rows; on the first run it creates empty, explicitly typed tables.
-- For spend, tokens and pay-as-you-go, all reads and validation finish before writes begin. Each
-  table is written as a delete of its window and then an append: two commits per table, and **not a
-  cross-table transaction**. If an append fails, that table's window stays empty until the next
-  successful run, but its older rows are safe. Rerun promptly: a later run restores only the days
-  still inside its own window. A write failing after others succeeded can leave a mixed snapshot. If
-  a column's type in the Lakehouse no longer matches, that write fails before anything is deleted;
-  drop the table to start over. Retry the whole notebook and gate report refresh on whole-run
-  success. ARM throttling and transient 502/503/504 responses retry up to five attempts, honouring
-  `Retry-After`. Delays over 300 seconds defer the job with an error. Configure bounded pipeline
-  retries and avoid overlapping runs. Costs can arrive late or be revised; later runs pick up those
-  changes while the days are still within the window.
+- For spend, tokens and pay-as-you-go, all reads and validation finish before writes begin. The
+  three stored tables are then read and checked together: if one can't be read, or a column's type
+  in the Lakehouse no longer matches, the run stops with none of them written; after a type change,
+  drop that table to start over. Each table is one Delta write (`replaceWhere`) that replaces its
+  window and keeps older rows, so a write that fails leaves that table as it was. The tables are
+  **not one transaction**: a write failing after others succeeded can leave a mixed snapshot. Retry
+  the whole notebook and gate report refresh on whole-run success. ARM throttling and transient
+  502/503/504 responses retry up to five attempts, honouring `Retry-After`. Delays over 300 seconds
+  defer the job with an error. Configure bounded pipeline retries and avoid overlapping runs. Costs
+  can arrive late or be revised; later runs pick up those changes while the days are still within
+  the window.
 - `azure_deployment_health`, `azure_solution_spend` and `azure_billing_reconciliation` are written
-  afterwards, **best effort**. A failed account, deployment or metric call is logged as a `WARNING`
-  and skipped, and a table whose source fails entirely is left as it was, so a successful run can
-  leave one of them stale: check the run output for `WARNING` lines. Their writes work like the ones
-  above: if an append fails after the delete, the run says so, and that table's window stays empty
-  until the next successful run. Reconciliation prices usage at
-  public list prices, which exclude negotiated discounts, credits and reservations, so some variance
-  against actual cost is expected.
+  afterwards, **best effort**, each checked and written on its own in the same way. A failed
+  account, deployment or metric call is logged as a `WARNING` and skipped, and a table whose source
+  fails entirely, or whose write fails (for example because a column's type changed in the
+  Lakehouse), is left as it was, so a successful run can leave one of them stale: check the run
+  output for `WARNING` lines. Reconciliation prices usage at public list prices, which exclude
+  negotiated discounts, credits and reservations, so some variance against actual cost is expected.
 
 A Cost Management export to storage is another automated source, but needs transformation to this
 schema and does not contain Azure Monitor metrics.
