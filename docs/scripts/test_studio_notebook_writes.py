@@ -2,16 +2,23 @@
 
 The notebook's own cells run against a small in-memory stand-in for Spark and Delta. It evaluates eagerly,
 applies replaceWhere's rules, and fails loudly on anything it doesn't model, so the tests need only the
-standard library. OLD is the notebook at 99f68c3, rebuilt from the current cells by swapping each write
-site back to its delete, then merge. OLD is the oracle: every successful run must leave the tables exactly
-as OLD leaves them. The failure tests check that a write that fails leaves its table as it was, and that the
-next day's run ends where it would have if nothing had failed.
+standard library. OLD is the notebook at f3750c8, rebuilt from the current cells by swapping each changed
+part back. Its export cells merged an export, then deleted the licensing API rows it covered, and took the
+per-agent and per-user exports as SNAPSHOT_MONTH's month, or else the month of the run.
+
+The tests run OLD two ways. "old" is the oracle: it loads each export file on its own, oldest first, with
+SNAPSHOT_MONTH set to the month the new code gives that file (the month it arrived in landing, or its backfill
+folder's month), then runs the licensing API cells. Every successful run must leave the tables exactly as the
+oracle leaves them, but for the differences the tests name. "as-run" runs OLD as it ran, once on every file
+with SNAPSHOT_MONTH the run's month, to show what the change fixes. The failure tests check that a write that
+fails leaves its table as it was, and that the next run ends where it would have if nothing had failed.
 """
 import builtins
+import fnmatch
 import functools
 from collections import Counter
 import csv
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 import io
 import itertools
 import json
@@ -28,7 +35,7 @@ import unittest
 
 REPO = Path(__file__).resolve().parents[2]
 NOTEBOOK_PATH = "2. Fabric/notebooks/Ingest_Studio.ipynb"
-ORACLE_COMMIT = "99f68c3"
+ORACLE_COMMIT = "f3750c8"
 
 
 class AnalysisError(Exception):
@@ -1092,6 +1099,8 @@ class Reader:
 class FakeSpark:
     def __init__(self):
         self.tables, self.files, self.output, self.writes, self.history = {}, {}, [], [], []
+        self.mtimes = {}          # path: modifyTime, in milliseconds since 1970 (UTC), for a file that has one
+        self.dir_suffix = "/"     # what ls() puts after a folder's name
         self.now, self.cell, self.fail_at = None, None, None
         self.catalog = SimpleNamespace(tableExists=lambda name: name in self.tables)
 
@@ -1128,9 +1137,18 @@ class FakeSpark:
         self.history.append(dict(self.tables))
 
     def ls(self, path):
+        """notebookutils.fs.ls(): what's directly in path, folders and files, by name. A folder is there while
+        a file is in it. A file has modifyTime only where the test gave it one."""
         prefix = path.rstrip("/") + "/"
-        names = sorted(p[len(prefix):] for p in self.files if p.startswith(prefix) and "/" not in p[len(prefix):])
-        return [SimpleNamespace(name=n, path=prefix + n, isDir=False) for n in names]
+        below = [p[len(prefix):] for p in self.files if p.startswith(prefix)]
+        entries = [SimpleNamespace(name=d + self.dir_suffix, path=prefix + d, isDir=True, size=0)
+                   for d in sorted({p.split("/", 1)[0] for p in below if "/" in p})]
+        for name in sorted(p for p in below if "/" not in p):
+            entry = SimpleNamespace(name=name, path=prefix + name, isDir=False, size=len(self.files[prefix + name]))
+            if prefix + name in self.mtimes:
+                entry.modifyTime = self.mtimes[prefix + name]
+            entries.append(entry)
+        return sorted(entries, key=lambda e: e.name)
 
 
 class FakeDeltaTable:
@@ -1230,13 +1248,51 @@ def module(name, **attrs):
     return m
 
 
+# The clock. Only cell 2 asks for the time: datetime.now(timezone.utc) for the run's month, and
+# datetime.fromtimestamp(..., timezone.utc) for the month a file arrived. Both must name UTC. date.today() and
+# a datetime with no zone follow the machine's clock, so they fail here. The run's time is CLOCK.now, in UTC.
+CLOCK = SimpleNamespace(now=None)
+
+
+class FakeDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        if tz is None:
+            raise not_modelled("datetime.now() without a time zone")
+        return CLOCK.now.replace(tzinfo=timezone.utc).astimezone(tz)
+
+    @classmethod
+    def fromtimestamp(cls, t, tz=None):
+        if tz is None:
+            raise not_modelled("datetime.fromtimestamp() without a time zone")
+        return datetime.fromtimestamp(t, tz)
+
+    @classmethod
+    def today(cls):
+        raise not_modelled("datetime.today()")
+
+    @classmethod
+    def utcnow(cls):
+        raise not_modelled("datetime.utcnow()")
+
+
+class FakeDate(date):
+    fromisoformat = staticmethod(date.fromisoformat)
+
+    @classmethod
+    def today(cls):
+        raise not_modelled("date.today()")
+
+
 MODULES = {"pyspark.sql.functions": module("pyspark.sql.functions", **FUNCTIONS),
            "delta.tables": module("delta.tables", DeltaTable=FakeDeltaTable),
-           "requests": module("requests", post=no_network, get=no_network)}
+           "requests": module("requests", post=no_network, get=no_network),
+           "datetime": module("datetime", date=FakeDate, datetime=FakeDateTime, time=time, timedelta=timedelta,
+                              timezone=timezone)}
 MODULES["pyspark.sql"] = module("pyspark.sql", functions=MODULES["pyspark.sql.functions"])
 MODULES["pyspark"] = module("pyspark", sql=MODULES["pyspark.sql"])
 MODULES["delta"] = module("delta", tables=MODULES["delta.tables"])
-REAL_MODULES = {"datetime", "re", "time", "json", "math", "urllib.parse"}
+REAL_MODULES = {"re", "time", "json", "math", "urllib.parse"}
 
 
 def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
@@ -1283,68 +1339,215 @@ def swap(text, after, before, old):
 
 # The cells the tests run, in order, each found by a line only it has. The last code cell, the summary,
 # runs SQL and changes nothing, so it's left out.
-RUN_MARKERS = ('LANDING = "Files/landing/studio"', "def merge(", "raw = read(*PAT_TENANT)",
-               "raw = read(*PAT_AGENT)", "raw = read(*PAT_USER)", "api_raw = read(*PAT_API_AGENT, api=True)",
+RUN_MARKERS = ('LANDING = "Files/landing/studio"', "def replace_rows(", "raw = read(*PAT_TENANT",
+               "raw = read(*PAT_AGENT", "raw = read(*PAT_USER", "api_raw = read(*PAT_API_AGENT, api=True)",
                "user_raw = read(*PAT_API_USER, api=True)", "nothing to sum")
 SUMMARY_MARKER = "spark.sql("
 
 TENANT_KEYS = '["usage_date", "environment_id", "billing_plan_id", "capacity_type"]'
 
-# Each write site as it was at 99f68c3: (a line of the cell, after, before, the old code between them).
-SWAPS = [
-    ("def merge(", '        print(f"  {table}: created with {df.count():,} rows")\n\n\n', "def opt(", ""),
-    ("api_raw = read(*PAT_API_AGENT, api=True)",
-     '    print(f"  {daily.count():,} agent-days over {len(days)} day(s)")\n\n',
-     "\n    # studio_agent: months no export covers.\n",
-     '    if days and spark.catalog.tableExists(TBL_AGENT_DAILY):\n'
-     '        DeltaTable.forName(spark, TBL_AGENT_DAILY).delete(F.col("usage_date").isin(days))\n'
+# Each part that changed since f3750c8, as it was then: (a line of the cell, after, before, the old code
+# between them). They put back the settings and SNAPSHOT_MONTH, read() as it was, merge() and
+# drop_api_rows(), each export cell's merge, then delete, and cell 10's join.
+EXPORT_SWAPS = [
+    ('LANDING = "Files/landing/studio"',
+     'LANDING = "Files/landing/studio"\n'
+     '\n',
+     'PAT_TENANT = (',
+     '# Which month the agent/user aggregates belong to. Defaults to the month the\n'
+     '# notebook runs; override when backfilling an export taken earlier.\n'
+     'SNAPSHOT_MONTH = None      # e.g. "2026-07-01"\n'
+     '\n'
+     '# The real PPAC export names are tried first; the loose pattern catches a file\n'
+     '# someone has renamed. First pattern that matches anything wins.\n'),
+    ('def replace_rows(',
+     'from delta.tables import DeltaTable\n',
+     'import re\n',
+     'from datetime import date\n'),
+    ('def replace_rows(',
+     '            return lookup[norm(a)]\n'
+     '    return None\n'
+     '\n'
+     '\n',
+     'def date_in(',
+     'def read(*patterns, api=False):\n'
+     '    """Read every CSV matching any pattern, unioned, with file lineage.\n'
+     '\n'
+     "    The flow's files (StudioApi*) are read only with api=True, so a loose\n"
+     '    export pattern such as *Agent*.csv never picks them up.\n'
+     '\n'
+     '    multiLine and escape matter more than they look: Knowledge Sources,\n'
+     '    Scenario Name and Agent Name are free text, and one comma or line break\n'
+     '    inside a value silently shifts every column after it for that row.\n'
+     '\n'
+     '    Union by name rather than reading the glob in a single call, so one export\n'
+     '    having a column the others lack does not fail the load - which happens when\n'
+     '    exports are taken weeks apart across a product update.\n'
+     '    """\n'
+     '    if api and not READ_API_FILES:\n'
+     '        print("  licensing API files are off (READ_API_FILES = False)")\n'
+     '        return None\n'
+     '    try:\n'
+     '        entries = [e.name for e in notebookutils.fs.ls(LANDING)\n'
+     '                   if not e.isDir and e.name.lower().endswith(".csv")\n'
+     '                   and e.name.lower().startswith("studioapi") == api]\n'
+     '    except Exception as e:\n'
+     '        print(f"  cannot list {LANDING}: {e}")\n'
+     '        return None\n'
+     '\n'
+     '    matched = []\n'
+     '    for p in patterns:\n'
+     '        rx = re.compile("^" + re.escape(p).replace("\\\\*", ".*") + "$", re.IGNORECASE)\n'
+     '        hits = [n for n in entries if rx.match(n) and n not in matched]\n'
+     '        if hits:\n'
+     '            matched.extend(sorted(hits))\n'
+     '            break          # first pattern that matches anything wins\n'
+     '\n'
+     '    if not matched:\n'
+     '        print(f"  no file matched {patterns}")\n'
+     '        return None\n'
+     '\n'
+     '    frames = []\n'
+     '    for name in matched:\n'
+     '        df = (spark.read\n'
+     '              .option("header", True)\n'
+     '              .option("inferSchema", False)\n'
+     '              .option("multiLine", True)\n'
+     '              .option("escape", \'"\')\n'
+     '              .option("encoding", "UTF-8")\n'
+     '              .csv(f"{LANDING}/{name}")\n'
+     '              .withColumn("source_file", F.lit(name)))\n'
+     '        frames.append(df)\n'
+     '\n'
+     '    out = frames[0]\n'
+     '    for df in frames[1:]:\n'
+     '        out = out.unionByName(df, allowMissingColumns=True)\n'
+     '\n'
+     '    n = out.count()\n'
+     '    print(f"  {len(matched)} file(s), {n:,} rows: {\', \'.join(matched)}")\n'
+     '    return out if n else None\n'
+     '\n'
+     '\n'
+     'def merge(df, table, keys):\n'
+     '    if spark.catalog.tableExists(table):\n'
+     '        before = spark.table(table).count()\n'
+     '        cond = " AND ".join(f"t.{k} <=> s.{k}" for k in keys)\n'
+     '        (DeltaTable.forName(spark, table).alias("t")\n'
+     '            .merge(df.alias("s"), cond)\n'
+     '            .whenMatchedUpdateAll().whenNotMatchedInsertAll().execute())\n'
+     '        after = spark.table(table).count()\n'
+     '        print(f"  {table}: {before:,} -> {after:,}  (+{after - before:,})")\n'
+     '    else:\n'
+     '        df.write.format("delta").saveAsTable(table)\n'
+     '        print(f"  {table}: created with {df.count():,} rows")\n'
+     '\n'
+     '\n'),
+    ('def replace_rows(',
+     "Delta fails the write if a row doesn't match `where`. ",
+     'and a table column df lacks',
+     "As with merge(), a column the table doesn't\n"
+     '    have is left out, '),
+    ('def replace_rows(',
+     '    print(f"  {table}: {before:,} -> {after:,}  ({after - before:+,})")\n'
+     '\n'
+     '\n',
+     'def opt(',
+     ""),
+    ('def replace_rows(',
+     '    return F.col(c) if c else F.lit(None)\n'
+     '\n'
+     '\n',
+     'def prepaid_share(',
+     'def drop_api_rows(table, df, keys):\n'
+     '    """Deletes the licensing API rows an export now covers: the export wins."""\n'
+     '    if not spark.catalog.tableExists(table):\n'
+     '        return\n'
+     '    cond = " AND ".join(f"t.{k} <=> s.{k}" for k in keys)\n'
+     '    (DeltaTable.forName(spark, table).alias("t")\n'
+     '        .merge(df.select(*keys).distinct().alias("s"),\n'
+     '               f"{cond} AND t.source_file IN (\'{API_SOURCE}\', \'{API_USER_SOURCE}\')")\n'
+     '        .whenMatchedDelete().execute())\n'
+     '\n'
+     '\n'),
+    ('def replace_rows(',
+     '    return share, allocated\n'
+     '\n'
+     '\n',
+     None,
+     'snapshot = (date.fromisoformat(SNAPSHOT_MONTH) if SNAPSHOT_MONTH\n'
+     '            else date.today().replace(day=1))\n'
+     'print(f"snapshot month: {snapshot}")\n'),
+    ('raw = read(*PAT_TENANT',
+     None,
+     '\n'
+     'if raw is None:',
+     'raw = read(*PAT_TENANT)'),
+    ('raw = read(*PAT_TENANT',
+     '        F.col("source_file").alias("source_file"),\n',
+     '    ).withColumn(',
+     ""),
+    ('raw = read(*PAT_TENANT',
+     '          f"{tenant.select(\'environment_id\').distinct().count()} environments")\n',
+     None,
+     '    merge(tenant, TBL_TENANT,\n'
+     '          ["usage_date", "environment_id", "billing_plan_id", "capacity_type"])\n'
+     '    drop_api_rows(TBL_TENANT, tenant, ["usage_date", "environment_id"])'),
+    ('raw = read(*PAT_AGENT',
+     None,
+     '\n'
+     'if raw is None:',
+     'raw = read(*PAT_AGENT)'),
+    ('raw = read(*PAT_AGENT',
+     '    agent = raw.select(\n'
+     '        ',
+     '.cast("date").alias("snapshot_month"),',
+     'F.lit(snapshot)'),
+    ('raw = read(*PAT_AGENT',
+     '        F.col("source_file").alias("source_file"),\n',
+     '    ).withColumn(',
+     ""),
+    ('raw = read(*PAT_AGENT',
+     '          f"{agent.select(\'agent_id\').distinct().count()} agents")\n',
+     None,
+     '    # An agent appears once per feature per channel per environment, so all four\n'
+     '    # belong in the key - dropping any of them silently loses rows on merge.\n'
+     '    merge(agent, TBL_AGENT,\n'
+     '          ["snapshot_month", "agent_id", "billable_feature", "channel", "environment_id"])\n'
+     '    drop_api_rows(TBL_AGENT, agent, ["snapshot_month"])'),
+    ('raw = read(*PAT_USER',
+     None,
+     '\n'
+     'if raw is None:',
+     'raw = read(*PAT_USER)'),
+    ('raw = read(*PAT_USER',
+     '    user = raw.select(\n'
+     '        ',
+     '.cast("date").alias("snapshot_month"),',
+     'F.lit(snapshot)'),
+    ('raw = read(*PAT_USER',
+     '        F.col("source_file").alias("source_file"),\n',
+     '    ).withColumn(',
+     ""),
+    ('raw = read(*PAT_USER',
+     '          f"{user.select(\'user_email\').distinct().count()} users")\n',
+     None,
+     '    merge(user, TBL_USER, ["snapshot_month", "user_id", "agent_id"])\n'
+     '    drop_api_rows(TBL_USER, user, ["snapshot_month"])'),
+    ('api_raw = read(*PAT_API_AGENT, api=True)',
+     '                    .select("usage_date", "environment_id").distinct())\n',
+     '        tkeys = [',
+     '        tenant_api = tenant_api.join(exported, ["usage_date", "environment_id"], "left_anti")\n'
      '    if days:\n'
-     '        merge(daily, TBL_AGENT_DAILY, keys)\n'),
-    ("api_raw = read(*PAT_API_AGENT, api=True)",
-     '                           F.lit(API_SOURCE).alias("source_file"))\n'
-     '                   .withColumn("_loaded_at", F.current_timestamp()))\n',
-     "\n    # studio_tenant_daily: the entitlement snapshot",
-     '        if spark.catalog.tableExists(TBL_AGENT):\n'
-     '            DeltaTable.forName(spark, TBL_AGENT).delete(\n'
-     '                F.col("snapshot_month").isin(api_months) & (F.col("source_file") == API_SOURCE))\n'
-     '        merge(monthly, TBL_AGENT, ["snapshot_month", "agent_id", "billable_feature", "channel", '
-     '"environment_id"])\n'),
-    ("api_raw = read(*PAT_API_AGENT, api=True)",
-     '        tenant_api = tenant_api.join(exported, ["usage_date", "environment_id"], "left_anti")\n', None,
-     '        if days:\n'
-     '            DeltaTable.forName(spark, TBL_TENANT).delete(\n'
-     '                F.col("usage_date").isin(days) & (F.col("source_file") == API_SOURCE))\n'
-     '    if days:\n'
-     f'        merge(tenant_api, TBL_TENANT, {TENANT_KEYS})'),
-    ("user_raw = read(*PAT_API_USER, api=True)",
-     '    print(f"  {udaily.count():,} user rows over {len(udays)} day(s)")\n',
-     "\n    # studio_user: months no export covers.\n",
-     '    if udays and spark.catalog.tableExists(TBL_USER_DAILY):\n'
-     '        DeltaTable.forName(spark, TBL_USER_DAILY).delete(F.col("usage_date").isin(udays))\n'
-     '    if udays:\n'
-     '        merge(udaily, TBL_USER_DAILY, ukeys)\n'),
-    ("user_raw = read(*PAT_API_USER, api=True)",
-     '                            F.lit(API_SOURCE).alias("source_file"))\n'
-     '                    .withColumn("_loaded_at", F.current_timestamp()))\n', None,
-     '        if spark.catalog.tableExists(TBL_USER):\n'
-     '            DeltaTable.forName(spark, TBL_USER).delete(\n'
-     '                F.col("snapshot_month").isin(user_months) & (F.col("source_file") == API_SOURCE))\n'
-     '        merge(umonthly, TBL_USER, ["snapshot_month", "user_id", "agent_id"])'),
-    ("nothing to sum", None, "\nif not READ_API_FILES:\n",
-     'if READ_API_FILES and spark.catalog.tableExists(TBL_TENANT):\n'
-     '    DeltaTable.forName(spark, TBL_TENANT).delete(F.col("source_file") == API_USER_SOURCE)\n'),
-    ("nothing to sum", "    if spark.catalog.tableExists(TBL_TENANT):\n", "        by_day = by_day.join(covered,",
-     '        covered = spark.table(TBL_TENANT).select("usage_date", "environment_id").distinct()\n'),
-    ("nothing to sum",
-     '        print(f"  {tenant_users.count():,} tenant day(s) summed from the per-user file")\n', None,
-     f'        merge(tenant_users, TBL_TENANT, {TENANT_KEYS})'),
+     "        # One write replaces the days' API rows, and any stored row a new row shares a key with, as a\n"
+     "        # merge would: a 'ppac-api-users' row, or a row with no environment ID. The other rows `where`\n"
+     '        # selects are written back as they were.\n'),
 ]
 
 
 def old_cells(cells):
-    """The cells with every write site put back as it was at 99f68c3."""
+    """The cells as they were at f3750c8."""
     old = list(cells)
-    for marker, after, before, code in SWAPS:
+    for marker, after, before, code in EXPORT_SWAPS:
         i = find(old, marker)
         old[i] = swap(old[i], after, before, code)
     return old
@@ -1369,28 +1572,101 @@ def compiled(cells, version):
 CODE = {"new": compiled(NEW_CELLS, "new"), "old": compiled(OLD_CELLS, "old")}
 
 
-def run(spark, version, day, read_api=True, fail_at=None, at=time(6), snapshot_month=None):
-    """Runs the cells as `version` ("new" or "old") on the morning of `day`. Like a notebook run, it stops at
-    the first error, which it returns rather than raises."""
+def run(spark, version, day, read_api=True, fail_at=None, at=time(6), settings=None):
+    """Runs the cells at `at` (UTC) on `day`, as `version`:
+      "new"     the notebook, once.
+      "old"     the oracle: f3750c8, loading each export file on its own, oldest first, with SNAPSHOT_MONTH the
+                month the new code gives the file, then running the licensing API cells.
+      "as-run"  f3750c8 as it ran: once, with SNAPSHOT_MONTH the month of the run.
+    settings are set after the settings cell, as if someone had edited it. Like a notebook run, it stops at the
+    first error, which it returns rather than raises."""
     spark.now, spark.fail_at = datetime.combine(day, at), fail_at
+    CLOCK.now = spark.now
     spark.writes, spark.output, spark.history = [], [], []
     scope = {"__builtins__": BUILTINS, "__name__": "__main__", "spark": spark,
              "notebookutils": SimpleNamespace(fs=SimpleNamespace(ls=spark.ls)),
              "print": lambda *args, **kwargs: spark.output.append(" ".join(map(str, args)))}
-    error = tb = None
-    for i, code in CODE[version]:
+    cells = dict(CODE["new" if version == "new" else "old"])
+
+    def execute(i):
         spark.cell = i
-        try:
-            exec(code, scope)
-        except Exception as e:
-            error, tb = e, traceback.format_exc()
-            break
+        exec(cells[i], scope)
         if i == SETTINGS_CELL:
             scope["READ_API_FILES"] = read_api
-            scope["SNAPSHOT_MONTH"] = snapshot_month or day.replace(day=1).isoformat()
+            if version == "as-run":
+                scope["SNAPSHOT_MONTH"] = day.replace(day=1).isoformat()
+            scope.update(settings or {})
+
+    error = tb = None
+    try:
+        if version == "old":
+            execute(SETTINGS_CELL)
+            files, loads = spark.files, oracle_loads(spark, day, scope)
+            try:
+                for cell, path, month in loads:
+                    spark.files = {f"{LANDING_DIR}/{path.rsplit('/', 1)[-1]}": files[f"{LANDING_DIR}/{path}"]}
+                    scope["SNAPSHOT_MONTH"] = month.isoformat()
+                    execute(CELL["helpers"])
+                    execute(cell)
+            finally:
+                spark.files = files
+            if not loads:
+                scope["SNAPSHOT_MONTH"] = day.replace(day=1).isoformat()
+                execute(CELL["helpers"])
+            for i in RUN_ORDER[RUN_ORDER.index(CELL["api_agent"]):]:
+                execute(i)
+        else:
+            for i in RUN_ORDER:
+                execute(i)
+    except Exception as e:
+        error, tb = e, traceback.format_exc()
     spark.cell = None
     return SimpleNamespace(error=error, tb=tb, writes=list(spark.writes), output=list(spark.output),
                            history=list(spark.history))
+
+
+# The columns each export must have, as read() checks them: each set holds one column's names, normalised as
+# pick() normalises them.
+NEEDS = {"tenant": ({"usagedate"}, {"environmentid"}, {"billingplanid"}, {"capacitytype"}),
+         "agent": ({"agentid"}, {"aifeaturebillablefeature", "billablefeature"}, {"channel"}, {"environmentid"}),
+         "user": ({"userid"}, {"agentid"})}
+
+
+def header_of(text):
+    return {re.sub(r"[ _\-/]", "", h).lower() for h in next(csv.reader(io.StringIO(text, newline="")))}
+
+
+def oracle_loads(spark, day, scope):
+    """The export loads one new run stands for: (cell, path under the landing folder, month) for each file,
+    oldest first. Worked out apart from read(): the files directly in the landing folder and in its
+    backfill/<YYYY-MM>/ folders, the first pattern that matches a file with the export's columns, and the
+    month: the folder's, else the month (UTC) the file arrived, else the run's."""
+    listed = []
+    for path in spark.files:
+        rest = path[len(LANDING_DIR) + 1:] if path.startswith(LANDING_DIR + "/") else ""
+        folder = re.fullmatch(r"backfill/(\d{4}-\d{2})/([^/]+)", rest)
+        if folder:
+            listed.append((rest, folder[2], date.fromisoformat(folder[1] + "-01")))
+        elif rest and "/" not in rest:
+            listed.append((rest, rest, None))
+    listed = [f for f in listed if f[1].lower().endswith(".csv") and not f[1].lower().startswith("studioapi")]
+    loads = []
+    for kind_, setting in (("tenant", "PAT_TENANT"), ("agent", "PAT_AGENT"), ("user", "PAT_USER")):
+        usable = []
+        for pattern in scope[setting]:
+            usable = [f for f in listed if fnmatch.fnmatchcase(f[1].lower(), pattern.lower())
+                      and all(names & header_of(spark.files[f"{LANDING_DIR}/{f[0]}"]) for names in NEEDS[kind_])]
+            if usable:
+                break
+
+        def arrived(f):
+            return spark.mtimes.get(f"{LANDING_DIR}/{f[0]}") or 0
+        for f in sorted(usable, key=lambda f: (arrived(f), f[1], f[0])):
+            month = f[2]
+            if month is None:
+                month = ((EPOCH + timedelta(milliseconds=arrived(f))).date() if arrived(f) else day).replace(day=1)
+            loads.append((CELL[kind_], f[0], month))
+    return loads
 
 
 def snapshot(tables, drop=()):
@@ -1427,7 +1703,8 @@ def differences(a, b, labels=("old", "new")):
 def clone(spark):
     """A copy to run on. A write replaces a table rather than changing it, so the tables can be shared."""
     copy = FakeSpark()
-    copy.tables, copy.files = dict(spark.tables), dict(spark.files)
+    copy.tables, copy.files, copy.mtimes = dict(spark.tables), dict(spark.files), dict(spark.mtimes)
+    copy.dir_suffix = spark.dir_suffix
     return copy
 
 
@@ -1558,33 +1835,37 @@ USER_EXPORT_HEADER = ("User Id", "User Email", "Agent Id", "Agent Name", "Billab
                       "M365 Copilot Licensed")
 
 
-def tenant_export(first, last, skip=(), no_environment=()):
-    """PPAC's tenant export from first to last. no_environment: days with a row for no environment."""
+def tenant_export(first, last, skip=(), no_environment=(), envs=None, extra=0.0):
+    """PPAC's tenant export from first to last. no_environment: days with a row for no environment. envs: the
+    environments it covers, by default all. extra: added to each prepaid figure, to tell one export's rows
+    from another's."""
     rows, day = [], first
     while day <= last:
         if day not in skip:
             rows += [(EXPORT_PLAN, "Copilot Studio capacity", env, name, MCS, allocated,
-                      credit(day, "prepaid" + env, 9), credit(day, "payg" + env, 0) - 0.25, us_date(day))
-                     for env, (name, allocated) in ENVIRONMENTS.items()]
+                      credit(day, "prepaid" + env, 9) + extra, credit(day, "payg" + env, 0) - 0.25, us_date(day))
+                     for env, (name, allocated) in ENVIRONMENTS.items() if envs is None or env in envs]
         if day in no_environment:
             rows.append((EXPORT_PLAN, "Copilot Studio capacity", None, None, MCS, 0.0, 1.5, 0.0, us_date(day)))
         day += timedelta(1)
     return csv_text(TENANT_EXPORT_HEADER, rows)
 
 
-def agent_export():
-    """Sales coach isn't in it, so its API rows for the month don't share a key with an export row: the
-    export's merge leaves them, and drop_api_rows deletes them."""
+def agent_export(extra=0.0, agents=None):
+    """By default Sales coach isn't in it, so its API rows for the month don't share a key with an export
+    row: only the rule that an export replaces the month's API rows takes them out."""
+    agents = [a for a in AGENTS if a is not SALES] if agents is None else agents
     return csv_text(AGENT_EXPORT_HEADER, [
-        (a.name, a.id, "Copilot Studio", a.feature, 40.0 + 2.5 * i, 2.5, a.channel, None, None, a.models[0],
-         None, a.env, ENVIRONMENTS[a.env][0] if a.env else None) for i, a in enumerate(AGENTS) if a is not SALES])
+        (a.name, a.id, "Copilot Studio", a.feature, 40.0 + 2.5 * AGENTS.index(a) + extra, 2.5, a.channel, None, None,
+         a.models[0], None, a.env, ENVIRONMENTS[a.env][0] if a.env else None) for a in agents])
 
 
-def user_export():
-    """Devon isn't in it, so Devon's rows keep showing by ID."""
+def user_export(extra=0.0, usage=None):
+    """By default Devon isn't in it, so Devon's rows keep showing by ID."""
+    usage = [(user, a) for user, a in USAGE if user != DEVON] if usage is None else usage
     return csv_text(USER_EXPORT_HEADER, [
-        (user, f" {USERS[user].capitalize()} ", a.id, a.name, 10.0 + i, 12.5 + i, ("FALSE", "TRUE")[i % 2])
-        for i, (user, a) in enumerate(USAGE) if user != DEVON])
+        (user, f" {USERS[user].capitalize()} ", a.id, a.name, 10.0 + i + extra, 12.5 + i, ("FALSE", "TRUE")[i % 2])
+        for user, a in usage for i in [USAGE.index((user, a))]])
 
 
 def tenant_export_name(day):
@@ -1604,16 +1885,51 @@ def kind(name):
     return name.rsplit("/", 1)[-1].rsplit("_", 1)[0]
 
 
+EPOCH = datetime(1970, 1, 1)
+
+
+def ms(moment):
+    """A UTC time as modifyTime gives it: milliseconds since 1970."""
+    return (moment - EPOCH) // timedelta(milliseconds=1)
+
+
+def stamped(name):
+    """When the flow saved a file, from the stamp in its name."""
+    return datetime.strptime(name.rsplit("_", 1)[-1].removesuffix(".csv"), "%Y%m%d%H%M%S")
+
+
+def directly(spark, file_kind):
+    """The paths of the files of a kind directly in the landing folder."""
+    return [p for p in spark.files if p.rsplit("/", 1)[0] == LANDING_DIR and kind(p) == file_kind]
+
+
 def remove(spark, file_kind):
-    for path in [p for p in spark.files if kind(p) == file_kind]:
+    for path in directly(spark, file_kind):
         del spark.files[path]
+        spark.mtimes.pop(path, None)
 
 
-def land(spark, name, text):
-    """Saves a file into the landing folder as the flow and the installer do: it replaces the older file of
-    its kind."""
-    remove(spark, kind(name))
+def land(spark, name, text, at=None):
+    """Saves a file into the landing folder as the upload router does: it moves the older files of its kind
+    to _loaded/<day>/, then copies the new one in. at: when, in UTC; by default the time in the file's name."""
+    at = at or stamped(name)
+    for path in directly(spark, kind(name)):
+        moved = f"{LANDING_DIR}/_loaded/{at:%Y-%m-%d}/{path.rsplit('/', 1)[-1]}"
+        spark.files[moved] = spark.files.pop(path)
+        if path in spark.mtimes:
+            spark.mtimes[moved] = spark.mtimes.pop(path)
     spark.files[f"{LANDING_DIR}/{name}"] = text
+    spark.mtimes[f"{LANDING_DIR}/{name}"] = ms(at)
+
+
+def put(spark, path, text, at=None):
+    """Drops a file at path, under the landing folder, by hand: nothing is moved. With at None, the file has
+    no modifyTime."""
+    spark.files[f"{LANDING_DIR}/{path}"] = text
+    if at is None:
+        spark.mtimes.pop(f"{LANDING_DIR}/{path}", None)
+    else:
+        spark.mtimes[f"{LANDING_DIR}/{path}"] = ms(at)
 
 
 def land_api(spark, run_day, days=10, skip=(), usage=USAGE):
@@ -1672,13 +1988,16 @@ EXPORT_DAY = date(2026, 7, 12)                              # PPAC's three expor
 GAP_RUN, GAP_DAY = date(2026, 7, 20), date(2026, 7, 15)     # that run's files have nothing for GAP_DAY,
 NO_ENV_DAY = date(2026, 7, 17)                              # and a newer tenant export with a no-environment row lands
 READ_OFF_DAY = date(2026, 7, 25)                            # READ_API_FILES is off for one run
-EXPORTS_GONE = date(2026, 8, 1)                             # the per-agent and per-user exports are taken out
+BACKFILL_DAY = date(2026, 8, 2)                             # exports are dropped into backfill/2026-07/ and 2026-06/
 CONVERT_RUN = date(2026, 6, 30)                             # a day the tests look at closely
 JUNE, JULY, AUGUST = date(2026, 6, 1), date(2026, 7, 1), date(2026, 8, 1)
+BACKFILL_AT = datetime.combine(BACKFILL_DAY, time(5))
 
 
 def prepare(spark, day):
-    """What lands before the run on day."""
+    """What lands before the run on day. The July per-agent and per-user exports stay in the landing folder
+    from EXPORT_DAY on, as an export the router copied in does. On BACKFILL_DAY, a newer July per-agent
+    export, with Sales coach, and June's per-user and tenant exports go into backfill folders by hand."""
     land_api(spark, day, days=20 if day == FIRST_RUN else 10, skip={GAP_DAY} if day == GAP_RUN else ())
     if day == EXPORT_DAY:
         land(spark, tenant_export_name(day), tenant_export(date(2026, 6, 1), date(2026, 7, 10)))
@@ -1687,9 +2006,11 @@ def prepare(spark, day):
     if day == GAP_RUN:
         land(spark, tenant_export_name(day),
              tenant_export(date(2026, 6, 1), date(2026, 7, 18), skip={GAP_DAY}, no_environment={NO_ENV_DAY}))
-    if day == EXPORTS_GONE:
-        remove(spark, kind(agent_export_name(day)))
-        remove(spark, kind(user_export_name(day)))
+    if day == BACKFILL_DAY:
+        put(spark, f"backfill/2026-07/{agent_export_name(day)}", agent_export(extra=1.25, agents=AGENTS), BACKFILL_AT)
+        put(spark, f"backfill/2026-06/{user_export_name(day)}", user_export(extra=0.5), BACKFILL_AT)
+        put(spark, f"backfill/2026-06/{tenant_export_name(day)}",
+            tenant_export(JUNE, date(2026, 6, 30), extra=0.75), BACKFILL_AT)
 
 
 def days_between(first, last):
@@ -1763,6 +2084,51 @@ def counted(tables):
     return out
 
 
+# The tenant keys, (usage_date, environment_id), where the new code ends differently from the oracle. Cell 10's
+# `exported` now matches a stored export row with no environment ID, or a row with no environment and no
+# source, to the API rows' row with none, so the API rows' write leaves the key alone. The old join never
+# matched a NULL, so it wrote an API row:
+#   NO_ENV_EXPORT_DAY     beside an older export's row, which stayed once the day left the window;
+#   NO_ENV_NO_SOURCE_DAY  in place of a row with no source, which the new code keeps;
+#   NO_ENV_DAY            beside a newer export's row, until a run whose window had passed the day
+#                         reloaded the export, and drop_api_rows deleted it.
+DIVERGENT = frozenset({(NO_ENV_EXPORT_DAY, None), (NO_ENV_NO_SOURCE_DAY, None), (NO_ENV_DAY, None)})
+
+
+def outside(tables, keys=DIVERGENT):
+    """The tables without their tenant rows on keys, (usage_date, environment_id) pairs."""
+    if isinstance(tables, FakeSpark):
+        tables = tables.tables
+    out = dict(tables)
+    if TENANT in out:
+        t = out[TENANT]
+        d, e = t.names.index("usage_date"), t.names.index("environment_id")
+        out[TENANT] = t.with_rows([r for r in t.rows if (r[d], r[e]) not in keys])
+    return out
+
+
+# What an export covers in each table: its rows there replace the licensing API rows.
+COVERS = ((TENANT, ("usage_date", "environment_id")), (AGENT_MONTHLY, ("snapshot_month",)),
+          (USER_MONTHLY, ("snapshot_month",)))
+
+
+def doubled(tables):
+    """{(table, day or month)} where an export's rows and licensing API rows count the same credits: both
+    kinds of row are on a day and environment of the tenant table, or a month of a monthly table."""
+    if isinstance(tables, FakeSpark):
+        tables = tables.tables
+    kinds = {}
+    for table, columns in COVERS:
+        t = tables.get(table)
+        if t is None:
+            continue
+        picks, source = [t.names.index(c) for c in columns], t.names.index("source_file")
+        for r in t.rows:
+            if r[picks[0]] is not None:
+                kinds.setdefault((table,) + tuple(r[i] for i in picks), set()).add(r[source] in (API, API_USERS))
+    return {key for key, found in kinds.items() if len(found) == 2}
+
+
 def oracle_text():
     """The notebook at ORACLE_COMMIT, or None where git can't show it, as in CI's shallow checkout."""
     try:
@@ -1787,7 +2153,7 @@ class Structure(unittest.TestCase):
         if text is None:
             self.skipTest(f"git can't show {ORACLE_COMMIT} here")
         cells = notebook_cells(text)
-        for marker, after, before, old in SWAPS:
+        for marker, after, before, old in EXPORT_SWAPS:
             cell, whole = cells[find(cells, marker)], (after or "") + old + (before or "")
             with self.subTest(marker=marker, code=old[:60]):
                 if after is None:
@@ -1802,13 +2168,22 @@ class Structure(unittest.TestCase):
         self.assertEqual(len(skipped), 1)
         summary = NEW_CELLS[skipped[0]]
         self.assertIn(SUMMARY_MARKER, summary)
-        for write in ("saveAsTable", "DeltaTable", "delete(", "merge(", "replace_rows("):
+        for write in ("saveAsTable", "DeltaTable", "delete(", "merge(", "replace_rows(", "write_export("):
             self.assertNotIn(write, summary)
+
+    def test_nothing_merges_or_reads_the_month_from_a_setting_any_more(self):
+        code = "\n".join(c for c in NEW_CELLS if c is not None)
+        for gone in ("def merge(", "merge(", "drop_api_rows", "date.today(", "whenMatched"):
+            self.assertNotIn(gone, code)
+        self.assertIsNone(re.search(r"^\s*SNAPSHOT_MONTH\s*=", code, re.MULTILINE))
+        # The one read of the clock is in UTC.
+        self.assertEqual(re.findall(r"datetime\.now\([^)]*\)", code), ["datetime.now(timezone.utc)"])
 
 
 class SameEndState(unittest.TestCase):
     """Daily runs from a first run, with no tables, to LAST_RUN: every run ends as the code at ORACLE_COMMIT
-    would end it."""
+    would end it, loading each export file on its own, oldest first, with SNAPSHOT_MONTH set to the file's
+    month. The tenant rows on the DIVERGENT keys are left out of the comparison: see NullSafeExported."""
 
     def test_every_run_succeeds(self):
         for r in scenario().runs:
@@ -1818,19 +2193,22 @@ class SameEndState(unittest.TestCase):
     def test_every_run_ends_as_the_old_code_would(self):
         for r in scenario().runs:
             with self.subTest(day=r.day, at=r.at):
-                self.assertEqual(differences(snapshot(r.after["old"]), snapshot(r.after["new"])), [])
+                self.assertEqual(differences(snapshot(outside(r.after["old"])), snapshot(outside(r.after["new"]))),
+                                 [])
 
-    def test_the_export_cells_write_as_before(self):
+    def test_each_cell_writes_each_table_in_one_commit(self):
         for r in scenario().runs:
-            old, new = ([w for w in r.results[v].writes if w[0] not in API_CELLS] for v in ("old", "new"))
-            self.assertEqual(old, new, r.day)
-
-    def test_each_api_cell_writes_each_table_in_one_commit(self):
-        for r in scenario().runs:
-            writes = [w for w in r.results["new"].writes if w[0] in API_CELLS]
+            writes = r.results["new"].writes
             with self.subTest(day=r.day, at=r.at):
                 self.assertEqual(len(writes), len({(cell, table) for cell, table, _ in writes}))
                 self.assertEqual({operation for _, _, operation in writes} - {"create", "replaceWhere"}, set())
+
+    def test_the_old_code_took_two_commits_for_each_export_file(self):
+        r = run_on(EXPORT_DAY)
+        for cell, table in ((CELL["tenant"], TENANT), (CELL["agent"], AGENT_MONTHLY), (CELL["user"], USER_MONTHLY)):
+            with self.subTest(table=table):
+                self.assertEqual([w for w in r.results["old"].writes if w[0] == cell], [(cell, table, "merge")] * 2)
+                self.assertEqual([w for w in r.results["new"].writes if w[0] == cell], [(cell, table, "replaceWhere")])
 
 
 class Cases(unittest.TestCase):
@@ -1909,44 +2287,45 @@ class Cases(unittest.TestCase):
                 self.assertEqual(frozen(x for x in rows_of(spark, USER_DAILY) if x["usage_date"] in only_agent), kept)
                 self.assertEqual({x["_loaded_at"] for x in rows_of(spark, AGENT_DAILY) if x["usage_date"] in only_agent},
                                  {datetime.combine(day, time(6))})
-        self.assertEqual(differences(snapshot(ends["old"]), snapshot(ends["new"])), [])
+        self.assertEqual(differences(snapshot(outside(ends["old"])), snapshot(outside(ends["new"]))), [])
 
     def test_an_export_replaces_the_api_figures_for_what_it_covers(self):
         r = run_on(EXPORT_DAY)
-        before, after, end = r.before["new"], r.after["new"], scenario().runs[-1].after["new"]
-        for table in (AGENT_MONTHLY, USER_MONTHLY):
+        before, after = r.before["new"], r.after["new"]
+        for table, name in ((AGENT_MONTHLY, agent_export_name(EXPORT_DAY)), (USER_MONTHLY, user_export_name(EXPORT_DAY))):
             with self.subTest(table=table):
                 self.assertEqual(set(sources(before, table, snapshot_month=JULY)), {API})
-                self.assertEqual(set(sources(after, table, snapshot_month=JULY)) & {API, API_USERS}, set())
+                self.assertEqual(set(sources(after, table, snapshot_month=JULY)), {name})
                 self.assertTrue(rows_of(before, table, snapshot_month=JUNE))
                 self.assertEqual(frozen(rows_of(after, table, snapshot_month=JUNE)),
                                  frozen(rows_of(before, table, snapshot_month=JUNE)))
-                # A month no export covers gets the API figures; July keeps the export's.
-                self.assertEqual(set(sources(end, table, snapshot_month=AUGUST)), {API})
-                self.assertEqual(sources(end, table, snapshot_month=JULY), sources(after, table, snapshot_month=JULY))
         exported = set(days_between(JUNE, date(2026, 7, 10)))
         self.assertIn(API, sources(before, TENANT, usage_date=date(2026, 7, 5), environment_id=PRODUCTION))
         self.assertEqual([x for x in rows_of(after, TENANT) if x["usage_date"] in exported and x["environment_id"]
                           and x["source_file"] in (API, API_USERS)], [])
-        # The export's merge takes over a row with no source.
+        # The export takes over a row with no source on its key.
         on = dict(usage_date=NO_SOURCE_DAY, environment_id=SANDBOX)
         self.assertEqual(sources(before, TENANT, **on), Counter({None: 1}))
         self.assertEqual(sources(after, TENANT, **on), Counter({tenant_export_name(EXPORT_DAY): 1}))
 
-    def test_a_no_environment_row_from_an_export_is_kept(self):
-        # An older export's, which the API rows' write selects while its day is in the window.
-        seeded = rows_of(scenario().seeded["new"], TENANT, source_file=OLD_EXPORT)
-        self.assertEqual(len(seeded), 1)
-        for r in scenario().runs[1:]:
-            self.assertEqual(rows_of(r.after["new"], TENANT, source_file=OLD_EXPORT), seeded, r.day)
-        # A newer export's. Its API row is deleted and written again as long as the day is in the window,
-        # as before: the API rows' check for exported days doesn't match a missing environment ID.
-        export = Counter({tenant_export_name(GAP_RUN): 1})
-        for day, also in ((GAP_RUN, {API: 1}), (READ_OFF_DAY, {}), (date(2026, 7, 27), {API: 1}),
-                          (date(2026, 7, 28), {}), (LAST_RUN, {})):
-            with self.subTest(day=day):
-                self.assertEqual(sources(run_on(day).after["new"], TENANT, usage_date=NO_ENV_DAY, environment_id=None),
-                                 export + Counter(also))
+    def test_an_export_left_in_landing_keeps_its_month_and_the_next_month_gets_the_api_figures(self):
+        # The July exports stay in the landing folder to LAST_RUN, in August. On BACKFILL_DAY a newer July
+        # per-agent export in backfill/2026-07/ takes over July's per-agent rows.
+        for r in scenario().runs:
+            if r.day <= EXPORT_DAY:
+                continue
+            after = r.after["new"]
+            with self.subTest(day=r.day):
+                agent_july = (agent_export_name(BACKFILL_DAY) if r.day >= BACKFILL_DAY
+                              else agent_export_name(EXPORT_DAY))
+                self.assertEqual(set(sources(after, AGENT_MONTHLY, snapshot_month=JULY)), {agent_july})
+                self.assertEqual(set(sources(after, USER_MONTHLY, snapshot_month=JULY)),
+                                 {user_export_name(EXPORT_DAY)})
+                for table in (AGENT_MONTHLY, USER_MONTHLY):
+                    self.assertLessEqual(set(sources(after, table, snapshot_month=AUGUST)), {API})
+        end = scenario().runs[-1].after["new"]
+        for table in (AGENT_MONTHLY, USER_MONTHLY):
+            self.assertEqual(set(sources(end, table, snapshot_month=AUGUST)), {API})
 
     def test_rows_with_no_date_stay_but_per_user_tenant_rows(self):
         dated = ((AGENT_DAILY, "usage_date"), (AGENT_MONTHLY, "snapshot_month"), (USER_DAILY, "usage_date"),
@@ -2013,6 +2392,27 @@ class Cell14(unittest.TestCase):
         self.check(land_files, "no per-user daily table - nothing to sum")
 
 
+class Runs(unittest.TestCase):
+    """Runs each version on its own copy of the same tables and files, so the tests below can compare
+    how they end."""
+
+    def ends(self, prep, day, at=time(6), read_api=False, versions=("old", "new"), base=None):
+        """{version: (spark, result)} after prep(spark) lands the files on a copy of base, no tables by
+        default, and the version runs on day. Every run must succeed."""
+        out = {}
+        for version in versions:
+            spark = FakeSpark() if base is None else clone(base[version] if isinstance(base, dict) else base)
+            prep(spark)
+            result = run(spark, version, day, read_api=read_api, at=at)
+            self.assertIsNone(result.error, f"{version}:\n{result.tb}")
+            out[version] = SimpleNamespace(spark=spark, result=result)
+        return out
+
+    def assertSameEnd(self, ends):
+        self.assertEqual(differences(snapshot(outside(ends["old"].spark)), snapshot(outside(ends["new"].spark))),
+                         [])
+
+
 class Failures(unittest.TestCase):
     """A failed write leaves its table as it was. A rerun, or the next day's run, ends as if nothing had
     failed."""
@@ -2040,11 +2440,15 @@ class Failures(unittest.TestCase):
         for version, clean in self.clean.items():
             self.assertIsNone(clean.first.error, clean.first.tb)
             self.assertIsNone(clean.second.error, clean.second.tb)
+        # The exports still in landing are read again: the July ones at the top and those in backfill/.
         self.assertEqual([w[:2] for w in self.clean["new"].first.writes],
-                         [(CELL["tenant"], TENANT), (CELL["tenant"], TENANT),
+                         [(CELL["tenant"], TENANT), (CELL["agent"], AGENT_MONTHLY), (CELL["user"], USER_MONTHLY),
                           (CELL["api_agent"], AGENT_DAILY), (CELL["api_agent"], AGENT_MONTHLY),
                           (CELL["api_agent"], TENANT), (CELL["api_user"], USER_DAILY),
                           (CELL["api_user"], USER_MONTHLY), (CELL["sum"], TENANT)])
+        for end in ("day_end", "end"):
+            self.assertEqual(differences(snapshot(outside(getattr(self.clean["old"], end))),
+                                         snapshot(outside(getattr(self.clean["new"], end)))), [], end)
 
     def test_a_failed_write_changes_nothing_and_the_next_run_heals(self):
         clean = self.clean["new"]
@@ -2066,7 +2470,8 @@ class Failures(unittest.TestCase):
 
     def test_no_failure_leaves_a_day_missing_or_counted_twice(self):
         # A failed write leaves the tables as the write before it left them (the test above), so every state
-        # between two of a run's writes is one a failure can leave.
+        # between two of a run's writes is one a failure can leave. An export counted beside the API rows
+        # it replaces is TransientStates' concern.
         found = {version: {"missing": set(), "twice": set()} for version in ("old", "new")}
         for r in scenario().runs:
             for version, result in r.results.items():
@@ -2075,36 +2480,29 @@ class Failures(unittest.TestCase):
                     now = counted(tables)
                     found[version]["missing"] |= {(r.day, day) for day in start if day not in now}
                     found[version]["twice"] |= {(r.day, day) for day, n in now.items() if n > 1 and day[0] == TENANT}
-        for version, what in (("new", "missing"), ("new", "twice"), ("old", "twice")):
-            self.assertEqual(sorted(found[version][what], key=str)[:5], [], f"{version}: days {what}")
-        # The old code deleted, then merged or appended: a failed merge left the deleted days missing.
-        self.assertTrue(found["old"]["missing"])
+        for version in ("old", "new"):
+            for what in ("missing", "twice"):
+                self.assertEqual(sorted(found[version][what], key=str)[:5], [], f"{version}: days {what}")
 
-    def test_the_oldest_day_survives_where_the_old_code_lost_it(self):
-        oldest = self.DAY - timedelta(10)
-        self.assertTrue(rows_of(self.clean["old"].end, AGENT_DAILY, usage_date=oldest))
-        lost = {}
-        for version, k, write in (("old", 4, "merge"), ("new", 3, "replaceWhere")):
-            spark = self.start(version)
-            failed = run(spark, version, self.DAY, fail_at=k)
-            self.assertEqual(failed.writes[-1], (CELL["api_agent"], AGENT_DAILY, write))
-            prepare(spark, self.NEXT)
-            self.assertIsNone(run(spark, version, self.NEXT).error)
-            lost[version] = (frozen(rows_of(self.clean[version].end, AGENT_DAILY, usage_date=oldest), LOADED)
-                             - frozen(rows_of(spark, AGENT_DAILY, usage_date=oldest), LOADED))
-        # The old code deleted the file's days, then failed to merge; the next file starts a day later.
-        self.assertTrue(lost["old"])
-        self.assertEqual(lost["new"], Counter())
-
-    def test_a_failed_first_run_leaves_a_missing_table_missing(self):
-        clean = FakeSpark()
-        prepare(clean, FIRST_RUN)
+    def check_first_run(self, exports):
+        def landed():
+            spark = FakeSpark()
+            prepare(spark, FIRST_RUN)
+            if exports:
+                land(spark, tenant_export_name(FIRST_RUN), tenant_export(JUNE, date(2026, 6, 22)))
+                land(spark, agent_export_name(FIRST_RUN), agent_export())
+                land(spark, user_export_name(FIRST_RUN), user_export())
+            return spark
+        clean = landed()
         ok = run(clean, "new", FIRST_RUN)
         self.assertIsNone(ok.error, ok.tb)
+        if exports:
+            self.assertEqual(ok.writes[:3], [(CELL["tenant"], TENANT, "create"),
+                                             (CELL["agent"], AGENT_MONTHLY, "create"),
+                                             (CELL["user"], USER_MONTHLY, "create")])
         for k, write in enumerate(ok.writes, 1):
-            with self.subTest(failing=write, at=k):
-                spark = FakeSpark()
-                prepare(spark, FIRST_RUN)
+            with self.subTest(exports=exports, failing=write, at=k):
+                spark = landed()
                 failed = run(spark, "new", FIRST_RUN, fail_at=k)
                 self.assertIsInstance(failed.error, SimulatedFailure)
                 self.assertEqual(snapshot(spark), snapshot({} if k == 1 else ok.history[k - 2]))
@@ -2113,86 +2511,69 @@ class Failures(unittest.TestCase):
                 self.assertIsNone(run(spark, "new", FIRST_RUN).error)
                 self.assertEqual(differences(snapshot(clean), snapshot(spark), ("clean", "rerun")), [])
 
+    def test_a_failed_first_run_leaves_a_missing_table_missing(self):
+        self.check_first_run(exports=False)
 
-class Divergence(unittest.TestCase):
-    """The one stored state the new tenant write ends differently from: identical rows on one key."""
+    def test_a_failed_first_load_of_the_exports_leaves_a_missing_table_missing(self):
+        self.check_first_run(exports=True)
 
-    def test_two_identical_rows_on_a_key_become_one_api_row_rather_than_two(self):
-        day, on = CONVERT_RUN - timedelta(3), dict(usage_date=CONVERT_RUN - timedelta(3), environment_id=TRAINING)
-        sparks = {}
-        for version in ("old", "new"):
-            spark = before_run(CONVERT_RUN, version)
-            stored = rows_of(spark, TENANT, **on)
-            self.assertEqual([x["source_file"] for x in stored], [API_USERS], version)
-            add(spark, TENANT, **stored[0])
-            result = run(spark, version, CONVERT_RUN)
-            self.assertIsNone(result.error, result.tb)
-            sparks[version] = spark
-        # The old merge updated both copies; the new write replaces the key's rows with the file's one row.
-        self.assertEqual(sources(sparks["old"], TENANT, **on), Counter({API: 2}))
-        self.assertEqual(sources(sparks["new"], TENANT, **on), Counter({API: 1}))
-        old = snapshot(sparks["old"])
-        names, types, rows = old[TENANT]
-        [extra] = {r for r in rows if r[names.index("usage_date")] == day and r[names.index("environment_id")] == TRAINING}
-        old[TENANT] = (names, types, rows - Counter([extra]))
-        self.assertEqual(differences(old, snapshot(sparks["new"])), [])
-
-
-class ExportPairs(unittest.TestCase):
-    """Cells 4, 6 and 8 merge an export, then delete the API rows it covers: two commits, which this change
-    leaves as they were. Until the delete runs, the export and the API rows count the same credits."""
-
-    NEXT = EXPORT_DAY + timedelta(1)
-    PAIRS = ((CELL["tenant"], TENANT), (CELL["agent"], AGENT_MONTHLY), (CELL["user"], USER_MONTHLY))
-
-    @staticmethod
-    def second_write(writes, cell, table):
-        return [i for i, w in enumerate(writes, 1) if w[:2] == (cell, table)][1]
-
-    def test_a_failed_delete_heals_at_the_next_run_in_the_month(self):
-        writes = run_on(EXPORT_DAY).results["new"].writes
-        exported = dict(usage_date=date(2026, 7, 5), environment_id=PRODUCTION)
-        for cell, table in self.PAIRS:
-            with self.subTest(table=table):
-                spark = before_run(EXPORT_DAY)
-                failed = run(spark, "new", EXPORT_DAY, fail_at=self.second_write(writes, cell, table))
-                self.assertIsInstance(failed.error, SimulatedFailure)
-                if table == TENANT:
-                    self.assertEqual(set(sources(spark, TENANT, **exported)), {API, tenant_export_name(EXPORT_DAY)})
-                else:
-                    self.assertEqual(set(sources(spark, table, snapshot_month=JULY)) & {API}, {API})
-                    self.assertGreater(len(sources(spark, table, snapshot_month=JULY)), 1)
-                prepare(spark, self.NEXT)
-                self.assertIsNone(run(spark, "new", self.NEXT).error)
-                self.assertEqual(snapshot(spark, drop=LOADED)[table],
-                                 snapshot(run_on(self.NEXT).after["new"], drop=LOADED)[table])
-
-    def test_a_failed_delete_on_a_months_last_run_heals_only_with_a_rerun_for_that_month(self):
+    def test_an_export_on_a_months_last_day_keeps_its_month_whichever_write_fails(self):
         last = date(2026, 7, 31)
-        for cell, table, name in ((CELL["agent"], AGENT_MONTHLY, agent_export_name(last)),
-                                  (CELL["user"], USER_MONTHLY, user_export_name(last))):
-            with self.subTest(table=table):
-                spark = FakeSpark()
-                land_api(spark, last - timedelta(1), days=30)
-                self.assertIsNone(run(spark, "new", last - timedelta(1)).error)
-                land_api(spark, last)
-                # PPAC's three exports land together. Without the tenant one, cell 4's looser pattern would
-                # pick up the other two.
-                land(spark, tenant_export_name(last), tenant_export(JULY, last - timedelta(2)))
-                land(spark, agent_export_name(last), agent_export())
-                land(spark, user_export_name(last), user_export())
-                clean = run(clone(spark), "new", last)
-                failed = run(spark, "new", last, fail_at=self.second_write(clean.writes, cell, table))
-                self.assertIsInstance(failed.error, SimulatedFailure)
-                july = sources(spark, table, snapshot_month=JULY)
-                self.assertEqual(set(july), {API, name})
-                # The next run is in August, so it takes the export, still in landing, as August's.
-                land_api(spark, AUGUST)
-                self.assertIsNone(run(spark, "new", AUGUST).error)
-                self.assertEqual(sources(spark, table, snapshot_month=JULY), july)
-                self.assertIn(name, sources(spark, table, snapshot_month=AUGUST))
-                self.assertIsNone(run(spark, "new", AUGUST, snapshot_month=JULY.isoformat()).error)
-                self.assertEqual(set(sources(spark, table, snapshot_month=JULY)), {name})
+        names = {AGENT_MONTHLY: agent_export_name(last), USER_MONTHLY: user_export_name(last)}
+
+        def ready(version):
+            spark = FakeSpark()
+            land_api(spark, last - timedelta(1), days=30)
+            result = run(spark, version, last - timedelta(1))
+            self.assertIsNone(result.error, result.tb)
+            land_api(spark, last)
+            land(spark, tenant_export_name(last), tenant_export(JULY, last - timedelta(2)))
+            land(spark, agent_export_name(last), agent_export())
+            land(spark, user_export_name(last), user_export())
+            return spark
+
+        def next_month(spark, version):
+            # 11 days, so August's file re-reads July 21 too. A failed July 31 run leaves that day as July 30's
+            # run wrote it, without the UPNs the per-user export brings, and a 10-day file has moved past it.
+            # That's the rolling window, the same before this change.
+            land_api(spark, AUGUST, days=11)
+            result = run(spark, version, AUGUST)
+            self.assertIsNone(result.error, result.tb)
+            return spark
+
+        base = ready("new")
+        spark = clone(base)
+        clean = run(spark, "new", last)
+        self.assertIsNone(clean.error, clean.tb)
+        end = snapshot(next_month(spark, "new"), drop=LOADED)
+        for table, name in names.items():
+            self.assertEqual(set(sources(spark, table, snapshot_month=JULY)), {name})
+            self.assertEqual(rows_of(spark, table, snapshot_month=AUGUST), [])
+        for k, write in enumerate(clean.writes, 1):
+            with self.subTest(failing=write, at=k):
+                spark = clone(base)
+                self.assertIsInstance(run(spark, "new", last, fail_at=k).error, SimulatedFailure)
+                self.assertEqual(differences(end, snapshot(next_month(spark, "new"), drop=LOADED),
+                                             ("clean", "failed")), [])
+
+        # f3750c8, as it ran, took the month from the run. The export still in landing on August 1 became
+        # August's, and a failed delete left July counting the export and the API figures together, which
+        # no later run put right: the API rows skip a month that holds an export's rows.
+        base = ready("as-run")
+        clean = run(clone(base), "as-run", last)
+        self.assertIsNone(clean.error, clean.tb)
+        merge, drop = [k for k, w in enumerate(clean.writes, 1) if w[0] == CELL["agent"]]
+        # drop_api_rows was a merge too, with a delete clause.
+        self.assertEqual([clean.writes[merge - 1][1:], clean.writes[drop - 1][1:]], [(AGENT_MONTHLY, "merge")] * 2)
+        name = names[AGENT_MONTHLY]
+        for k, july in ((merge, {API}), (drop, {API, name})):
+            with self.subTest(as_run_failing=clean.writes[k - 1]):
+                spark = clone(base)
+                self.assertIsInstance(run(spark, "as-run", last, fail_at=k).error, SimulatedFailure)
+                self.assertEqual(set(sources(spark, AGENT_MONTHLY, snapshot_month=JULY)), july)
+                next_month(spark, "as-run")
+                self.assertEqual(set(sources(spark, AGENT_MONTHLY, snapshot_month=JULY)), july)
+                self.assertEqual(set(sources(spark, AGENT_MONTHLY, snapshot_month=AUGUST)), {name})
 
 
 def without(spark, table, column):
@@ -2210,9 +2591,10 @@ def with_column(spark, table, column, dtype):
 
 
 class Schema(unittest.TestCase):
-    """A table and the rows written to it can differ by a column, for instance after someone changes one."""
+    """A table and the rows written to it can differ by a column, for instance after someone changes one.
+    On DAY the export cells write too."""
 
-    DAY = CONVERT_RUN - timedelta(2)
+    DAY = EXPORT_DAY + timedelta(1)
     TABLES = (AGENT_DAILY, AGENT_MONTHLY, TENANT, USER_DAILY, USER_MONTHLY)
 
     def test_a_column_the_table_lacks_is_left_out_as_before(self):
@@ -2227,10 +2609,12 @@ class Schema(unittest.TestCase):
                     self.assertIn(table, {w[1] for w in result.writes})
                     self.assertNotIn("_loaded_at", spark.tables[table].names)
                     sparks[version] = spark
-                self.assertEqual(differences(snapshot(sparks["old"]), snapshot(sparks["new"])), [])
+                self.assertEqual(differences(snapshot(outside(sparks["old"])), snapshot(outside(sparks["new"]))),
+                                 [])
 
-    def test_a_column_the_rows_lack_fails_the_run_which_now_leaves_the_table_as_it_was(self):
+    def test_a_column_the_rows_lack_fails_the_run_before_the_table_is_written(self):
         for table in self.TABLES:
+            sparks = {}
             for version in ("old", "new"):
                 with self.subTest(table=table, version=version):
                     spark = before_run(self.DAY, version)
@@ -2238,15 +2622,541 @@ class Schema(unittest.TestCase):
                     before = dict(spark.tables)
                     result = run(spark, version, self.DAY)
                     self.assertIsInstance(result.error, AnalysisError)
-                    if version == "new":
-                        self.assertIn("UNRESOLVED_COLUMN", str(result.error))
-                        self.assertEqual([w for w in result.writes if w[1] == table], [])
-                        self.assertEqual(snapshot(spark)[table], snapshot(before)[table])
-                    else:
-                        # The old code's delete went through, then its merge failed.
-                        self.assertIn("DELTA_MERGE_UNRESOLVED_EXPRESSION", str(result.error))
-                        self.assertEqual(result.writes[-1][1:], (table, "delete"))
-                        self.assertLess(len(spark.tables[table].rows), len(before[table].rows))
+                    # The old export cells merged, and Delta checks a merge's columns before it commits.
+                    merged = version == "old" and table in (TENANT, AGENT_MONTHLY, USER_MONTHLY)
+                    self.assertIn("DELTA_MERGE_UNRESOLVED_EXPRESSION" if merged else "UNRESOLVED_COLUMN",
+                                  str(result.error))
+                    self.assertEqual([w for w in result.writes if w[1] == table], [])
+                    self.assertEqual(snapshot(spark)[table], snapshot(before)[table])
+                    sparks[version] = spark
+            with self.subTest(table=table):
+                self.assertEqual(differences(snapshot(outside(sparks["old"])), snapshot(outside(sparks["new"]))),
+                                 [])
+
+
+class NullSafeExported(unittest.TestCase):
+    """Cell 10's `exported` now matches the stored export rows null-safely, as drop_api_rows matched them. A
+    tenant key with no environment ID that an export row, or a row with no source, is on now keeps the
+    licensing API rows off it. The old plain join never matched a NULL, so it wrote an API row there. These
+    keys, DIVERGENT, are the only rows where the new code ends differently from the oracle."""
+
+    def test_a_key_with_no_environment_keeps_its_export_row_and_gets_no_api_row(self):
+        gap, end = tenant_export_name(GAP_RUN), scenario().runs[-1]
+        cases = ((end, NO_ENV_EXPORT_DAY, {OLD_EXPORT: 1, API: 1}, {OLD_EXPORT: 1}),
+                 (end, NO_ENV_NO_SOURCE_DAY, {API: 1}, {None: 1}),
+                 (run_on(GAP_RUN), NO_ENV_DAY, {gap: 1, API: 1}, {gap: 1}),
+                 # Once the API files' window passed the day, the old code's next load of the export deleted
+                 # the API row.
+                 (end, NO_ENV_DAY, {gap: 1}, {gap: 1}))
+        for r, day, old, new in cases:
+            with self.subTest(day=day, after_the_run_on=r.day):
+                on = dict(usage_date=day, environment_id=None)
+                self.assertEqual(sources(r.after["old"], TENANT, **on), Counter(old))
+                self.assertEqual(sources(r.after["new"], TENANT, **on), Counter(new))
+
+    def test_the_divergent_keys_are_the_only_tenant_rows_that_differ(self):
+        keys = set()
+        for r in scenario().runs:
+            (names, _, old), (other, _, new) = snapshot(r.after["old"])[TENANT], snapshot(r.after["new"])[TENANT]
+            self.assertEqual(names, other)
+            d, e = names.index("usage_date"), names.index("environment_id")
+            keys |= {(row[d], row[e]) for row in (old - new) + (new - old)}
+        self.assertEqual(keys, DIVERGENT)
+
+
+class TransientStates(unittest.TestCase):
+    """A failure between two commits of a run leaves the tables as the first commit left them. The old export
+    cells merged an export, then deleted the licensing API rows it covers, so in between a day or month
+    counted the export's credits and the API's. The new cells write each export in one commit."""
+
+    @staticmethod
+    def passed_through(version):
+        """{run day: tables} where some day or month counted twice between two of the run's commits, but
+        neither before the run nor after it."""
+        out = {}
+        for r in scenario().runs:
+            ends = doubled(r.before[version]) | doubled(r.after[version])
+            between = set().union(*map(doubled, r.results[version].history))
+            if between - ends:
+                out.setdefault(r.day, set()).update(key[0] for key in between - ends)
+        return out
+
+    def test_the_old_code_counted_an_export_and_the_api_figures_together_between_its_commits(self):
+        self.assertEqual(self.passed_through("old"), {EXPORT_DAY: {TENANT, AGENT_MONTHLY, USER_MONTHLY},
+                                                      GAP_RUN: {TENANT}, BACKFILL_DAY: {USER_MONTHLY}})
+
+    def test_the_new_code_never_does(self):
+        self.assertEqual(self.passed_through("new"), {})
+        # The rows seeded after the first run count three tenant keys twice; the next run puts them right.
+        seeded = {(TENANT, NO_SOURCE_DAY, SANDBOX), (TENANT, NO_ENV_EXPORT_DAY, None),
+                  (TENANT, NO_ENV_NO_SOURCE_DAY, None)}
+        self.assertEqual(doubled(scenario().seeded["new"]), seeded)
+        for r in scenario().runs:
+            with self.subTest(day=r.day, at=r.at):
+                start = doubled(r.before["new"])
+                for tables in r.results["new"].history:
+                    self.assertLessEqual(doubled(tables), start)
+                self.assertEqual(doubled(r.after["new"]), set())
+
+
+class ArrivalMonth(Runs):
+    """An export in the landing folder counts as the month (UTC) its file arrived there, on every run that
+    reads it."""
+
+    def test_the_month_is_the_utc_month_the_file_arrived_in(self):
+        july, august = agent_export_name(date(2026, 7, 31)), agent_export_name(AUGUST)
+
+        def prep(spark):
+            put(spark, july, agent_export(), datetime(2026, 7, 31, 23, 59, 59, 999000))
+            put(spark, august, agent_export(extra=0.5), datetime(2026, 8, 1))
+        ends = self.ends(prep, date(2026, 8, 3))
+        spark = ends["new"].spark
+        self.assertEqual(ends["new"].result.writes, [(CELL["agent"], AGENT_MONTHLY, "create")])
+        self.assertEqual(sources(spark, AGENT_MONTHLY, snapshot_month=JULY), Counter({july: 4}))
+        self.assertEqual(sources(spark, AGENT_MONTHLY, snapshot_month=AUGUST), Counter({august: 4}))
+        self.assertSameEnd(ends)
+
+    def test_an_export_left_in_landing_never_becomes_a_later_months(self):
+        # f3750c8, as it ran, gave the export the month of the run: November. With the API files on, that
+        # month then held an export's rows, so it never got the API figures.
+        october, november = date(2026, 10, 20), date(2026, 11, 3)
+        first_of = {october: date(2026, 10, 1), november: date(2026, 11, 1)}
+        names = {AGENT_MONTHLY: agent_export_name(october), USER_MONTHLY: user_export_name(october)}
+        for read_api in (True, False):
+            ends = {}
+            for version in ("old", "new", "as-run"):
+                with self.subTest(read_api=read_api, version=version):
+                    spark = FakeSpark()
+                    land_api(spark, october, days=20)
+                    land(spark, tenant_export_name(october), tenant_export(first_of[october], date(2026, 10, 18)))
+                    land(spark, agent_export_name(october), agent_export())
+                    land(spark, user_export_name(october), user_export())
+                    result = run(spark, version, october, read_api=read_api)
+                    self.assertIsNone(result.error, result.tb)
+                    was = dict(spark.tables)
+                    land_api(spark, november)
+                    result = run(spark, version, november, read_api=read_api)
+                    self.assertIsNone(result.error, result.tb)
+                    ends[version] = spark
+                    for table, name in names.items():
+                        in_november = set(sources(spark, table, snapshot_month=first_of[november]))
+                        if version == "as-run":
+                            self.assertEqual(in_november, {name}, table)
+                            continue
+                        self.assertEqual(in_november, {API} if read_api else set(), table)
+                        # Read again, the export restates its own month.
+                        now, then = (rows_of(t, table, snapshot_month=first_of[october]) for t in (spark, was))
+                        self.assertEqual(frozen(now, LOADED), frozen(then, LOADED), table)
+                        self.assertEqual({x["_loaded_at"] for x in now}, {datetime.combine(november, time(6))})
+                        self.assertEqual(set(sources(spark, table, snapshot_month=first_of[october])), {name})
+            with self.subTest(read_api=read_api):
+                self.assertEqual(differences(snapshot(ends["old"]), snapshot(ends["new"])), [])
+
+    def test_a_file_with_no_modify_time_counts_as_the_month_of_the_run_and_says_so(self):
+        names = (agent_export_name(EXPORT_DAY), user_export_name(EXPORT_DAY))
+        for at in (None, EPOCH):
+            for moment, month in ((datetime(2026, 7, 31, 23, 59), JULY), (datetime(2026, 8, 1, 0, 1), AUGUST)):
+                with self.subTest(modify_time=at, run=moment):
+                    def prep(spark):
+                        for name, text in zip(names, (agent_export(), user_export())):
+                            put(spark, name, text, at)
+                    ends = self.ends(prep, moment.date(), at=moment.time())
+                    output = ends["new"].result.output
+                    for name in names:
+                        self.assertEqual(output.count(f"  ! {name}: no modifyTime, so it counts as this month, "
+                                                      f"{month:%Y-%m}"), 1)
+                    for table in (AGENT_MONTHLY, USER_MONTHLY):
+                        self.assertEqual({x["snapshot_month"] for x in rows_of(ends["new"].spark, table)}, {month})
+                    self.assertSameEnd(ends)
+
+
+class Backfill(Runs):
+    """An earlier month's export goes in backfill/<YYYY-MM>/, and counts as the folder's month on every run
+    that reads it."""
+
+    LATER = LAST_RUN + timedelta(1)
+    STOPS = (("backfill/stray.csv", "a file outside a month folder"),
+             ("backfill/July 2026/x.csv", "the folder name isn't a month (YYYY-MM)"),
+             ("backfill/2026-13/x.csv", "the folder name isn't a month (YYYY-MM)"),
+             ("backfill/2026-09/x.csv", "a month after this one (2026-08)"))
+
+    def later(self):
+        """The scenario's tables and files at its end, with the next day's files landed."""
+        spark = clone(scenario().sparks["new"])
+        prepare(spark, self.LATER)
+        return spark
+
+    def test_a_backfill_export_counts_as_its_folders_month(self):
+        r = run_on(BACKFILL_DAY)
+        for version in ("old", "new"):
+            with self.subTest(version=version):
+                before, after = r.before[version], r.after[version]
+                june = [x for x in rows_of(after, TENANT) if x["usage_date"] and JUNE <= x["usage_date"] < JULY
+                        and x["environment_id"] in ENVIRONMENTS]
+                self.assertEqual(Counter(x["source_file"] for x in june),
+                                 Counter({tenant_export_name(BACKFILL_DAY): 90}))
+                self.assertEqual(sources(after, AGENT_MONTHLY, snapshot_month=JULY),
+                                 Counter({agent_export_name(BACKFILL_DAY): 5}))
+                self.assertEqual(set(sources(before, USER_MONTHLY, snapshot_month=JUNE)), {API})
+                self.assertEqual(sources(after, USER_MONTHLY, snapshot_month=JUNE),
+                                 Counter({user_export_name(BACKFILL_DAY): 6}))
+
+    def test_a_later_run_reads_the_backfill_again_and_changes_only_load_times(self):
+        ends = self.ends(lambda spark: None, date(2026, 9, 7), base=scenario().sparks)
+        for version, end in ends.items():
+            with self.subTest(version=version):
+                self.assertEqual({w[0] for w in end.result.writes}, {CELL["tenant"], CELL["agent"], CELL["user"]})
+                was = scenario().sparks[version]
+                self.assertEqual(differences(snapshot(was, drop=LOADED), snapshot(end.spark, drop=LOADED)), [])
+                self.assertNotEqual(snapshot(was), snapshot(end.spark))
+        self.assertSameEnd(ends)
+
+    def test_a_backfill_file_and_the_current_export_each_keep_their_month(self):
+        name, at = user_export_name(date(2026, 7, 14)), datetime(2026, 7, 14, 5)
+
+        def prep(spark):
+            put(spark, name, user_export(), at)
+            put(spark, f"backfill/2026-06/{name}", user_export(extra=0.5), at)
+        ends = self.ends(prep, date(2026, 7, 15))
+        spark = ends["new"].spark
+        june, july = (rows_of(spark, USER_MONTHLY, snapshot_month=m) for m in (JUNE, JULY))
+        self.assertEqual(sources(spark, USER_MONTHLY, snapshot_month=JUNE), Counter({name: 6}))
+        self.assertEqual(sources(spark, USER_MONTHLY, snapshot_month=JULY), Counter({name: 6}))
+        self.assertEqual(sorted(x["billable_credit_used"] - 0.5 for x in june),
+                         sorted(x["billable_credit_used"] for x in july))
+        self.assertSameEnd(ends)
+
+    def test_a_tenant_export_in_a_backfill_folder_keeps_its_own_dates(self):
+        name = tenant_export_name(date(2026, 7, 4))
+        ends = self.ends(lambda spark: put(spark, f"backfill/2026-06/{name}", tenant_export(JULY, date(2026, 7, 3)),
+                                           datetime(2026, 7, 4, 5)), date(2026, 7, 4))
+        self.assertEqual({x["usage_date"] for x in rows_of(ends["new"].spark, TENANT)},
+                         set(days_between(JULY, date(2026, 7, 3))))
+        self.assertSameEnd(ends)
+
+    def test_a_misplaced_backfill_file_stops_the_run_before_anything_is_written(self):
+        for stops in [[s] for s in self.STOPS] + [list(self.STOPS)]:
+            with self.subTest(paths=[path for path, _ in stops]):
+                spark = self.later()
+                for path, _ in stops:
+                    put(spark, path, agent_export(), datetime.combine(self.LATER, time(5)))
+                before = snapshot(spark)
+                result = run(spark, "new", self.LATER)
+                self.assertIsInstance(result.error, ValueError)
+                message = str(result.error)
+                self.assertTrue(message.startswith("Nothing was written."), message)
+                for path, problem in stops:
+                    self.assertIn(f"\n  {LANDING_DIR}/{'/'.join(path.split('/')[:2])}: {problem}", message)
+                self.assertEqual(len(message.splitlines()), 1 + len(stops))
+                self.assertEqual(result.writes, [])
+                self.assertEqual(snapshot(spark), before)
+                self.assertIn(f"<new cell {CELL['tenant']}>", result.tb)
+
+    def test_a_folder_inside_a_month_folder_is_not_read_and_says_so(self):
+        plain = self.later()
+        nested = clone(plain)
+        put(nested, "backfill/2026-07/older/x.csv", agent_export(extra=9.0), datetime.combine(self.LATER, time(5)))
+        results = [run(spark, "new", self.LATER) for spark in (plain, nested)]
+        for result in results:
+            self.assertIsNone(result.error, result.tb)
+        warning = f"  ! {LANDING_DIR}/backfill/2026-07/older: a folder inside a month folder isn't read"
+        self.assertEqual(results[1].output.count(warning), 3)
+        self.assertEqual([line for line in results[1].output if line != warning], results[0].output)
+        self.assertEqual(snapshot(plain), snapshot(nested))
+
+    def test_a_snapshot_month_left_in_the_settings_stops_the_run(self):
+        spark = before_run(BACKFILL_DAY)
+        before = snapshot(spark)
+        result = run(spark, "new", BACKFILL_DAY, settings={"SNAPSHOT_MONTH": "2026-07-01"})
+        self.assertIsInstance(result.error, ValueError)
+        self.assertTrue(str(result.error).startswith("SNAPSHOT_MONTH is no longer read."), str(result.error))
+        self.assertIn(f"{LANDING_DIR}/backfill/<YYYY-MM>/", str(result.error))
+        self.assertEqual(result.writes, [])
+        self.assertEqual(snapshot(spark), before)
+        for unset in (None, ""):
+            with self.subTest(snapshot_month=unset):
+                spark = before_run(BACKFILL_DAY)
+                result = run(spark, "new", BACKFILL_DAY, settings={"SNAPSHOT_MONTH": unset})
+                self.assertIsNone(result.error, result.tb)
+                self.assertEqual(differences(snapshot(run_on(BACKFILL_DAY).after["new"]), snapshot(spark)), [])
+
+    def test_loaded_files_and_api_files_in_a_backfill_folder_are_not_read(self):
+        plain = self.later()
+        extra = clone(plain)
+        at = datetime.combine(self.LATER, time(5))
+        put(extra, f"_loaded/2026-08-04/{agent_export_name(self.LATER)}", agent_export(extra=9.0), at)
+        put(extra, f"backfill/2026-07/StudioApiAgentDaily_{stamp(self.LATER)}.csv", api_agent_file(GAP_RUN), at)
+        put(extra, f"backfill/2026-07/StudioApiUserDaily_{stamp(self.LATER)}.csv", api_user_file(GAP_RUN), at)
+        results = [run(spark, "new", self.LATER) for spark in (plain, extra)]
+        for result in results:
+            self.assertIsNone(result.error, result.tb)
+        self.assertEqual(results[0].output, results[1].output)
+        self.assertEqual(snapshot(plain), snapshot(extra))
+
+    def test_folders_are_found_whether_or_not_their_names_end_with_a_slash(self):
+        ends = []
+        for suffix in ("/", ""):
+            spark = self.later()
+            put(spark, "backfill/2026-07/older/x.csv", agent_export(), datetime.combine(self.LATER, time(5)))
+            spark.dir_suffix = suffix
+            result = run(spark, "new", self.LATER)
+            self.assertIsNone(result.error, result.tb)
+            ends.append((result.output, snapshot(spark)))
+        self.assertEqual(ends[0], ends[1])
+
+
+class TenantFallback(Runs):
+    """The tenant patterns end with the loose *Tenant*.csv, which PPAC's per-agent and per-user export names
+    match too. read() skips a file without the export's columns, so neither is ever read as the tenant
+    export."""
+
+    def test_with_no_tenant_export_the_other_exports_still_load(self):
+        names = agent_export_name(EXPORT_DAY), user_export_name(EXPORT_DAY)
+
+        def prep(spark):
+            land(spark, names[0], agent_export())
+            land(spark, names[1], user_export())
+        ends = self.ends(prep, EXPORT_DAY)
+        lines = [f"  {names[0]}: skipped, missing column(s): Usage Date, BillingPlan Id, Capacity Type",
+                 f"  {names[1]}: skipped, missing column(s): Usage Date, Environment Id, BillingPlan Id, Capacity Type",
+                 "  no file matched ('EntitlementConsumptionTenantDetailsReport_MCSMessages*.csv', '*Tenant*.csv')",
+                 "no tenant export - skipping"]
+        output = ends["new"].result.output
+        self.assertIn(lines[0], output)
+        start = output.index(lines[0])
+        self.assertEqual(output[start:start + 4], lines)
+        self.assertEqual(ends["new"].result.writes, [(CELL["agent"], AGENT_MONTHLY, "create"),
+                                                     (CELL["user"], USER_MONTHLY, "create")])
+        self.assertSameEnd(ends)
+        # f3750c8 read the two as the tenant export, and failed.
+        spark = FakeSpark()
+        prep(spark)
+        as_run = run(spark, "as-run", EXPORT_DAY, read_api=False)
+        self.assertIsNotNone(as_run.error)
+        self.assertIn(f"<old cell {CELL['tenant']}>", as_run.tb)
+        self.assertEqual(as_run.writes, [])
+
+    def test_a_renamed_tenant_export_still_loads(self):
+        name, day = "Tenant usage July.csv", date(2026, 7, 11)
+
+        def prep(spark):
+            put(spark, name, tenant_export(JULY, date(2026, 7, 10)), datetime.combine(day, time(5)))
+            land(spark, agent_export_name(day), agent_export())
+            land(spark, user_export_name(day), user_export())
+        ends = self.ends(prep, day)
+        self.assertEqual(sources(ends["new"].spark, TENANT), Counter({name: 30}))
+        self.assertEqual([w[1] for w in ends["new"].result.writes], [TENANT, AGENT_MONTHLY, USER_MONTHLY])
+        output = ends["new"].result.output
+        self.assertIn(f"  {agent_export_name(day)}: skipped, missing column(s): Usage Date, BillingPlan Id, "
+                      "Capacity Type", output)
+        self.assertIn(f"  {user_export_name(day)}: skipped, missing column(s): Usage Date, Environment Id, "
+                      "BillingPlan Id, Capacity Type", output)
+        self.assertSameEnd(ends)
+
+
+def with_copy(text, column, value, row=0):
+    """The CSV with a copy of one of its rows added at the end, holding value in column."""
+    rows = list(csv.reader(io.StringIO(text, newline="")))
+    copy = list(rows[1 + row])
+    copy[rows[0].index(column)] = value
+    return csv_text(rows[0], rows[1:] + [copy])
+
+
+def drop_one(spark, table, match):
+    """Takes out the first stored row whose columns equal every value in match."""
+    t = spark.tables[table]
+    i = next(i for i, r in enumerate(rows_of(spark, table)) if all(r[k] == v for k, v in match.items()))
+    spark.tables[table] = t.with_rows(t.rows[:i] + t.rows[i + 1:])
+
+
+class Files(Runs):
+    """How the export files one run reads combine."""
+
+    def test_where_two_files_share_a_key_the_newer_one_wins(self):
+        # The newer file has the older name: the time it arrived decides.
+        older, newer, day = agent_export_name(date(2026, 7, 13)), agent_export_name(date(2026, 7, 9)), date(2026, 7, 14)
+
+        def prep(spark):
+            put(spark, older, agent_export(extra=0.25), datetime(2026, 7, 11, 5))
+            put(spark, newer, agent_export(extra=0.5), datetime(2026, 7, 13, 5))
+            land(spark, tenant_export_name(day), tenant_export(JULY, date(2026, 7, 12)))
+        ends = self.ends(prep, day, versions=("old", "new", "as-run"))
+        self.assertEqual(sources(ends["new"].spark, AGENT_MONTHLY, snapshot_month=JULY), Counter({newer: 4}))
+        self.assertSameEnd(ends)
+        # f3750c8, as it ran, read both at once: into a missing table it wrote both files' rows, and once the
+        # table held them, the merge failed.
+        as_run = ends["as-run"].spark
+        self.assertEqual(sources(as_run, AGENT_MONTHLY), Counter({older: 4, newer: 4}))
+        again = run(as_run, "as-run", day, read_api=False)
+        self.assertIsInstance(again.error, DeltaError)
+        self.assertIn("MULTIPLE_SOURCE_ROW", str(again.error))
+
+    def test_a_newer_per_user_file_replaces_a_users_rows_only_for_the_agents_it_has(self):
+        # The key is the month, the user and the agent: the older file's row for an agent the newer one
+        # lacks stays, as it did when the two loaded one at a time.
+        older, newer = user_export_name(date(2026, 7, 9)), user_export_name(date(2026, 7, 13))
+
+        def prep(spark):
+            put(spark, older, user_export(), datetime(2026, 7, 9, 5))
+            put(spark, newer, user_export(extra=0.5, usage=[(AVERY, HELP_DESK)]), datetime(2026, 7, 13, 5))
+        ends = self.ends(prep, date(2026, 7, 14))
+        self.assertEqual({x["agent_id"]: x["source_file"]
+                          for x in rows_of(ends["new"].spark, USER_MONTHLY, snapshot_month=JULY, user_id=AVERY)},
+                         {HELP_DESK.id: newer, HR.id: older})
+        self.assertSameEnd(ends)
+
+    def test_per_environment_tenant_exports_load_as_one_would(self):
+        whole = tenant_export_name(EXPORT_DAY)
+        parts = ((whole.replace(".csv", "_production.csv"), {PRODUCTION}, time(5)),
+                 (whole.replace(".csv", "_others.csv"), {SANDBOX, TRAINING}, time(5, 1)))
+        sparks = {}
+        for version in ("old", "new"):
+            with self.subTest(version=version):
+                spark = before_run(EXPORT_DAY, version)
+                remove(spark, kind(whole))
+                for name, envs, at in parts:
+                    put(spark, name, tenant_export(JUNE, date(2026, 7, 10), envs=envs),
+                        datetime.combine(EXPORT_DAY, at))
+                result = run(spark, version, EXPORT_DAY)
+                self.assertIsNone(result.error, result.tb)
+                self.assertEqual(differences(snapshot(run_on(EXPORT_DAY).after[version], drop=("source_file",)),
+                                             snapshot(spark, drop=("source_file",)), ("one file", "two")), [])
+                sparks[version] = spark
+        self.assertEqual(differences(snapshot(outside(sparks["old"])), snapshot(outside(sparks["new"]))), [])
+
+    def test_rows_that_share_a_key_within_one_file_are_all_written(self):
+        text = with_copy(agent_export(), "Billed credit", "99.0")
+        ends = self.ends(lambda spark: land(spark, agent_export_name(EXPORT_DAY), text), EXPORT_DAY)
+        for version in ("old", "new"):
+            self.assertEqual(len(rows_of(ends[version].spark, AGENT_MONTHLY, agent_id=HELP_DESK.id)), 2, version)
+        self.assertSameEnd(ends)
+        # Read again, the new code writes the same; the old code's merge failed.
+        again = clone(ends["new"].spark)
+        self.assertIsNone(run(again, "new", EXPORT_DAY, read_api=False).error)
+        self.assertEqual(snapshot(again), snapshot(ends["new"].spark))
+        again = run(clone(ends["old"].spark), "old", EXPORT_DAY, read_api=False)
+        self.assertIsInstance(again.error, DeltaError)
+        self.assertIn("MULTIPLE_SOURCE_ROW", str(again.error))
+
+    def test_stored_rows_that_share_a_key_collapse_to_one(self):
+        # The old merge updated both rows; the new write keeps one. Otherwise the two end alike.
+        day = EXPORT_DAY + timedelta(1)
+        matches = ((TENANT, dict(usage_date=date(2026, 7, 5), environment_id=PRODUCTION)),
+                   (AGENT_MONTHLY, dict(snapshot_month=JULY, agent_id=HELP_DESK.id)),
+                   (USER_MONTHLY, dict(snapshot_month=JULY, user_id=AVERY, agent_id=HELP_DESK.id)))
+        sparks = {}
+        for version in ("old", "new"):
+            spark = before_run(day, version)
+            for table, match in matches:
+                found = rows_of(spark, table, **match)
+                self.assertEqual(len(found), 1, table)
+                add(spark, table, **found[0])
+            result = run(spark, version, day)
+            self.assertIsNone(result.error, result.tb)
+            sparks[version] = spark
+        for table, match in matches:
+            with self.subTest(table=table):
+                self.assertEqual(len(rows_of(sparks["old"], table, **match)), 2)
+                self.assertEqual(len(rows_of(sparks["new"], table, **match)), 1)
+                drop_one(sparks["old"], table, match)
+        self.assertEqual(differences(snapshot(outside(sparks["old"])), snapshot(outside(sparks["new"]))), [])
+
+
+def blank_dates(text, day=None):
+    """The tenant export with Usage Date blank on day's rows, or on every row."""
+    rows = list(csv.reader(io.StringIO(text, newline="")))
+    i = rows[0].index("Usage Date")
+    for r in rows[1:]:
+        if day is None or r[i] == us_date(day):
+            r[i] = ""
+    return csv_text(rows[0], rows[1:])
+
+
+class NoSource(Runs):
+    """A stored row with no source file counts as an export's, as it did for drop_api_rows, which deleted only
+    rows from a licensing API file: an export over its day or month replaces it only where it has its key."""
+
+    def test_a_row_with_no_source_stays_unless_the_export_has_its_key(self):
+        # Keys the EXPORT_DAY exports lack, on a day and in a month they cover.
+        rows = ((TENANT, dict(usage_date=date(2026, 7, 5), environment_id=PRODUCTION, billing_plan_id=API_PLAN,
+                              capacity_type=MCS, prepaid_consumed=0.5)),
+                (AGENT_MONTHLY, dict(snapshot_month=JULY, agent_id=SALES.id, environment_id=SANDBOX,
+                                     billable_feature=SALES.feature, channel="Web", billed_credit=3.0)),
+                (USER_MONTHLY, dict(snapshot_month=JULY, user_id=DEVON, agent_id=PILOT.id, credits_used=2.0)))
+        # seed()'s row with no source on NO_SOURCE_DAY has a key the tenant export has.
+        seeded = dict(usage_date=NO_SOURCE_DAY, environment_id=SANDBOX, billing_plan_id=EXPORT_PLAN)
+        base = {version: before_run(EXPORT_DAY, version) for version in ("old", "new")}
+        self.assertEqual(sources(base["new"], TENANT, **seeded), Counter({None: 1}))
+        for spark in base.values():
+            for table, values in rows:
+                add(spark, table, **values)
+        ends = self.ends(lambda spark: None, EXPORT_DAY, read_api=True, base=base)
+        spark = ends["new"].spark
+        for table, values in rows:
+            with self.subTest(table=table):
+                self.assertEqual(sources(spark, table, **values), Counter({None: 1}))
+        self.assertEqual(sources(spark, TENANT, **seeded), Counter({tenant_export_name(EXPORT_DAY): 1}))
+        self.assertSameEnd(ends)
+
+
+class NullDates(Runs):
+    """A tenant export row with no date replaces the stored rows with no date on its key, and the licensing
+    API rows with no date on its environment, as merge and drop_api_rows did. With every date blank, the
+    write selects only the rows with no date."""
+
+    DAY = LAST_RUN + timedelta(1)
+    CASES = (("some", tenant_export(date(2026, 7, 20), date(2026, 7, 31)), date(2026, 7, 31)),
+             ("all", tenant_export(AUGUST, AUGUST), None))
+
+    def test_rows_with_no_date_replace_the_stored_ones(self):
+        name = tenant_export_name(self.DAY)
+        undated = dict(usage_date=None, environment_id=PRODUCTION)
+        self.assertEqual(sources(scenario().sparks["new"], TENANT, **undated), Counter({API: 1}))
+        for case, text, day in self.CASES:
+            with self.subTest(case=case):
+                def prep(spark):
+                    prepare(spark, self.DAY)
+                    # Without June's backfill export, every date the tenant export has is blank in "all".
+                    june = f"{LANDING_DIR}/backfill/2026-06/{tenant_export_name(BACKFILL_DAY)}"
+                    del spark.files[june]
+                    spark.mtimes.pop(june, None)
+                    land(spark, name, blank_dates(text, day))
+                ends = self.ends(prep, self.DAY, read_api=True, base=scenario().sparks)
+                spark = ends["new"].spark
+                self.assertIn("  ! 3 rows have an unparseable Usage Date - check the format", ends["new"].result.output)
+                self.assertEqual(sources(spark, TENANT, **undated), Counter({name: 1}))
+                self.assertEqual(sources(spark, TENANT, usage_date=None), Counter({name: 3}))
+                self.assertSameEnd(ends)
+                again = clone(spark)
+                self.assertIsNone(run(again, "new", self.DAY).error)
+                self.assertEqual(snapshot(again), snapshot(spark))
+
+
+class FirstLoad(Runs):
+    """With no table yet, the export cells create each table from the newest row for each key, without the
+    columns read() adds."""
+
+    def test_the_first_load_creates_each_table_from_the_newest_rows(self):
+        newer = agent_export_name(date(2026, 7, 13))
+
+        def prep(spark):
+            land(spark, tenant_export_name(EXPORT_DAY), tenant_export(JUNE, date(2026, 7, 10)))
+            land(spark, agent_export_name(EXPORT_DAY), agent_export())
+            land(spark, user_export_name(EXPORT_DAY), user_export())
+            put(spark, newer, agent_export(extra=0.5, agents=[HELP_DESK, SALES]), datetime(2026, 7, 13, 5))
+        ends = self.ends(prep, date(2026, 7, 14))
+        spark = ends["new"].spark
+        self.assertEqual(ends["new"].result.writes, [(CELL["tenant"], TENANT, "create"),
+                                                     (CELL["agent"], AGENT_MONTHLY, "create"),
+                                                     (CELL["user"], USER_MONTHLY, "create")])
+        for table, t in spark.tables.items():
+            self.assertFalse({"_order", "_month"} & set(t.names), table)
+        rows = rows_of(spark, AGENT_MONTHLY)
+        self.assertEqual(len(rows), 5)
+        self.assertEqual({(x["agent_id"], x["billed_credit"], x["source_file"]) for x in rows
+                          if x["agent_id"] in (HELP_DESK.id, SALES.id)},
+                         {(HELP_DESK.id, 40.5, newer), (SALES.id, 45.5, newer)})
+        self.assertSameEnd(ends)
 
 
 if __name__ == "__main__":
