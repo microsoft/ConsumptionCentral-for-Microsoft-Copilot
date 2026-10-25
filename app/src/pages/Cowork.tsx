@@ -6,7 +6,7 @@ import { div } from '../metrics/stats'
 import { BarList, GroupedBars, LineChart } from '../ui/charts'
 import { DataTable, type Column } from '../ui/DataTable'
 import { dateLabel, dayLabel, int, pct, pct0, signedPct, usd, usd2, usd4 } from '../ui/format'
-import { Kpi, KpiRow, Note, Panel } from '../ui/primitives'
+import { Kpi, KpiRow, Note, NotSuppliedIf, Panel } from '../ui/primitives'
 import { ACTION_COLOR, PAYG, PREPAID, PRODUCT_COLOR, SECONDARY } from '../ui/theme'
 import { N } from './helpers'
 
@@ -114,9 +114,11 @@ export function CoworkCost() {
         <Kpi tone="cowork" label="Total cost" value={usd(m.cost.total)} sub={billingBasis(m.used, settings)} help="Prepaid credits priced at the prepaid rate plus pay-as-you-go credits at the PAYG rate." />
         <Kpi label="Blended rate" value={usd4(N(m.cost.blended))} sub="per credit" help="Total cost divided by credits used." />
         <Kpi label="Credits used" value={int(N(m.used))} />
-        <Kpi label="Policy allowance" value={int(m.policyAllowance)} sub="sum of spending-policy limits" help="Sum of the plan limits on the selected spending policies." />
-        <Kpi label="Policy allowance used" value={pct(N(m.policyUsed))} />
-        <Kpi tone={m.headroom < 0 ? 'warn' : 'neutral'} label="Policy headroom" value={int(m.headroom)} sub="credits left under policy" />
+        <NotSuppliedIf when={!ds.policies.length}>
+          <Kpi label="Policy allowance" value={int(m.policyAllowance)} sub="sum of spending-policy limits" help="Sum of the plan limits on the selected spending policies." />
+          <Kpi label="Policy allowance used" value={pct(N(m.policyUsed))} />
+          <Kpi tone={m.headroom < 0 ? 'warn' : 'neutral'} label="Policy headroom" value={int(m.headroom)} sub="credits left under policy" />
+        </NotSuppliedIf>
       </KpiRow>
       <div className="grid grid-2">
         <Panel title={`Cost by ${m.attr.toLowerCase()}`}>

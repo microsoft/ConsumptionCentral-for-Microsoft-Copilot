@@ -1,4 +1,12 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useContext, useId, useState, type ReactNode } from 'react'
+import { DASH } from './format'
+import { NotSupplied } from './notSupplied'
+
+/** Marks the KPIs inside as not supplied when `when` is true; never un-marks an outer not-supplied view. */
+export function NotSuppliedIf({ when, children }: { when: boolean; children: ReactNode }) {
+  const outer = useContext(NotSupplied)
+  return <NotSupplied.Provider value={outer || when}>{children}</NotSupplied.Provider>
+}
 
 export function InfoTip({ text, label }: { text?: string; label: string }) {
   const [open, setOpen] = useState(false)
@@ -65,6 +73,12 @@ export interface KpiProps {
 }
 
 export function Kpi({ label, value, sub, help, tone = 'neutral', trend, wide }: KpiProps) {
+  if (useContext(NotSupplied)) {
+    value = DASH
+    sub = 'not supplied'
+    trend = undefined
+    if (tone === 'warn') tone = 'neutral'
+  }
   const dir = trend === undefined || !Number.isFinite(trend) ? '' : trend > 0 ? 'up' : trend < 0 ? 'down' : 'flat'
   return (
     <div className={`kpi tone-${tone} ${wide ? 'kpi-wide' : ''}`}>

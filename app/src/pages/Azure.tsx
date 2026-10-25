@@ -16,7 +16,7 @@ export function AzureSpend() {
   const cur = money(m.currency)
   return (
     <>
-      {!m.currencyOk && (
+      {!m.currencyOk && ds.azureSolution.length > 0 && (
         <Note tone="warn" title="Pick one currency">
           Costs in different currencies can't be added together. Choose a single currency in the filters.
         </Note>
