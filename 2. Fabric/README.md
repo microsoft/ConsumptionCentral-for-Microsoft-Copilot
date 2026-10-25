@@ -69,8 +69,11 @@ Lakehouse at the top of each, run.
 
 `Ingest_Studio` is the supported way to load Copilot Studio data. Use it. It can also read daily
 per-agent and per-user files that a Power Automate flow saves from the Power Platform licensing API
-(`StudioApi*.csv`, in `Files/landing/studio/`). That's off by default (`READ_API_FILES = False`),
-and no flow in this repository saves those files yet.
+(`StudioApi*.csv`, in `Files/landing/studio/`). That's off by default (`READ_API_FILES = False`).
+The installer's [Copilot Studio credits flow](../installer/README.md#copilot-studio-credits-flow)
+saves those files, and the installer turns `READ_API_FILES` on when it sets the flow up. Each run
+replaces the days and months the files cover, one Delta commit per table, so a failed write leaves
+its table as it was, and older days keep their rows.
 
 There is also an `Ingest_Studio_Consumption` notebook in that folder which reads
 the Power Platform licensing API instead of the export. **A scheduled Fabric

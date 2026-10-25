@@ -126,7 +126,10 @@ Studio table with a real date**, and so the only one Consumption Central plots o
 > them in `studio_agent_daily` and `studio_user_daily`, which the report does not read, and rolls
 > them up into this table, `studio_agent` and `studio_user` with `source_file = 'ppac-api'`, or
 > `'ppac-api-users'` for days summed from the per-user file alone. An export always wins where it
-> covers the same day and environment, or the same month for agents and users.
+> covers the same day and environment, or the same month for agents and users. Each run replaces the
+> API rows for the days and months its files cover, in one Delta commit per table: a failed write
+> leaves the table as it was, and days and months the files don't cover keep their rows. The
+> `'ppac-api-users'` rows are rebuilt on every run.
 
 ---
 

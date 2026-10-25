@@ -199,7 +199,7 @@ test('Studio consumption: per-user API files fill studio_user_daily, look up UPN
   assert.match(all, /graph\.microsoft\.com\/v1\.0\/\$batch/);
   assert.match(all, /except Exception as e:\n\s+print\(f" {2}UPN lookup skipped: \{e\}"\)/, 'a failed lookup never fails the run');
   assert.match(all, /an export covers this month, so the API user figures aren't used/);
-  assert.match(all, /merge\(umonthly, TBL_USER, \["snapshot_month", "user_id", "agent_id"\]\)/);
+  assert.match(all, /replace_rows\(umonthly, TBL_USER, f"\{date_in\('snapshot_month', user_months\)\} AND source_file = '\{API_SOURCE\}'"\)/);
   assert.match(all, /merge\(user, TBL_USER, \["snapshot_month", "user_id", "agent_id"\]\)\n\s+drop_api_rows\(TBL_USER, user, \["snapshot_month"\]\)/, 'an export replaces the API rollup for its month');
   // The per-user cell runs after the per-agent one, which it takes agent names from.
   assert.ok(all.indexOf('user_raw = read(') > all.indexOf('api_raw = read('));
