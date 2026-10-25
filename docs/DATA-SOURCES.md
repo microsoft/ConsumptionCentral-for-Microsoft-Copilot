@@ -264,8 +264,11 @@ treat `ServiceName` as an open list — Consumption Central groups by whatever v
 > [`Ingest_Studio_Consumption.ipynb`](../2.%20Fabric/notebooks/Ingest_Studio_Consumption.ipynb) and the
 > flows in the archived, unsupported
 > [Power Automate + Dataverse](../archive/4.%20Power%20Automate%20%2B%20Dataverse/README.md) route.
-> [`Ingest_Studio.ipynb`](../2.%20Fabric/notebooks/Ingest_Studio.ipynb) can also read daily files a
-> flow saves from it (`READ_API_FILES`, off by default), but no flow in this repository saves them yet.
+> [`Ingest_Studio.ipynb`](../2.%20Fabric/notebooks/Ingest_Studio.ipynb) can also read the daily files
+> the installer's [Copilot Studio credits flow](../installer/README.md#copilot-studio-credits-flow)
+> saves from it (`READ_API_FILES`, off by default; the installer turns it on with the flow). Each run
+> replaces the days and months those files cover, one Delta commit per table, so a failed write leaves
+> its table as it was, and older days keep their rows.
 >
 > **The per-user grain has no API.** `StudioPerUser.csv` stays a manual export on every path.
 >
