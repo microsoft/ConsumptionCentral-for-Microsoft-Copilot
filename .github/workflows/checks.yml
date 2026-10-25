@@ -160,6 +160,7 @@ jobs:
           python docs/scripts/test_azure_notebook_requests.py
           python docs/scripts/test_azure_notebook_history.py
           python docs/scripts/test_studio_notebook_writes.py
+          python docs/scripts/test_studio_consumption_writes.py
 
       - name: Local Azure collector regression tests
         run: python "1. Local CSV/test_pull_azure_ai.py"
