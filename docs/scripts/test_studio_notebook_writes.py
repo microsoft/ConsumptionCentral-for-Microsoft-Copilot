@@ -2778,6 +2778,7 @@ class Backfill(Runs):
     STOPS = (("backfill/stray.csv", "a file outside a month folder"),
              ("backfill/July 2026/x.csv", "the folder name isn't a month (YYYY-MM)"),
              ("backfill/2026-13/x.csv", "the folder name isn't a month (YYYY-MM)"),
+             ("backfill/2026-07-old/x.csv", "the folder name isn't a month (YYYY-MM)"),
              ("backfill/2026-09/x.csv", "a month after this one (2026-08)"))
 
     def later(self):
@@ -2834,6 +2835,16 @@ class Backfill(Runs):
                          set(days_between(JULY, date(2026, 7, 3))))
         self.assertSameEnd(ends)
 
+    def test_a_backfill_folder_for_this_month_is_read_as_this_month(self):
+        day = date(2026, 8, 3)
+        name = user_export_name(day)
+        ends = self.ends(lambda spark: put(spark, f"backfill/2026-08/{name}", user_export(),
+                                           datetime.combine(day, time(5))), day)
+        spark = ends["new"].spark
+        self.assertEqual(sources(spark, USER_MONTHLY), Counter({name: 6}))
+        self.assertEqual(sources(spark, USER_MONTHLY, snapshot_month=AUGUST), Counter({name: 6}))
+        self.assertSameEnd(ends)
+
     def test_a_misplaced_backfill_file_stops_the_run_before_anything_is_written(self):
         for stops in [[s] for s in self.STOPS] + [list(self.STOPS)]:
             with self.subTest(paths=[path for path, _ in stops]):
@@ -2881,17 +2892,30 @@ class Backfill(Runs):
                 self.assertEqual(differences(snapshot(run_on(BACKFILL_DAY).after["new"]), snapshot(spark)), [])
 
     def test_loaded_files_and_api_files_in_a_backfill_folder_are_not_read(self):
-        plain = self.later()
-        extra = clone(plain)
+        # With no per-agent or per-user export, the loose *Agent*.csv and *User*.csv are tried too. Both
+        # match the licensing API files' names, and the per-user file has the columns a per-user export needs.
+        exports = {kind(agent_export_name(self.LATER)), kind(user_export_name(self.LATER))}
         at = datetime.combine(self.LATER, time(5))
-        put(extra, f"_loaded/2026-08-04/{agent_export_name(self.LATER)}", agent_export(extra=9.0), at)
-        put(extra, f"backfill/2026-07/StudioApiAgentDaily_{stamp(self.LATER)}.csv", api_agent_file(GAP_RUN), at)
-        put(extra, f"backfill/2026-07/StudioApiUserDaily_{stamp(self.LATER)}.csv", api_user_file(GAP_RUN), at)
-        results = [run(spark, "new", self.LATER) for spark in (plain, extra)]
-        for result in results:
-            self.assertIsNone(result.error, result.tb)
-        self.assertEqual(results[0].output, results[1].output)
-        self.assertEqual(snapshot(plain), snapshot(extra))
+        for case in ("with the exports", "with no per-agent or per-user export"):
+            with self.subTest(case=case):
+                plain = self.later()
+                if case != "with the exports":
+                    for path in [p for p in plain.files if kind(p) in exports and "/_loaded/" not in p]:
+                        del plain.files[path]
+                        plain.mtimes.pop(path, None)
+                extra = clone(plain)
+                put(extra, f"_loaded/2026-08-04/{agent_export_name(self.LATER)}", agent_export(extra=9.0), at)
+                put(extra, f"backfill/2026-07/StudioApiAgentDaily_{stamp(self.LATER)}.csv", api_agent_file(GAP_RUN),
+                    at)
+                put(extra, f"backfill/2026-07/StudioApiUserDaily_{stamp(self.LATER)}.csv", api_user_file(GAP_RUN), at)
+                results = [run(spark, "new", self.LATER) for spark in (plain, extra)]
+                for result in results:
+                    self.assertIsNone(result.error, result.tb)
+                self.assertEqual(results[0].output, results[1].output)
+                self.assertEqual(snapshot(plain), snapshot(extra))
+                if case != "with the exports":
+                    self.assertIn("no per-agent export - skipping", results[1].output)
+                    self.assertIn("no per-user export - skipping", results[1].output)
 
     def test_folders_are_found_whether_or_not_their_names_end_with_a_slash(self):
         ends = []
@@ -2954,6 +2978,21 @@ class TenantFallback(Runs):
         self.assertSameEnd(ends)
 
 
+class Headers(Runs):
+    """read() checks an export's columns by every name its cell picks them by."""
+
+    def test_a_per_agent_export_headed_billable_feature_still_loads(self):
+        # Cell 6 picks the column as "AI Feature/Billable Feature" or "Billable Feature".
+        name = agent_export_name(EXPORT_DAY)
+        text = agent_export().replace("AI Feature/Billable Feature", "Billable Feature", 1)
+        self.assertNotIn("AI Feature", text)
+        ends = self.ends(lambda spark: land(spark, name, text), EXPORT_DAY)
+        self.assertEqual({(x["agent_id"], x["billable_feature"], x["source_file"])
+                          for x in rows_of(ends["new"].spark, AGENT_MONTHLY)},
+                         {(a.id, a.feature, name) for a in AGENTS if a is not SALES})
+        self.assertSameEnd(ends)
+
+
 def with_copy(text, column, value, row=0):
     """The CSV with a copy of one of its rows added at the end, holding value in column."""
     rows = list(csv.reader(io.StringIO(text, newline="")))
@@ -3003,6 +3042,22 @@ class Files(Runs):
         self.assertEqual({x["agent_id"]: x["source_file"]
                           for x in rows_of(ends["new"].spark, USER_MONTHLY, snapshot_month=JULY, user_id=AVERY)},
                          {HELP_DESK.id: newer, HR.id: older})
+        self.assertSameEnd(ends)
+
+    def test_a_newer_per_user_file_on_a_later_run_replaces_a_users_rows_only_for_the_agents_it_has(self):
+        # As above, but the older file loads on a run of its own, and the router moves it to _loaded/ when the
+        # newer one lands. The newer file's run reads only the newer file, so the stored rows it keeps decide.
+        older, newer = user_export_name(date(2026, 7, 9)), user_export_name(date(2026, 7, 13))
+        first = self.ends(lambda spark: land(spark, older, user_export()), date(2026, 7, 9))
+        ends = self.ends(lambda spark: land(spark, newer, user_export(extra=0.5, usage=[(AVERY, HELP_DESK)])),
+                         date(2026, 7, 13), base={version: end.spark for version, end in first.items()})
+        spark = ends["new"].spark
+        self.assertEqual(sorted(spark.files), [f"{LANDING_DIR}/{newer}", f"{LANDING_DIR}/_loaded/2026-07-13/{older}"])
+        self.assertIn(f"  1 file(s), 1 rows: {newer}", ends["new"].result.output)
+        self.assertEqual({x["agent_id"]: x["source_file"]
+                          for x in rows_of(spark, USER_MONTHLY, snapshot_month=JULY, user_id=AVERY)},
+                         {HELP_DESK.id: newer, HR.id: older})
+        self.assertEqual(sources(spark, USER_MONTHLY), Counter({older: 5, newer: 1}))
         self.assertSameEnd(ends)
 
     def test_per_environment_tenant_exports_load_as_one_would(self):
@@ -3072,6 +3127,13 @@ def blank_dates(text, day=None):
     return csv_text(rows[0], rows[1:])
 
 
+def leaving_out(text, values):
+    """The CSV without the rows that hold every value in values, a {column: value} dict."""
+    rows = list(csv.reader(io.StringIO(text, newline="")))
+    picks = [(rows[0].index(column), value) for column, value in values.items()]
+    return csv_text(rows[0], [r for r in rows[1:] if not all(r[i] == v for i, v in picks)])
+
+
 class NoSource(Runs):
     """A stored row with no source file counts as an export's, as it did for drop_api_rows, which deleted only
     rows from a licensing API file: an export over its day or month replaces it only where it has its key."""
@@ -3096,6 +3158,57 @@ class NoSource(Runs):
             with self.subTest(table=table):
                 self.assertEqual(sources(spark, table, **values), Counter({None: 1}))
         self.assertEqual(sources(spark, TENANT, **seeded), Counter({tenant_export_name(EXPORT_DAY): 1}))
+        self.assertSameEnd(ends)
+
+    def test_a_row_with_no_source_that_differs_from_an_export_row_in_one_key_column_stays(self):
+        # For each key column, a stored row with an export row's values in every other key column, on a day or
+        # in a month the export covers. The tenant export here has no Production row for July 5, a day it has
+        # for the other environments. backfill/2026-06/ holds June's per-agent and per-user exports, with HR
+        # policies' rows only, so the exports cover June as well as July.
+        other_environment, other_plan = "2d7f4c18-0b5e-4a93-8c6d-1e9a3f7b5c20", "6a1e9d34-7c2f-4b85-a0d7-3f8c5e2b9a41"
+        july_5 = date(2026, 7, 5)
+        tenant = dict(usage_date=date(2026, 7, 6), environment_id=PRODUCTION, billing_plan_id=EXPORT_PLAN,
+                      capacity_type=MCS)
+        agent = dict(snapshot_month=JULY, agent_id=HELP_DESK.id, billable_feature=HELP_DESK.feature,
+                     channel=HELP_DESK.channel, environment_id=HELP_DESK.env)
+        user = dict(snapshot_month=JULY, user_id=AVERY, agent_id=HELP_DESK.id)
+        misses = ((TENANT, "usage_date", dict(tenant, usage_date=july_5)),
+                  (TENANT, "environment_id", dict(tenant, environment_id=other_environment)),
+                  (TENANT, "billing_plan_id", dict(tenant, billing_plan_id=other_plan)),
+                  (TENANT, "capacity_type", dict(tenant, capacity_type="OtherCapacity")),
+                  (AGENT_MONTHLY, "snapshot_month", dict(agent, snapshot_month=JUNE)),
+                  (AGENT_MONTHLY, "agent_id", dict(agent, agent_id=SALES.id)),
+                  (AGENT_MONTHLY, "billable_feature", dict(agent, billable_feature=SALES.feature)),
+                  (AGENT_MONTHLY, "channel", dict(agent, channel=HR.channel)),
+                  (AGENT_MONTHLY, "environment_id", dict(agent, environment_id=SANDBOX)),
+                  (USER_MONTHLY, "snapshot_month", dict(user, snapshot_month=JUNE)),
+                  (USER_MONTHLY, "user_id", dict(user, user_id=DEVON)),
+                  (USER_MONTHLY, "agent_id", dict(user, agent_id=SALES.id)))
+        export, june = tenant_export_name(EXPORT_DAY), (agent_export_name(JULY), user_export_name(JULY))
+        at = datetime.combine(EXPORT_DAY, time(5))
+        base = {}
+        for version in ("old", "new"):
+            spark = base[version] = before_run(EXPORT_DAY, version)
+            path = f"{LANDING_DIR}/{export}"
+            spark.files[path] = leaving_out(spark.files[path], {"Usage Date": us_date(july_5),
+                                                                "Environment Id": PRODUCTION})
+            put(spark, f"backfill/2026-06/{june[0]}", agent_export(agents=[HR]), at)
+            put(spark, f"backfill/2026-06/{june[1]}", user_export(usage=[(AVERY, HR)]), at)
+            for table, _, values in misses:
+                add(spark, table, **values)
+        ends = self.ends(lambda spark: None, EXPORT_DAY, read_api=True, base=base)
+        spark = ends["new"].spark
+        # The export rows the near misses differ from, and the days and months the exports cover.
+        self.assertEqual(sources(spark, TENANT, **tenant), Counter({export: 1}))
+        self.assertEqual(sources(spark, AGENT_MONTHLY, **agent), Counter({agent_export_name(EXPORT_DAY): 1}))
+        self.assertEqual(sources(spark, USER_MONTHLY, **user), Counter({user_export_name(EXPORT_DAY): 1}))
+        self.assertEqual({x["environment_id"] for x in rows_of(spark, TENANT, usage_date=july_5, source_file=export)},
+                         {SANDBOX, TRAINING})
+        self.assertEqual(sources(spark, AGENT_MONTHLY, snapshot_month=JUNE), Counter({june[0]: 1, None: 1}))
+        self.assertEqual(sources(spark, USER_MONTHLY, snapshot_month=JUNE), Counter({june[1]: 1, None: 1}))
+        for table, column, values in misses:
+            with self.subTest(table=table, column=column):
+                self.assertEqual(sources(spark, table, **values), Counter({None: 1}))
         self.assertSameEnd(ends)
 
 
