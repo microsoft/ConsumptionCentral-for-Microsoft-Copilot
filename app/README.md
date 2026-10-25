@@ -85,7 +85,7 @@ The design system is in [DESIGN.md](DESIGN.md) and the product brief is in [PROD
 
 ## Deploy
 
-To deploy, most people only need [Start here: the app](../README.md#the-app) in the main README. This section is the full reference: admin settings, licensing, each command, updates and troubleshooting. The same `npm run build` output runs in two hosts. The recommended host is a Copilot Managed App, and a Fabric App is the alternative.
+To deploy, most people only need [Commands](#commands), after an admin has turned on the [admin settings](#admin-settings). The main README's [Manual](../README.md#the-app) steps start here. This section is the full reference: admin settings, licensing, each command, updates and troubleshooting. The same `npm run build` output runs in two hosts. The recommended host is a Copilot Managed App, and a Fabric App is the alternative.
 
 ### As a Copilot Managed App
 
@@ -115,7 +115,16 @@ Microsoft's guide: [Copilot Managed Runtime licensing FAQ](https://learn.microso
 
 #### Commands
 
-You need [Node.js](https://nodejs.org) 24.11 or later and [Git](https://git-scm.com/downloads). The `ms` CLI (`@microsoft/managed-apps-cli`) is pinned in [`package.json`](package.json), so `npm ci` installs the tested version and `npx ms` runs it. Run the commands from this `app` folder, one at a time, in Command Prompt, PowerShell or a terminal. Pasting them all at once can feed later lines to an earlier command's prompts.
+You need [Node.js](https://nodejs.org) 24.11 or later and [Git](https://git-scm.com/downloads). The `ms` CLI (`@microsoft/managed-apps-cli`) is pinned in [`package.json`](package.json), so `npm ci` installs the tested version and `npx ms` runs it. Run the commands from this `app` folder, one at a time, in Command Prompt, PowerShell or a terminal. Pasting them all at once can feed later lines to an earlier command's prompts. PowerShell works unless it says running scripts is disabled; then use Command Prompt.
+
+First get the code, then go to this `app` folder:
+
+```
+git clone https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot.git
+cd ConsumptionCentral-for-Microsoft-Copilot/app
+```
+
+Then:
 
 ```
 npm ci
@@ -134,6 +143,8 @@ npx ms app share alex@example.com,finance-team@example.com
 Viewers open [managedapps.cloud.microsoft](https://managedapps.cloud.microsoft), choose **Consumption Central**, then choose **Change data** and drop in their CSV exports (see [Data](#data)).
 
 `ms.config.json` is gitignored because it's specific to your tenant. Keep it: later deploys use it to update the same app.
+
+> **Copilot Code can run these steps for you.** Ask it to deploy this repo's `app` folder with the `ms` command line. Don't ask Cowork, Copilot Studio or Copilot Code to *create* the app: they'd build a new app from your prompt, not this one.
 
 #### Update
 
