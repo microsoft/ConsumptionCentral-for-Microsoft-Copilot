@@ -182,7 +182,8 @@ test('Studio consumption: licensing API files fill studio_agent_daily and never 
   assert.match(all, /rows\.join\(names, "environment_id", "left"\)/);
   // Months and days an export covers keep the export's figures.
   assert.match(all, /an export covers this month, so the API figures aren't used/);
-  assert.match(all, /tenant_api\.join\(exported, \["usage_date", "environment_id"\], "left_anti"\)/);
+  assert.match(all, /tenant_api\.alias\("t"\)\n\s+\.join\(exported\.alias\("s"\), F\.expr\(same\(\["usage_date", "environment_id"\]\)\), "left_anti"\)/, 'an export row with no environment ID covers the API row with none');
+  assert.match(all, /return " AND "\.join\(f"\{a\}\.\{c\} <=> \{b\}\.\{c\}" for c in columns\)/, 'same() compares null-safely');
   assert.match(all, /no entitlement snapshot - treating every credit as prepaid/);
 });
 
@@ -200,7 +201,8 @@ test('Studio consumption: per-user API files fill studio_user_daily, look up UPN
   assert.match(all, /except Exception as e:\n\s+print\(f" {2}UPN lookup skipped: \{e\}"\)/, 'a failed lookup never fails the run');
   assert.match(all, /an export covers this month, so the API user figures aren't used/);
   assert.match(all, /replace_rows\(umonthly, TBL_USER, f"\{date_in\('snapshot_month', user_months\)\} AND source_file = '\{API_SOURCE\}'"\)/);
-  assert.match(all, /merge\(user, TBL_USER, \["snapshot_month", "user_id", "agent_id"\]\)\n\s+drop_api_rows\(TBL_USER, user, \["snapshot_month"\]\)/, 'an export replaces the API rollup for its month');
+  assert.match(all, /write_export\(user, TBL_USER, \["snapshot_month", "user_id", "agent_id"\], covers=\["snapshot_month"\]\)/, 'an export replaces the API rollup for its month');
+  assert.match(all, /api = f"t\.source_file IN \('\{API_SOURCE\}', '\{API_USER_SOURCE\}'\)"[\s\S]*?F\.expr\(f"\{same\(covers\)\} AND \{api\}"\)/, 'the export drops the API rows it covers in the same write');
   // The per-user cell runs after the per-agent one, which it takes agent names from.
   assert.ok(all.indexOf('user_raw = read(') > all.indexOf('api_raw = read('));
 });

@@ -270,7 +270,14 @@ treat `ServiceName` as an open list — Consumption Central groups by whatever v
 > replaces the days and months those files cover, one Delta commit per table, so a failed write leaves
 > its table as it was, and older days keep their rows.
 >
-> **The per-user grain has no API.** `StudioPerUser.csv` stays a manual export on every path.
+> **The per-user grain has no documented API.** The installer's flow also reads credits per user from
+> a licensing API route that isn't documented (`/licensing/entitlements/MCSMessages/users`) and saves
+> them as `StudioApiUserDaily_*.csv`. That's best effort: when the route fails, the flow skips it.
+> `Ingest_Studio` reads those files only with `READ_API_FILES` on, and looks up each user's UPN in
+> Microsoft Graph, because the API names users by Entra object ID. Everywhere else, including Local
+> CSV, Viva Direct and Fabric without the flow, the per-user page still needs the manual
+> `StudioPerUser.csv` export. Even with the flow, only the export carries the user's email as PPAC
+> shows it and the M365 Copilot licence flag.
 >
 > If you cannot find the export and do not want the API, skip it — the Studio pages stay empty and the
 > other two products are unaffected.
@@ -317,8 +324,36 @@ renamed file still works.
 > Shorter or unusable histories still produce an explicitly labelled flat run-rate projection.
 > The per-agent and per-user files do not supply an independent dated growth curve.
 >
-> The [Fabric path](../2.%20Fabric/) works around this by stamping each load with a snapshot month,
-> so running it monthly builds the history the export itself does not carry.
+> The [Fabric path](../2.%20Fabric/) works around this by labelling each per-agent and per-user export
+> with a snapshot month: the month, in UTC, that its file arrived in `Files/landing/studio/`. PPAC's
+> exports are month-to-date, so that's the month the export covers. A newer export in the same month
+> updates that month's rows and one saved the next month adds a month, so saving one each month builds
+> the history the export itself does not carry. A file left in the folder keeps its own month on later
+> runs; it never becomes a later month's snapshot.
+>
+> **Loading an earlier month's export.** Put it in `Files/landing/studio/backfill/<YYYY-MM>/`, the
+> folder for the month it covers: last month's export downloaded on the 1st, for example. A file there
+> counts as the folder's month on every run, so there's nothing to move or reset afterwards. SharePoint
+> and installer uploads reach `Files/landing/studio/` when the upload router next runs, as the pipeline's
+> first step, so a file sent that way counts as the month of that run. One uploaded on a month's last
+> day may not be routed until the next month. For that one, as for a backfill, create the folder in the
+> Lakehouse and upload the file there. Before writing anything, the run stops and lists the paths if
+> `backfill/` holds a file outside a month folder, a folder whose name isn't `YYYY-MM`, or a month later
+> than the current one. A folder inside a month folder isn't read, and the run says so. A tenant daily
+> export keeps its own dates wherever it sits. The notebook's old `SNAPSHOT_MONTH` setting is retired: a
+> run with it still set stops and points to the folder, whether it's set in the settings cell or passed
+> to the notebook as a parameter (a pipeline Notebook activity's base parameters, or the arguments of
+> `notebookutils.notebook.run`).
+>
+> **Updating from an earlier version.** Earlier versions gave a per-agent or per-user export the month
+> of each run that read it, so an export left in `Files/landing/studio/` was stored again as each later
+> month's snapshot in `studio_agent` and `studio_user`. Updating leaves those copies in place, and each
+> month that holds one stays covered by an export: the current month too, if an earlier version has
+> already run this month with an older export in the folder. With `READ_API_FILES` on, the run prints
+> "an export covers this month" for such a month and keeps the licensing API figures out of it. That
+> month's own export replaces the copied rows it matches on the table's key: upload it as usual for the
+> current month, or put it in `backfill/<YYYY-MM>/` for an earlier one. A copied row it has no match
+> for, such as an agent it doesn't list, stays.
 
 > **Several environments, several files.** A tenant can export per environment rather than once for
 > the whole tenant. Drop them all in the same folder — they are unioned, and a `source_file` column

@@ -119,7 +119,9 @@ Studio table with a real date**, and so the only one Consumption Central plots o
 | `payg_consumed` | double | Billed pay-as-you-go |
 | `usage_date` | date | Parsed from PPAC's `M/d/yyyy H:mm` |
 
-**Merge key:** `usage_date`, `environment_id`, `billing_plan_id`, `capacity_type`.
+**Key:** `usage_date`, `environment_id`, `billing_plan_id`, `capacity_type`. Each run writes the days
+its exports cover in one Delta commit: an export row replaces the stored row with its key, other rows
+on those days stay, and where two files share a key the newer file wins.
 
 > **Licensing API files (optional, off by default).** With `READ_API_FILES = True`, `Ingest_Studio`
 > also reads daily files a Power Automate flow saves from the Power Platform licensing API. It keeps
@@ -136,11 +138,11 @@ Studio table with a real date**, and so the only one Consumption Central plots o
 ## `studio_agent`
 
 Per-agent consumption. **The export carries no date** — it is a month-to-date aggregate — so the
-ingester stamps `snapshot_month` and merges on it.
+ingester labels each export with a `snapshot_month` and keys on it.
 
 | Column | Type | Notes |
 |---|---|---|
-| `snapshot_month` | date | Added by the ingester. First of the month the export represents. |
+| `snapshot_month` | date | Added by the ingester: the first of the month, in UTC, that the export's file arrived in `Files/landing/studio/`, or its `backfill/<YYYY-MM>/` folder's month. A file with no modification time counts as the month of the run. |
 | `agent_name` | string | |
 | `agent_id` | string | |
 | `product` | string | e.g. `Copilot Studio` |
@@ -156,7 +158,9 @@ ingester stamps `snapshot_month` and merges on it.
 | `environment_name` | string | |
 | `source_file` | string | Which export this came from — lineage, useful when several environments export separately |
 
-**Merge key:** `snapshot_month`, `agent_id`, `billable_feature`, `channel`, `environment_id`.
+**Key:** `snapshot_month`, `agent_id`, `billable_feature`, `channel`, `environment_id`. Written as the
+tenant table is, by month: an export row replaces the stored row with its key, and the licensing API
+rows for its months go.
 
 An agent appears once per feature per channel per environment, so all of those belong in the key.
 
@@ -170,8 +174,8 @@ An agent appears once per feature per channel per environment, so all of those b
 > time axis — which is also why the Studio forecast extends a daily run rate rather than fitting a
 > curve.
 >
-> **The template reads the LATEST `snapshot_month` only.** Once you have run the ingester twice, an
-> agent has a row per snapshot; summing them would multiply that agent's credits by the number of
+> **The template reads the LATEST `snapshot_month` only.** Once exports from two months are loaded, an
+> agent has a row for each month; summing them would multiply that agent's credits by the number of
 > months loaded, and each of those rows is already a month-to-date total. The history is kept
 > because it is worth having, not because the report adds it up.
 
@@ -183,7 +187,7 @@ Per-user consumption. Same no-date caveat as `studio_agent`.
 
 | Column | Type | Notes |
 |---|---|---|
-| `snapshot_month` | date | Added by the ingester |
+| `snapshot_month` | date | Added by the ingester, as for `studio_agent` |
 | `user_id` | string | |
 | `user_email` | string | Lowercased. **Joins to `org_attributes.user_principal_name`.** |
 | `agent_id` | string | |
@@ -193,7 +197,7 @@ Per-user consumption. Same no-date caveat as `studio_agent`.
 | `m365_copilot_licensed` | boolean | Parsed from the export's text |
 | `source_file` | string | Lineage |
 
-**Merge key:** `snapshot_month`, `user_id`, `agent_id`.
+**Key:** `snapshot_month`, `user_id`, `agent_id`, written as `studio_agent` is.
 
 > **This will not add up to the tenant total, and that is correct.** Agent and environment
 > consumption carries no user, so the per-user total is always smaller. Consumption Central computes the gap
