@@ -2880,8 +2880,13 @@ class Backfill(Runs):
         before = snapshot(spark)
         result = run(spark, "new", BACKFILL_DAY, settings={"SNAPSHOT_MONTH": "2026-07-01"})
         self.assertIsInstance(result.error, ValueError)
-        self.assertTrue(str(result.error).startswith("SNAPSHOT_MONTH is no longer read."), str(result.error))
-        self.assertIn(f"{LANDING_DIR}/backfill/<YYYY-MM>/", str(result.error))
+        message = str(result.error)
+        self.assertTrue(message.startswith("SNAPSHOT_MONTH is no longer read."), message)
+        self.assertTrue(message.endswith("Nothing was written."), message)
+        self.assertIn(f"{LANDING_DIR}/backfill/<YYYY-MM>/", message)
+        # SNAPSHOT_MONTH can also reach cell 2 as a parameter passed to the notebook, so the message names both.
+        for place in ("the settings cell", "base parameters", "notebookutils.notebook.run"):
+            self.assertIn(place, message)
         self.assertEqual(result.writes, [])
         self.assertEqual(snapshot(spark), before)
         for unset in (None, ""):

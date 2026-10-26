@@ -341,7 +341,19 @@ renamed file still works.
 > `backfill/` holds a file outside a month folder, a folder whose name isn't `YYYY-MM`, or a month later
 > than the current one. A folder inside a month folder isn't read, and the run says so. A tenant daily
 > export keeps its own dates wherever it sits. The notebook's old `SNAPSHOT_MONTH` setting is retired: a
-> run with it still set stops and points to the folder.
+> run with it still set stops and points to the folder, whether it's set in the settings cell or passed
+> to the notebook as a parameter (a pipeline Notebook activity's base parameters, or the arguments of
+> `notebookutils.notebook.run`).
+>
+> **Updating from an earlier version.** Earlier versions gave a per-agent or per-user export the month
+> of each run that read it, so an export left in `Files/landing/studio/` was stored again as each later
+> month's snapshot in `studio_agent` and `studio_user`. Updating leaves those copies in place, and each
+> month that holds one stays covered by an export: the current month too, if an earlier version has
+> already run this month with an older export in the folder. With `READ_API_FILES` on, the run prints
+> "an export covers this month" for such a month and keeps the licensing API figures out of it. That
+> month's own export replaces the copied rows it matches on the table's key: upload it as usual for the
+> current month, or put it in `backfill/<YYYY-MM>/` for an earlier one. A copied row it has no match
+> for, such as an agent it doesn't list, stays.
 
 > **Several environments, several files.** A tenant can export per environment rather than once for
 > the whole tenant. Drop them all in the same folder — they are unioned, and a `source_file` column
