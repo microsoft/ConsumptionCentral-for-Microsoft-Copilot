@@ -48,78 +48,100 @@ your IT team.
    ```
 
    Or [download the exe](https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/releases/download/consumption-central-installer-v0.1.0/ConsumptionCentralInstaller.exe)
-   and open it. Both links get version 0.1.0. The installer says when there's a newer version and
-   gives its command, and the
+   and open it. Both get version 0.1.0. The installer tells you when there's a newer one, and the
    [installer releases](https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/releases?q=consumption-central-installer-v)
-   list them all. To check the exe, see [Check the download](#check-the-download). If your
-   organisation blocks either, use another way in [Start the installer](#start-the-installer).
-2. The first time, it takes a moment to unpack. Then it opens in your browser. Keep its window
-   open while you use the page, and keep the PC awake and plugged in until it finishes. If you
-   close the page, go back to that window and press **Enter** to open it again.
+   list them all. To check the exe, see [Check the download](#check-the-download).
+2. It opens in your browser, after a moment to unpack the first time. Keep its window open and the
+   PC awake and plugged in until it finishes. Closed the page? Press **Enter** in that window.
 3. Choose **Set up Consumption Central** and sign in.
 4. Choose the route: **Fabric** or **No Fabric: SharePoint + PAX**. See [Pick a route](#pick-a-route).
-5. Answer the questions. On the **Fabric** route:
-   1. **Data sources.** Each source has a card: connected (through an API, a flow or a Dataflow),
-      **Upload CSV** or **Skip**. **Copilot Cowork and Work IQ credits** and **Copilot Studio
-      credits** default to **Upload CSV**; the rest are skipped until you choose otherwise. A CSV
-      card says where to export the file, and you can pick the exports to upload now. A source
-      that needs more to work asks for it next, such as the Power Platform environment for the
-      Studio flow or the Viva Insights query for the Cowork Dataflow. See
-      [Data sources and exports](../installer/README.md#data-sources-and-exports).
-   2. **Change the advanced settings?** **No** (the default) takes the defaults that suit most
-      organisations, such as a daily run at 02:00 UTC and the first load as soon as setup
-      finishes. See [Advanced settings](../installer/README.md#advanced-settings).
-   3. **Capacity and workspace.** A new workspace is named `Consumption Central` and its
-      Lakehouse `ConsumptionCentral`, or the next free name. A trial or small capacity works; on
-      a large tenant, a larger capacity loads and refreshes faster. An existing install keeps its
-      names.
-   4. **App registration:** create one, use your own (it's checked first), or let an admin
-      register it. See [If you can't register apps](../installer/README.md#if-you-cant-register-apps).
-      The semantic model's connection to the Lakehouse signs in as the app, so even a CSV-only
-      install with the model has one.
-   5. **Where the secrets go**, when a notebook needs the app's client secret or the GitHub
-      token: in the notebooks by default, with nothing in Azure. Or a Key Vault you create or
-      pick; if you can't write to it, a vault admin can add the secret. See
-      [Where the secrets go](../installer/README.md#where-the-secrets-go).
-
-   On the **No Fabric: SharePoint + PAX** route, it checks your tenant, then this PC: PowerShell
-   7.2 or later, an execution policy that runs local scripts, and no application control that
-   limits PowerShell. If this PC can't run the refresh, it says what to install or change, and
-   stops. Then it asks, one question at a time:
-   - **What it collects**, then **Change the advanced settings?** **No** keeps the defaults for
-     who can view, the new workspace's name, your prices, when the refresh runs (02:00 on this PC)
-     and the first load straight after setup.
-   - **SharePoint folder address**: a folder in a SharePoint document library, for your exports
-     and the org file.
-   - **Power BI workspace for the report**: a new one, or one you're in.
-   - **Deploy the Consumption Central app?** Yes by default. See
-     [The app](../installer/README.md#the-app).
-   - **Viva Insights partition ID** and **Viva Insights query ID**, for the report's Cowork
-     pages. The partition ID is usually your tenant ID, and is the default. Both are optional:
-     leave them blank if you don't have the query yet, and the Done page says how to get it from
-     a Viva Insights analyst. See [the Viva query](VIVA-QUERY.md).
-   - **App registration**: create `Consumption Central (PAX)`, or use one you already have. If
-     you can't create one or approve its permissions, an admin can register it for you.
-
-   `install --target pax --viva-partition <id> --viva-query <id>` gives the Viva Insights IDs in
-   advance. See [The report](../installer/README.md#the-report).
-6. Check the plan and approve it. Nothing is created until you do.
-   - **Fabric.** The plan shows every setting, including the defaults, and a **Costs** list of
-     what's billed (the Fabric capacity, Power Automate Premium for the Studio flow, Azure Key
-     Vault), with links to the pricing pages.
-   - **No Fabric.** The plan shows what it creates, who gets access to what, what runs on this PC,
-     and the costs: Power BI Pro, and Power Apps Premium or Copilot Credits for the app.
-
-   The installer stops Windows going to sleep while it runs.
+5. Answer the questions. The defaults suit most organisations. Each route's questions are below.
+6. Check the plan and approve it. Nothing is created until you do. The installer stops Windows
+   going to sleep while it runs.
 7. Wait for it to finish. It shows each step as it goes.
-   - **Fabric.** The first load usually takes under an hour, longer on a trial or small capacity.
-     Copilot Studio credits from the flow arrive after its first run, and Cowork credits from the
-     Dataflow after you sign in to it: see [After it finishes](#after-it-finishes).
-   - **No Fabric.** The first load is one pass of PAX over your user directory, in the scheduled
-     task on this PC. It usually takes minutes, longer on a large tenant. Keep the PC on and
-     signed in until it finishes. The report shows data once you've signed it in to SharePoint.
-     If the managed apps CLI isn't signed in, the app step opens a browser for its sign-in.
-8. When it finishes, open the link to the report, and on the No Fabric route the app.
+8. Open the link to the report, and on the No Fabric route the app.
+
+<details>
+<summary><strong>The Fabric route's questions</strong></summary>
+
+1. **Data sources.** Each source has a card: connected (through an API, a flow or a Dataflow),
+   **Upload CSV** or **Skip**. **Copilot Cowork and Work IQ credits** and **Copilot Studio
+   credits** default to **Upload CSV**; the rest are skipped until you choose otherwise. A CSV
+   card says where to export the file, and you can pick the exports to upload now. A source
+   that needs more to work asks for it next, such as the Power Platform environment for the
+   Studio flow or the Viva Insights query for the Cowork Dataflow. See
+   [Data sources and exports](../installer/README.md#data-sources-and-exports).
+2. **Change the advanced settings?** **No** (the default) takes the defaults that suit most
+   organisations, such as a daily run at 02:00 UTC and the first load as soon as setup
+   finishes. See [Advanced settings](../installer/README.md#advanced-settings).
+3. **Capacity and workspace.** A new workspace is named `Consumption Central` and its
+   Lakehouse `ConsumptionCentral`, or the next free name. A trial or small capacity works; on
+   a large tenant, a larger capacity loads and refreshes faster. An existing install keeps its
+   names.
+4. **App registration:** create one, use your own (it's checked first), or let an admin
+   register it. See [If you can't register apps](../installer/README.md#if-you-cant-register-apps).
+   The semantic model's connection to the Lakehouse signs in as the app, so even a CSV-only
+   install with the model has one.
+5. **Where the secrets go**, when a notebook needs the app's client secret or the GitHub
+   token: in the notebooks by default, with nothing in Azure. Or a Key Vault you create or
+   pick; if you can't write to it, a vault admin can add the secret. See
+   [Where the secrets go](../installer/README.md#where-the-secrets-go).
+
+</details>
+
+<details>
+<summary><strong>The No Fabric route's questions</strong></summary>
+
+First it checks your tenant, then this PC: PowerShell
+7.2 or later, an execution policy that runs local scripts, and no application control that
+limits PowerShell. If this PC can't run the refresh, it says what to install or change, and
+stops. Then it asks, one question at a time:
+
+- **What it collects**, then **Change the advanced settings?** **No** keeps the defaults for
+  who can view, the new workspace's name, your prices, when the refresh runs (02:00 on this PC)
+  and the first load straight after setup.
+- **SharePoint folder address**: a folder in a SharePoint document library, for your exports
+  and the org file.
+- **Power BI workspace for the report**: a new one, or one you're in.
+- **Deploy the Consumption Central app?** Yes by default. See
+  [The app](../installer/README.md#the-app).
+- **Viva Insights partition ID** and **Viva Insights query ID**, for the report's Cowork
+  pages. The partition ID is usually your tenant ID, and is the default. Both are optional:
+  leave them blank if you don't have the query yet, and the Done page says how to get it from
+  a Viva Insights analyst. See [the Viva query](VIVA-QUERY.md).
+- **App registration**: create `Consumption Central (PAX)`, or use one you already have. If
+  you can't create one or approve its permissions, an admin can register it for you.
+
+`install --target pax --viva-partition <id> --viva-query <id>` gives the Viva Insights IDs in
+advance. See [The report](../installer/README.md#the-report).
+
+</details>
+
+<details>
+<summary><strong>What the plan shows, and how long it takes</strong></summary>
+
+**The plan**
+
+- **Fabric.** The plan shows every setting, including the defaults, and a **Costs** list of
+  what's billed (the Fabric capacity, Power Automate Premium for the Studio flow, Azure Key
+  Vault), with links to the pricing pages.
+- **No Fabric.** The plan shows what it creates, who gets access to what, what runs on this PC,
+  and the costs: Power BI Pro, and Power Apps Premium or Copilot Credits for the app.
+
+**The first load**
+
+- **Fabric.** The first load usually takes under an hour, longer on a trial or small capacity.
+  Copilot Studio credits from the flow arrive after its first run, and Cowork credits from the
+  Dataflow after you sign in to it: see [After it finishes](#after-it-finishes).
+- **No Fabric.** The first load is one pass of PAX over your user directory, in the scheduled
+  task on this PC. It usually takes minutes, longer on a large tenant. Keep the PC on and
+  signed in until it finishes. The report shows data once you've signed it in to SharePoint.
+  If the managed apps CLI isn't signed in, the app step opens a browser for its sign-in.
+
+</details>
+
+<details>
+<summary><strong>Going back, the install record, existing workspaces and item names</strong></summary>
 
 **Want to change an answer?** Choose **Back**, on any question or on the plan. It opens the
 previous question with your answer filled in, and the questions after it are asked again. If you
@@ -156,6 +178,8 @@ semantic model in the `Consumption Central` workspace, the `Consumption Central 
 registration, the `Consumption Central - PAX refresh` scheduled task and the
 `Consumption Central` app.
 
+</details>
+
 ## Check it worked
 
 1. **Read the Done page.** It lists what's left, as cards: who does each step and a message to
@@ -191,23 +215,29 @@ run was **held back**, the new org file failed a check and SharePoint kept the l
 
 ### After it finishes
 
-On the **No Fabric** route:
+The Done page lists what's left. Open your route for the details.
 
-- **What's left comes first**, as on the Fabric route. The installer's README lists
+<details>
+<summary><strong>No Fabric route</strong></summary>
+
+- **What's left comes first.** The installer's README lists
   [the cards this route can show](../installer/README.md#after-it-finishes), such as **Ask for the
   app's access to the SharePoint site**, **Sign Consumption Central in to SharePoint** and **Ask
   for managed apps to be turned on**.
 - **Admin consent.** If you couldn't grant it, send the link the installer gives you to a Global
   Administrator or Privileged Role Administrator. Once they have, open the installer again and
   choose **Check the folder** (`check`), then **Run the refresh** (`run`).
-- **Share the report** as below. The app is shared with the same group, and its users also need
+- **Share the report** as on the Fabric route, below. The app is shared with the same group, and its users also need
   read access to the SharePoint folder.
 - **The secret expires.** One the installer made lasts 12 months, and in its last 30 days
   **Repair or change** replaces it. **Check status** shows when it expires. **Create a new
   secret** (`rotate-secret`) replaces it at any time; for an app registration you brought, make
   the new secret in Entra ID first.
 
-On the **Fabric** route:
+</details>
+
+<details>
+<summary><strong>Fabric route</strong></summary>
 
 - **What's left comes first.** The Done page (and the end of the terminal output) starts with
   "N steps left": a card for each thing still to do, in order, with who does it, why, a link and
@@ -245,6 +275,8 @@ On the **Fabric** route:
   install, **Repair or change** and `update` replaces it. **Check status** shows when each secret
   and the GitHub token expire. Replace them with **Create new secrets** (`rotate-secret`) and
   **Replace the GitHub token** (`github-token`).
+
+</details>
 
 ## Check the download
 
