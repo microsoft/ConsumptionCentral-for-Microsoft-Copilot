@@ -1,8 +1,8 @@
 # Consumption Central app (preview)
 
-An app version of the Consumption Central Power BI report. It shows the same measures, charts and tables as the report, using the same DAX definitions. The layout is simpler: the 24 report pages become six tabs with short sub-views.
+The Consumption Central Power BI report as an app: the same measures and DAX definitions, with the 24 report pages in six tabs.
 
-Everything runs in the browser. The app reads your CSV exports locally and calculates every metric on the page, and no data is sent anywhere.
+It runs in the browser. It reads your CSV exports locally, and no data is sent anywhere.
 
 ## Get the app
 
@@ -17,75 +17,9 @@ The app opens with a labelled synthetic sample. Choose **Change data** and drop 
 
 On Microsoft Fabric, you can host the app as a [Fabric App](#as-a-fabric-app-alternative) instead, or get Consumption Central through [Analytics Hub for Microsoft Copilot](https://github.com/microsoft/AnalyticsHub-Dashboard).
 
-## Tabs
-
-| Tab | Views | Power BI pages it replaces |
-|---|---|---|
-| Overview | — | 0. Overall: Combined |
-| Cowork & Work IQ | Consumption, Cost, Tasks, Optimization, Forecast | 1. Cowork: Consumption, 2. Cowork: Cost, 2.1. Cowork: Tasks, 3. Cowork: Optimization, 4. Cowork: Forecast |
-| Copilot Studio | Consumption, Cost, Optimization, Forecast | 5–8. Studio: Consumption, Cost, Optimization, Forecast |
-| GitHub Copilot | Consumption, Cost, Optimization, Forecast | 11–14. GHCP: Consumption, Cost, Optimization, Forecast |
-| Azure AI Foundry | Spend, Capacity & health, Reconciliation | 9. Azure: Spend & Consumption, 10. Azure: Capacity & Health, 10.1. Billing: Reconciliation |
-| Guide | Start here, How to read, Cowork, Studio, GitHub, Azure, Glossary | Start here, How to read this, the four product "How to read" pages, Glossary |
-
-How the controls work:
-- The toolbar filters match each Power BI page's slicers, such as period, service, spending policy, agent, cost centre, model, subscription and billing pool. They apply to the tab you are on.
-- Each metric has an info button that shows its glossary definition.
-- Report parameters live under **Rates** in the header: credit rates, the prepaid pack balance, GitHub seat prices, included credits and the allowance change date.
-
-The Guide's **About this app** section lists the presentation changes from Power BI. For example, treemaps, funnels and donuts become ranked bars. The values are unchanged.
-
-## Data
-
-Click **Change data** in the header and drop in any of the Local CSV path's exports (see [`1. Local CSV`](../1.%20Local%20CSV/) and [docs/DATA-SOURCES.md](../docs/DATA-SOURCES.md)). The app works out each file's type from its column headers, so the file names don't matter.
-
-| Source | Example file | Detected by |
-|---|---|---|
-| Cowork credits | `PersonServiceCreditsMetrics.csv` | `Total Copilot Credits used`, or `MetricDate` + `ServiceName` |
-| Cowork tasks | `CoworkWeeklyMetrics.csv` | `Total Cowork tasks`, or `TaskCategory` + `MetricDate` |
-| People metadata | `PeopleMetaData.csv`, `CoworkTaskPeopleMetaData.csv` | `PeopleHistoricalId` without `PersonId` |
-| Spending policies | `SpendingPolicyMetadata.csv` | `SpendingPolicyId` + `PlanLimit` |
-| Person–policy map | `PersonPolicyMap.csv` | `PersonId` + `SpendingPolicyId` |
-| Copilot Studio tenant | `StudioTenantDaily.csv` | `Prepaid Consumed Quantity` or `Entitled Quantity` |
-| Copilot Studio agents | `StudioPerAgent.csv` | `Billed credit` or `Non-billed credit` |
-| Copilot Studio users | `StudioPerUser.csv` | `Billable credit(s) used` |
-| GitHub AI usage | `GitHubAiUsage.csv` | `username` + `gross_amount` |
-| GitHub user map | `GitHubUserMap.csv` | `username` + `plan` |
-| Azure AI spend | `AzureAiSpendDaily.csv` | `MeterCategory` + `Cost`, or `UsageDate` + `Cost` + `ServiceName` |
-| Azure solution spend | `AzureSolutionSpend.csv` | `ServiceCategory` + `ActualCost` |
-| Azure deployment health | `AzureDeploymentHealth.csv` | `DeploymentId` + `PtuCapacity` |
-| Azure billing reconciliation | `AzureBillingReconciliation.csv` | `Representation` + `PoolName` |
-| Entra org attributes | `entra_org.csv` | A UPN or email column, plus department, job title, cost centre or country |
-
-No source is required, and one is enough. Sources you don't supply show as "Not supplied" in the dialog, and their measures show a dash. Day-first dates are detected automatically.
-
-A synthetic sample in `public/sample/` loads on first open and is clearly labelled as sample data. To rebuild it, run `npm run prepare-sample`. The script copies the synthetic files from `1. Local CSV/sample-data` and generates a synthetic Cowork task export for the same fictional people. In the sample, all Cowork credit usage sits in one department, as a single-department pilot. This matches the Power BI sample.
-
-## Develop
-
-```powershell
-npm install
-npm run dev         # local dev server
-npm run lint
-npm run build       # type-check and build to dist/ (Managed App and Fabric App hosting)
-npm run build:file  # build the single-file download to download/Consumption-Central-App.html
-```
-
-`download/Consumption-Central-App.html` is committed so people can download it. Whenever you change the app or the sample, run `npm run build:file` and commit the result. The single-file build inlines the code and styles, and embeds the sample CSVs listed in `public/sample/manifest.json`, gzipped.
-
-If Git converts line endings in your checkout (`core.autocrlf=true`, the Git for Windows default), run `npm run prepare-sample` before `npm run build:file`. It rewrites the sample with the line endings the committed page was built from. Otherwise every embedded sample file gains a carriage return and the download changes even when the app hasn't.
-
-The code is organised like this:
-- `src/data/`: CSV loading and header detection.
-- `src/metrics/`: the DAX port, one file per product.
-- `src/ui/`: the design kit.
-- `src/pages/`: the tabs.
-
-The design system is in [DESIGN.md](DESIGN.md) and the product brief is in [PRODUCT.md](PRODUCT.md).
-
 ## Deploy
 
-To deploy, most people only need [Commands](#commands), after an admin has turned on the [admin settings](#admin-settings). The main README's [Manual](../README.md#the-app) steps start here. This section is the full reference: admin settings, licensing, each command, updates and troubleshooting. The same `npm run build` output runs in two hosts. The recommended host is a Copilot Managed App, and a Fabric App is the alternative.
+Most people need only [Commands](#commands), after an admin turns on the [admin settings](#admin-settings). The main README's [Manual](../README.md#the-app) steps start here. The recommended host is a Copilot Managed App. A [Fabric App](#as-a-fabric-app-alternative) is the alternative.
 
 ### As a Copilot Managed App
 
@@ -115,9 +49,9 @@ Microsoft's guide: [Copilot Managed Runtime licensing FAQ](https://learn.microso
 
 #### Commands
 
-You need [Node.js](https://nodejs.org) 24.11 or later and [Git](https://git-scm.com/downloads). The `ms` CLI (`@microsoft/managed-apps-cli`) is pinned in [`package.json`](package.json), so `npm ci` installs the tested version and `npx ms` runs it. Run the commands from this `app` folder, one at a time, in Command Prompt, PowerShell or a terminal. Pasting them all at once can feed later lines to an earlier command's prompts. PowerShell works unless it says running scripts is disabled; then use Command Prompt.
+You need [Node.js](https://nodejs.org) 24.11 or later and [Git](https://git-scm.com/downloads). Run the commands one at a time: pasting them all at once can feed later lines to an earlier prompt. If PowerShell says running scripts is disabled, use Command Prompt. The `ms` CLI (`@microsoft/managed-apps-cli`) is pinned in [`package.json`](package.json), so `npm ci` installs the tested version.
 
-First get the code, then go to this `app` folder:
+Get the code:
 
 ```
 git clone https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot.git
@@ -181,3 +115,69 @@ npx rayfin up --tenant <tenant-id> --workspace-id <workspace-id> -y
 ```
 
 It prints the item's portal link. People need access to the item (share it, or give them a workspace role) to open it. To update, run `npx rayfin up` again. The deploy state it writes (`rayfin/.deployments.json`, `rayfin/.env`) is gitignored.
+
+## Data
+
+Click **Change data** in the header and drop in any of the Local CSV path's exports (see [`1. Local CSV`](../1.%20Local%20CSV/) and [docs/DATA-SOURCES.md](../docs/DATA-SOURCES.md)). The app works out each file's type from its column headers, so the file names don't matter.
+
+| Source | Example file | Detected by |
+|---|---|---|
+| Cowork credits | `PersonServiceCreditsMetrics.csv` | `Total Copilot Credits used`, or `MetricDate` + `ServiceName` |
+| Cowork tasks | `CoworkWeeklyMetrics.csv` | `Total Cowork tasks`, or `TaskCategory` + `MetricDate` |
+| People metadata | `PeopleMetaData.csv`, `CoworkTaskPeopleMetaData.csv` | `PeopleHistoricalId` without `PersonId` |
+| Spending policies | `SpendingPolicyMetadata.csv` | `SpendingPolicyId` + `PlanLimit` |
+| Person–policy map | `PersonPolicyMap.csv` | `PersonId` + `SpendingPolicyId` |
+| Copilot Studio tenant | `StudioTenantDaily.csv` | `Prepaid Consumed Quantity` or `Entitled Quantity` |
+| Copilot Studio agents | `StudioPerAgent.csv` | `Billed credit` or `Non-billed credit` |
+| Copilot Studio users | `StudioPerUser.csv` | `Billable credit(s) used` |
+| GitHub AI usage | `GitHubAiUsage.csv` | `username` + `gross_amount` |
+| GitHub user map | `GitHubUserMap.csv` | `username` + `plan` |
+| Azure AI spend | `AzureAiSpendDaily.csv` | `MeterCategory` + `Cost`, or `UsageDate` + `Cost` + `ServiceName` |
+| Azure solution spend | `AzureSolutionSpend.csv` | `ServiceCategory` + `ActualCost` |
+| Azure deployment health | `AzureDeploymentHealth.csv` | `DeploymentId` + `PtuCapacity` |
+| Azure billing reconciliation | `AzureBillingReconciliation.csv` | `Representation` + `PoolName` |
+| Entra org attributes | `entra_org.csv` | A UPN or email column, plus department, job title, cost centre or country |
+
+No source is required, and one is enough. Sources you don't supply show as "Not supplied" in the dialog, and their measures show a dash. Day-first dates are detected automatically.
+
+A synthetic sample in `public/sample/` loads on first open and is clearly labelled as sample data. To rebuild it, run `npm run prepare-sample`. The script copies the synthetic files from `1. Local CSV/sample-data` and generates a synthetic Cowork task export for the same fictional people. In the sample, all Cowork credit usage sits in one department, as a single-department pilot. This matches the Power BI sample.
+
+## Tabs
+
+| Tab | Views | Power BI pages it replaces |
+|---|---|---|
+| Overview | — | 0. Overall: Combined |
+| Cowork & Work IQ | Consumption, Cost, Tasks, Optimization, Forecast | 1. Cowork: Consumption, 2. Cowork: Cost, 2.1. Cowork: Tasks, 3. Cowork: Optimization, 4. Cowork: Forecast |
+| Copilot Studio | Consumption, Cost, Optimization, Forecast | 5–8. Studio: Consumption, Cost, Optimization, Forecast |
+| GitHub Copilot | Consumption, Cost, Optimization, Forecast | 11–14. GHCP: Consumption, Cost, Optimization, Forecast |
+| Azure AI Foundry | Spend, Capacity & health, Reconciliation | 9. Azure: Spend & Consumption, 10. Azure: Capacity & Health, 10.1. Billing: Reconciliation |
+| Guide | Start here, How to read, Cowork, Studio, GitHub, Azure, Glossary | Start here, How to read this, the four product "How to read" pages, Glossary |
+
+How the controls work:
+- The toolbar filters match each Power BI page's slicers, such as period, service, spending policy, agent, cost centre, model, subscription and billing pool. They apply to the tab you are on.
+- Each metric has an info button that shows its glossary definition.
+- Report parameters live under **Rates** in the header: credit rates, the prepaid pack balance, GitHub seat prices, included credits and the allowance change date.
+
+The Guide's **About this app** section lists the presentation changes from Power BI. For example, treemaps, funnels and donuts become ranked bars. The values are unchanged.
+
+## Develop
+
+```powershell
+npm install
+npm run dev         # local dev server
+npm run lint
+npm run build       # type-check and build to dist/ (Managed App and Fabric App hosting)
+npm run build:file  # build the single-file download to download/Consumption-Central-App.html
+```
+
+`download/Consumption-Central-App.html` is committed so people can download it. Whenever you change the app or the sample, run `npm run build:file` and commit the result. The single-file build inlines the code and styles, and embeds the sample CSVs listed in `public/sample/manifest.json`, gzipped.
+
+If Git converts line endings in your checkout (`core.autocrlf=true`, the Git for Windows default), run `npm run prepare-sample` before `npm run build:file`. It rewrites the sample with the line endings the committed page was built from. Otherwise every embedded sample file gains a carriage return and the download changes even when the app hasn't.
+
+The code is organised like this:
+- `src/data/`: CSV loading and header detection.
+- `src/metrics/`: the DAX port, one file per product.
+- `src/ui/`: the design kit.
+- `src/pages/`: the tabs.
+
+The design system is in [DESIGN.md](DESIGN.md) and the product brief is in [PRODUCT.md](PRODUCT.md).
