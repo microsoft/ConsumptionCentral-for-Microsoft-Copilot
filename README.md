@@ -65,6 +65,12 @@ Both play here in the page. Where a video differs from the written steps, follow
 
 ## Before you start
 
+- [ ] <a id="viva-identification-before-setup"></a>**Recommended: turn on Viva identification first**
+  for department breakdowns and per-person cross-product spend. A **Global Administrator or
+  AI Administrator** opens **Microsoft 365 admin center → Settings → Org settings →
+  Viva feature access → Viva Insights**. Create or edit a policy with **Feature = Identifiable
+  Export** and **Access = On**. Allow **up to 24 hours**, then re-run your exports.
+  It is not retroactive. [Details, privacy and preview caveats →](docs/DATA-SOURCES.md#identified-vs-de-identified)
 - [ ] **Data for at least one product.** [What each one needs →](docs/DATA-SOURCES.md)
 - [ ] **Two settings an admin turns on once**, so you can deploy the app.
   [Which ones →](app/README.md#admin-settings)
@@ -106,6 +112,8 @@ Steps:
 3. Choose **Set up Consumption Central** and sign in.
 4. Choose a route: **Fabric** or **No Fabric: SharePoint + PAX**.
 5. Answer the questions. The defaults suit most organisations.
+   For Viva per-person or department views, complete the [identification step](#viva-identification-before-setup)
+   before loading your exports.
 6. Check the plan and approve it. Nothing is created until you do.
 7. Wait for it to finish. Follow the cards on the **Done** page, then
    [check it worked](docs/INSTALL.md#check-it-worked).
@@ -138,8 +146,8 @@ Start with the app. Add the Power BI report if you want it too.
    it. To try it first, point it at the synthetic
    [sample data](1.%20Local%20CSV/sample-data/).
 5. <a id="viva-identification"></a><a id="turn-on-viva-identification-only-if-you-want-per-person-or-department-views"></a>**Optional: per-person and department views.** An admin
-   turns on Viva identification, in about two minutes.
-   [Steps →](docs/DATA-SOURCES.md#identified-vs-de-identified)
+   must turn on Viva identification before you get your exports.
+   Follow the [early identification step](#viva-identification-before-setup).
 
 ## After setup
 
