@@ -1,12 +1,12 @@
 import { useMemo } from 'react'
 import { useData } from '../data/store'
-import { ratesInUse } from '../metrics/cowork'
 import { AGENT_ACTIONS, studioModel, type StudioModel } from '../metrics/studio'
 import { BarList, LineChart } from '../ui/charts'
 import { DataTable } from '../ui/DataTable'
-import { dayLabel, dec2, int, pct, signedPct, usd, usd2, usd4 } from '../ui/format'
+import { dayLabel, dec2, int, pct, usd, usd2, usd4 } from '../ui/format'
 import { Kpi, KpiRow, Note, NotSuppliedIf, Panel } from '../ui/primitives'
 import { ACTION_COLOR, PAYG, PREPAID, PRODUCT_COLOR } from '../ui/theme'
+import { ForecastChart, ForecastKpis } from './forecast'
 import { N } from './helpers'
 
 const C = PRODUCT_COLOR.studio
@@ -36,29 +36,10 @@ function userRows(m: StudioModel, rate: number) {
   }))
 }
 
-function PeriodKpi({ m }: { m: StudioModel }) {
-  const { ds } = useData()
-  return (
-    <NotSuppliedIf when={!ds.studioTenant.length}>
-      <Kpi label="Tenant period" value={m.billingPeriod} sub="period filter applies to tenant totals only" wide />
-    </NotSuppliedIf>
-  )
-}
+const PERIOD_HELP = 'The period filter applies to tenant totals only; user and agent detail is an undated snapshot.'
 
-function Footnotes({ m, rates = true }: { m: StudioModel; rates?: boolean }) {
-  const { settings } = useData()
-  return (
-    <div className="grid grid-2">
-      {rates && (
-        <Panel title="Rates">
-          <p className="prose">{ratesInUse(settings)}</p>
-        </Panel>
-      )}
-      <Panel title="About this data">
-        <p className="prose">{m.snapshotNote}</p>
-      </Panel>
-    </div>
-  )
+function Footnotes({ m }: { m: StudioModel }) {
+  return <Note>{m.snapshotNote}</Note>
 }
 
 export function StudioConsumption() {
@@ -67,13 +48,12 @@ export function StudioConsumption() {
     <>
       <KpiRow>
         <NotSuppliedIf when={noTenant}>
-          <Kpi tone="studio" label="Credits consumed" value={int(m.tenant.consumed)} sub="tenant total in the period" help="Prepaid plus pay-as-you-go credits from the tenant daily export." />
+          <Kpi tone="studio" label="Credits consumed" value={int(m.tenant.consumed)} sub={m.billingPeriod} help={`Tenant total: prepaid plus pay-as-you-go credits from the daily export. ${PERIOD_HELP}`} />
         </NotSuppliedIf>
         <Kpi label="Billing active users" value={int(m.users)} help="Distinct people in the user snapshot." />
         <Kpi label="Agents with credits" value={int(m.agentsWithCredits)} />
         <Kpi label="Avg credits per user" value={dec2(N(m.avgPerUser))} />
         <Kpi label="Avg agents per user" value={dec2(N(m.avgAgents))} />
-        <PeriodKpi m={m} />
       </KpiRow>
       <div className="grid grid-1-2">
         <Panel title="Agents in the user snapshot">
@@ -129,7 +109,7 @@ export function StudioConsumption() {
           </Panel>
         </div>
       </div>
-      <Footnotes m={m} rates={false} />
+      <Footnotes m={m} />
     </>
   )
 }
@@ -141,12 +121,11 @@ export function StudioCost() {
     <>
       <NotSuppliedIf when={noTenant}>
         <KpiRow>
-          <Kpi tone="studio" label="Total billable cost" value={usd(t.cost)} sub="prepaid plus PAYG" />
+          <Kpi tone="studio" label="Total billable cost" value={usd(t.cost)} sub={m.billingPeriod} help={`Prepaid plus PAYG. ${PERIOD_HELP}`} />
           <Kpi label="Prepaid cost" value={usd(t.prepaidCost)} />
           <Kpi label="PAYG cost" value={usd(t.paygCost)} />
           <Kpi label="PAYG share" value={pct(N(t.paygShare))} help="PAYG credits divided by all credits consumed." />
           <Kpi label="Effective rate" value={usd4(N(t.effective))} sub="per credit" help="Total cost divided by credits consumed." />
-          <PeriodKpi m={m} />
         </KpiRow>
       </NotSuppliedIf>
       <div className="grid grid-2">
@@ -214,13 +193,12 @@ export function StudioOptimization() {
     <>
       <KpiRow>
         <NotSuppliedIf when={noTenant}>
-          <Kpi tone="studio" label="Consumption without entitlement" value={int(m.consumptionWithoutEnt)} sub="prepaid credits in unentitled environments" help="Prepaid credits used in environments that hold no capacity entitlement." />
+          <Kpi tone="studio" label="Consumption without entitlement" value={int(m.consumptionWithoutEnt)} sub={m.billingPeriod} help={`Prepaid credits used in environments that hold no capacity entitlement. ${PERIOD_HELP}`} />
           <Kpi label="Environments without entitlement" value={int(m.envsWithoutEnt)} />
         </NotSuppliedIf>
         <Kpi label="Unlicensed credit share" value={pct(N(m.unlicensed))} help="Share of user-snapshot credits from people without a Microsoft 365 Copilot licence." />
         <Kpi label="Agents with no consumption" value={int(m.agentsNoConsumption)} />
-        <Kpi tone="warn" label="Top 10% of users" value={pct(N(m.top10))} sub="share of credits" />
-        <PeriodKpi m={m} />
+        <Kpi label="Top 10% of users" value={pct(N(m.top10))} sub="share of credits" />
       </KpiRow>
       <Note title="Headline">{m.headline}</Note>
       <div className="grid grid-1-2">
@@ -296,12 +274,14 @@ export function StudioForecast() {
     <>
       <NotSuppliedIf when={noTenant}>
         <KpiRow>
-          <Kpi tone="studio" label="Daily run rate" value={int(N(fc.runRate))} sub="credits a day" />
-          <Kpi label="Projected credits (30 days)" value={int(N(fc.proj30))} />
-          <Kpi label="Projected cost (30 days)" value={usd(N(fc.cost30))} />
-          <Kpi label="Growth applied" value={signedPct(fc.growth)} sub={`a month · confidence ${fc.confidence.toLowerCase()}`} />
-          <Kpi label="Next 12 months cost" value={usd(fc.yearCost)} sub={`${int(fc.yearCredits)} credits`} />
-          <PeriodKpi m={m} />
+          <ForecastKpis
+            fc={{ ...fc, runRate: fc.monthlyCost }}
+            tone="studio"
+            runRateSub={`${int(N(fc.runRate))} credits a day`}
+            tooShort="growth needs 14 days of history"
+            costHelp="At today's effective rate. The range runs from the current daily average held flat to the growth applied: fitted from history and capped between -30% and +30% a month, unless you pick a growth assumption."
+          />
+          <Kpi label="Next 30 days" value={usd(N(fc.cost30))} sub={`${int(N(fc.proj30))} credits`} help="Projected cost and credits for the next 30 days." />
         </KpiRow>
       </NotSuppliedIf>
       <div className="grid grid-2">
@@ -338,18 +318,8 @@ export function StudioForecast() {
           </Panel>
         </div>
         <div className="stack">
-          <Panel title="Projected monthly cost, next 12 months">
-            <LineChart
-              label="Projected monthly Studio cost"
-              area
-              height={260}
-              xFmt={(k) => `M${k}`}
-              data={fc.months.map((x) => ({ key: String(x.m), values: [x.cost, x.credits] }))}
-              series={[
-                { name: 'Cost', color: C, fmt: usd },
-                { name: 'Credits', color: C, fmt: int, tipOnly: true },
-              ]}
-            />
+          <Panel title="Monthly cost, next 12 months">
+            <ForecastChart fc={{ ...fc, runRate: fc.monthlyCost }} color={C} label="Projected monthly Studio cost" />
           </Panel>
           <Panel title="Forecast summary">
             <p className="prose">{fc.summary}</p>

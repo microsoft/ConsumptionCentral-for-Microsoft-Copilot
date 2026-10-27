@@ -32,7 +32,7 @@
        "b": true
       },
       {
-       "t": " Top right of every page."
+       "t": " In the filters on each product tab."
       }
      ],
      [
@@ -46,7 +46,7 @@
      ],
      [
       {
-       "t": "3 Start on Overall: Combined,",
+       "t": "3 Start on Overview,",
        "b": true
       },
       {
@@ -60,7 +60,7 @@
      ],
      [
       {
-       "t": "Four pages per product: "
+       "t": "Each product tab runs: "
       },
       {
        "t": "used → cost → wasted → what's next.",
@@ -73,7 +73,7 @@
        "b": true
       },
       {
-       "t": " Change them in the parameters."
+       "t": " Change them under Rates in the header."
       }
      ]
     ]
@@ -167,7 +167,7 @@
      ],
      [
       {
-       "t": "Full click-paths and permissions: docs/DATA-SOURCES.md. Every measure on every page is defined in the Glossary."
+       "t": "Full click-paths and permissions: docs/DATA-SOURCES.md. Every measure is defined in the Glossary."
       }
      ]
     ]
@@ -254,7 +254,7 @@
        "b": true
       },
       {
-       "t": " They are snapshots of the whole extract. So the Studio period slicer scopes the tenant-level trend and entitlement figures only — the per-user and per-agent visuals always show everything, whatever period you pick. That is Microsoft's export, not a template choice."
+       "t": " They are snapshots of the whole extract. So the Studio period filter scopes the tenant-level trend and entitlement figures only — the per-user and per-agent figures always show everything, whatever period you pick. That is Microsoft's export, not a template choice."
       }
      ]
     ]
@@ -378,7 +378,7 @@
      ],
      [
       {
-       "t": "A product's pages are empty",
+       "t": "A product's views are empty",
        "b": true
       },
       {
@@ -396,7 +396,7 @@
      ],
      [
       {
-       "t": "What this dashboard cannot tell you: ",
+       "t": "What this app cannot tell you: ",
        "b": true
       },
       {
@@ -415,7 +415,7 @@
   "cards": [],
   "sections": [
    {
-    "heading": "What these pages show",
+    "heading": "What these views show",
     "paras": [
      [
       {
@@ -543,7 +543,7 @@
        "b": true
       },
       {
-       "t": " counts distinct weeks with any consumption across the whole history. Zero means a seat that has never been used — the cheapest thing on the Optimization page to act on."
+       "t": " counts distinct weeks with any consumption across the whole history. Zero means a seat that has never been used — the cheapest thing on the Optimization view to act on."
       }
      ]
     ]
@@ -553,12 +553,12 @@
     "paras": [
      [
       {
-       "t": "Independent task export: counts and fractional credits, not additional billing. Missing data leaves the task page blank."
+       "t": "Independent task export: counts and fractional credits, not additional billing. Missing data leaves the Tasks view blank."
       }
      ],
      [
       {
-       "t": "Typical provisional ValueLens category minutes are selected initially. In Transform data, select Cowork Task Categories > Advanced Editor to edit bands; use the matrix to inspect effective minutes."
+       "t": "Typical provisional ValueLens category minutes are selected initially. Pick another scenario on the Tasks view to change them; its table shows the minutes in use."
       }
      ],
      [
@@ -598,7 +598,7 @@
   "cards": [],
   "sections": [
    {
-    "heading": "What these pages show",
+    "heading": "What these views show",
     "paras": [
      [
       {
@@ -657,7 +657,7 @@
      ],
      [
       {
-       "t": "So the period slicer on these pages scopes the tenant-level trend and entitlement figures. Per-user and per-agent visuals always show the whole extract, whatever period is selected."
+       "t": "So the period filter on these views scopes the tenant-level trend and entitlement figures. Per-user and per-agent figures always show the whole extract, whatever period is selected."
       }
      ],
      [
@@ -723,7 +723,7 @@
   "cards": [],
   "sections": [
    {
-    "heading": "What these pages show",
+    "heading": "What these views show",
     "paras": [
      [
       {
@@ -792,7 +792,7 @@
        "b": true
       },
       {
-       "t": " are paid seats consuming nothing — the clearest saving on the Optimization page."
+       "t": " are paid seats consuming nothing — the clearest saving on the Optimization view."
       }
      ],
      [
@@ -824,7 +824,7 @@
        "b": true
       },
       {
-       "t": " — the included monthly credits change from the date set in the parameters, so the forecast steps at that point by design."
+       "t": " — the included monthly credits change from the date set under Rates, so the forecast steps at that point by design."
       }
      ],
      [
@@ -848,7 +848,7 @@
   "cards": [],
   "sections": [
    {
-    "heading": "What this page shows",
+    "heading": "What these views show",
     "paras": [
      [
       {
@@ -858,18 +858,18 @@
     ]
    },
    {
-    "heading": "One page, not four",
+    "heading": "Different views",
     "paras": [
      [
       {
-       "t": "The other three products get Consumption, Cost, Optimization and Forecast. Foundry has a single page, because "
+       "t": "The other three products get Consumption, Cost, Optimization and Forecast. Foundry gets Spend, Capacity & health and Reconciliation instead, because "
       },
       {
        "t": "Azure bills resources, not people",
        "b": true
       },
       {
-       "t": ". There is no user identity anywhere in the billing export, so the per-person split those pages are built on has nothing to hang on."
+       "t": ". There is no user identity anywhere in the billing export, so the per-person split those views are built on has nothing to hang on."
       }
      ]
     ]
@@ -946,7 +946,7 @@
   "id": "glossary",
   "name": "Glossary",
   "title": "Glossary",
-  "subtitle": "What does every term and metric on this report mean?",
+  "subtitle": "What does every term and metric in the app mean?",
   "cards": [],
   "sections": [
    {
@@ -976,7 +976,7 @@
        "b": true
       },
       {
-       "t": "The cost of one credit, set in Settings (default $0.01). Cowork and Studio each have their own pay-as-you-go and prepaid rates."
+       "t": "The cost of one credit, set under Rates (default $0.01). Cowork and Studio each have their own pay-as-you-go and prepaid rates."
       }
      ],
      [
@@ -985,7 +985,7 @@
        "b": true
       },
       {
-       "t": "Two separate caps. User limits add up each person's own monthly credit limit. Policy limits add up the plan limits on the spending policies. They are different numbers and the report labels which one it is showing."
+       "t": "Two separate caps. User limits add up each person's own monthly credit limit. Policy limits add up the plan limits on the spending policies. They are different numbers and each view labels which one it is showing."
       }
      ],
      [
@@ -1057,7 +1057,7 @@
        "b": true
       },
       {
-       "t": "Prepaid credits are drawn from capacity already bought. Pay-as-you-go is everything beyond that, billed in arrears. The Studio pages report the split because Microsoft reports it; on Cowork it is inferred from the capacity pack balance you enter."
+       "t": "Prepaid credits are drawn from capacity already bought. Pay-as-you-go is everything beyond that, billed in arrears. The Studio views report the split because Microsoft reports it; on Cowork it is inferred from the capacity pack balance you enter."
       }
      ],
      [
@@ -1089,7 +1089,7 @@
      ],
      [
       {
-       "t": "Group By on Studio pages — ",
+       "t": "Group by on Studio views — ",
        "b": true
       },
       {
@@ -1129,7 +1129,7 @@
        "b": true
       },
       {
-       "t": "Consumption normalised to a month. The four products are exported over different windows, so the All products page compares run rates rather than raw totals."
+       "t": "Consumption normalised to a month. The four products are exported over different windows, so the forecast views lead with it."
       }
      ]
     ]
@@ -1211,7 +1211,7 @@
        "b": true
       },
       {
-       "t": "A Department Admin signing in sees only the departments mapped to them; the All Org (Admin) role sees everything."
+       "t": "In the Power BI report, a Department Admin signing in sees only the departments mapped to them; the All Org (Admin) role sees everything."
       }
      ],
      [
@@ -1220,7 +1220,7 @@
        "b": true
       },
       {
-       "t": "Picks the attribute usage is rolled up by - Department, Business Unit, Cost Center, Job Family, Job Title, City, Country, Manager, a per-product Usage Intensity cohort, or User. On Cowork pages it re-groups the rollup visuals. On Studio pages it filters the user figures; agent and environment figures carry no person in the export, so they stay unfiltered."
+       "t": "Picks the attribute usage is rolled up by - Department, Business Unit, Cost Center, Job Family, Job Title, City, Country, Manager, a per-product Usage Intensity cohort, or User. On Cowork views it re-groups the rollups. On Studio views it filters the user figures; agent and environment figures carry no person in the export, so they stay unfiltered."
       }
      ]
     ]
@@ -1243,7 +1243,7 @@
        "b": true
       },
       {
-       "t": "are built from that weekly history. The Cowork forecast fits a trend across whatever weeks are loaded; Studio extends a daily run rate, and GitHub compounds a monthly rate fitted from its own history. Each page states its own window and confidence."
+       "t": "are built from that weekly history. The Cowork forecast fits a trend across whatever weeks are loaded; Studio extends a daily run rate, and GitHub compounds a monthly rate fitted from its own history. Each forecast view states its own window and confidence."
       }
      ],
      [
@@ -1252,7 +1252,7 @@
        "b": true
       },
       {
-       "t": "from credits at the rates set in Settings (default $0.01 per credit). Rates in use is shown on every cost page."
+       "t": "from credits at the rates set under Rates (default $0.01 per credit)."
       }
      ],
      [
@@ -1270,7 +1270,7 @@
        "b": true
       },
       {
-       "t": "comes from the Microsoft Entra user export. Without it every page still works, but Group By has nothing to group by. Studio users share the same identities, so Group By reaches both products."
+       "t": "comes from the Microsoft Entra user export. Without it every view still works, but Group By has nothing to group by. Studio users share the same identities, so Group By reaches both products."
       }
      ],
      [
@@ -1279,7 +1279,7 @@
        "b": true
       },
       {
-       "t": "Costs are also expressed as FinOps FOCUS v1.2 columns on the FOCUS Cost View page: List Cost (list rate), Contracted Cost = Chargeback $ (configured rate), Effective / Billed Cost, and Savings vs List; Service = Microsoft 365 Copilot, Service Category = AI and Machine Learning, Billing Currency = USD, SubAccount = Department / Cost Center."
+       "t": "Costs are also expressed as FinOps FOCUS v1.2 columns on the Power BI report's FOCUS Cost View page: List Cost (list rate), Contracted Cost = Chargeback $ (configured rate), Effective / Billed Cost, and Savings vs List; Service = Microsoft 365 Copilot, Service Category = AI and Machine Learning, Billing Currency = USD, SubAccount = Department / Cost Center."
       }
      ],
      [

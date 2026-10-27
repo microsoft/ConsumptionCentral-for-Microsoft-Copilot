@@ -70,11 +70,8 @@ export const TABS: TabDef[] = [
     views: [
       { id: 'start', label: 'Start here', intro: 'Where your Copilot credits go, and what to do about it.' },
       { id: 'read', label: 'How to read', intro: 'What the numbers mean, and what they cannot tell you.' },
-      { id: 'cowork', label: 'Cowork', intro: 'Copilot credits consumed in Microsoft 365, per person, per week.' },
-      { id: 'studio', label: 'Studio', intro: 'Credits consumed by Copilot Studio agents.' },
-      { id: 'github', label: 'GitHub', intro: 'GitHub Copilot premium requests, seats and the monthly pool.' },
-      { id: 'azure', label: 'Azure', intro: 'Azure AI spend, tokens and provisioned capacity.' },
-      { id: 'glossary', label: 'Glossary', intro: 'What every term and metric in the report means.' },
+      { id: 'products', label: 'Products', intro: 'How each product is measured, joined and read.' },
+      { id: 'glossary', label: 'Glossary', intro: 'What every term and metric in the app means.' },
     ],
   },
 ]
@@ -87,7 +84,9 @@ export interface Route {
 function parse(hash: string): Route {
   const [t, v] = hash.replace(/^#\/?/, '').split('/')
   const tab = TABS.find((x) => x.id === t) ?? TABS[0]
-  const view = tab.views.find((x) => x.id === v)?.id ?? tab.views[0]?.id ?? ''
+  // Older links to a single product's guide land on the Products view.
+  const legacy = tab.id === 'guide' && ['cowork', 'studio', 'github', 'azure'].includes(v) ? 'products' : v
+  const view = tab.views.find((x) => x.id === legacy)?.id ?? tab.views[0]?.id ?? ''
   return { tab, view }
 }
 

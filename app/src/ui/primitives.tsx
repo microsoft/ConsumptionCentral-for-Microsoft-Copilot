@@ -1,4 +1,4 @@
-import { useContext, useId, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { DASH } from './format'
 import { NotSupplied } from './notSupplied'
 
@@ -8,22 +8,38 @@ export function NotSuppliedIf({ when, children }: { when: boolean; children: Rea
   return <NotSupplied.Provider value={outer || when}>{children}</NotSupplied.Provider>
 }
 
+/** Opens on hover or focus; a click or tap pins it open until Esc, a second click or a tap elsewhere. */
 export function InfoTip({ text, label }: { text?: string; label: string }) {
-  const [open, setOpen] = useState(false)
+  const [hover, setHover] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
   const id = useId()
+  const open = hover || pinned
+  useEffect(() => {
+    if (!pinned) return
+    const away = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setPinned(false)
+    }
+    document.addEventListener('pointerdown', away)
+    return () => document.removeEventListener('pointerdown', away)
+  }, [pinned])
   if (!text) return null
+  const close = () => {
+    setHover(false)
+    setPinned(false)
+  }
   return (
-    <span className="info" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+    <span ref={ref} className="info" onPointerEnter={(e) => e.pointerType === 'mouse' && setHover(true)} onPointerLeave={(e) => e.pointerType === 'mouse' && setHover(false)}>
       <button
         type="button"
         className="info-btn"
         aria-label={`About ${label}`}
         aria-describedby={open ? id : undefined}
         aria-expanded={open}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
+        onFocus={(e) => e.currentTarget.matches(':focus-visible') && setHover(true)}
+        onBlur={close}
+        onClick={() => setPinned((p) => !p)}
+        onKeyDown={(e) => e.key === 'Escape' && close()}
       >
         i
       </button>
@@ -86,7 +102,7 @@ export function Kpi({ label, value, sub, help, tone = 'neutral', trend, wide }: 
         <span>{label}</span>
         <InfoTip text={help} label={label} />
       </div>
-      <div className={`kpi-value ${dir ? `trend-${dir}` : ''} ${value.length > 18 ? 'kpi-value-text' : ''}`}>{value}</div>
+      <div className={`kpi-value ${dir ? `trend-${dir}` : ''} ${value.length > 18 || /^[A-Za-z ]{8,}$/.test(value) ? 'kpi-value-text' : ''}`}>{value}</div>
       {sub && <div className="kpi-sub">{sub}</div>}
     </div>
   )
@@ -103,14 +119,26 @@ export function Segmented<T extends string>(props: {
   options: { id: T; label: string }[]
   onChange: (v: T) => void
 }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const ids = props.options.map((o) => o.id)
+  const onKeyDown = (e: KeyboardEvent) => {
+    const i = ids.indexOf(props.value)
+    const next = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: ids.length - 1 }[e.key]
+    if (next === undefined) return
+    e.preventDefault()
+    const j = (next + ids.length) % ids.length
+    props.onChange(ids[j])
+    ref.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[j]?.focus()
+  }
   return (
-    <div className="segmented" role="tablist" aria-label={props.label}>
+    <div ref={ref} className="segmented" role="tablist" aria-label={props.label} onKeyDown={onKeyDown}>
       {props.options.map((o) => (
         <button
           key={o.id}
           type="button"
           role="tab"
           aria-selected={props.value === o.id}
+          tabIndex={props.value === o.id ? 0 : -1}
           className={props.value === o.id ? 'on' : ''}
           onClick={() => props.onChange(o.id)}
         >

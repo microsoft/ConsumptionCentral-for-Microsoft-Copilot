@@ -1,7 +1,7 @@
 import { useMemo, useState, type CSSProperties } from 'react'
 import guide from '../data/guide.json'
 import { PRODUCT_COLOR } from '../ui/theme'
-import { Panel } from '../ui/primitives'
+import { Panel, Segmented } from '../ui/primitives'
 
 interface Run {
   t: string
@@ -20,19 +20,18 @@ const PAGES = guide as GuidePage[]
 const BY_VIEW: Record<string, string> = {
   start: 'intro',
   read: 'how-to-read',
-  cowork: 'guide-cowork',
-  studio: 'guide-studio',
-  github: 'guide-ghcp',
-  azure: 'guide-foundry',
   glossary: 'glossary',
 }
 
-const CARD_COLOR: Record<string, string> = {
-  'Cowork & Work IQ': PRODUCT_COLOR.cowork,
-  'Copilot Studio': PRODUCT_COLOR.studio,
-  'GitHub Copilot': PRODUCT_COLOR.github,
-  'Azure AI Foundry': PRODUCT_COLOR.azure,
-}
+type ProductId = 'cowork' | 'studio' | 'github' | 'azure'
+
+const PRODUCTS: { id: ProductId; title: string; page: string }[] = [
+  { id: 'cowork', title: 'Cowork & Work IQ', page: 'guide-cowork' },
+  { id: 'studio', title: 'Copilot Studio', page: 'guide-studio' },
+  { id: 'github', title: 'GitHub Copilot', page: 'guide-ghcp' },
+  { id: 'azure', title: 'Azure AI Foundry', page: 'guide-foundry' },
+]
+const PRODUCT_BY_TITLE = new Map(PRODUCTS.map((p) => [p.title, p.id]))
 
 const NOTES: { title: string; body: string }[] = [
   {
@@ -44,8 +43,8 @@ const NOTES: { title: string; body: string }[] = [
     body: 'Treemaps, funnels and donuts are shown as ranked bars, and combo charts as a line or bars with the second measure in the tooltip. The values are unchanged.',
   },
   {
-    title: 'Settings are under Rates',
-    body: 'Where the guide mentions Settings or parameters (credit rates, prepaid balances, the GitHub pool and change date), use the Rates button at the top right.',
+    title: 'Overview and forecasts',
+    body: 'The Overview ranks each product’s cost on its own basis rather than adding a grand total. Forecasts lead with the monthly run rate and show the next 12 months as a range, from the current rate to the growth trend. With too little history, only the current rate is shown.',
   },
   {
     title: 'Filters',
@@ -101,7 +100,7 @@ function Glossary({ page }: { page: GuidePage }) {
   return (
     <Panel
       title="Glossary"
-      note="Definitions from the Power BI report"
+      note="Every term and metric in the app"
       actions={<input type="search" placeholder="Search terms" aria-label="Search terms" value={q} onChange={(e) => setQ(e.target.value)} />}
     >
       {groups.length === 0 && <p className="empty">No terms match “{q}”.</p>}
@@ -122,21 +121,49 @@ function Glossary({ page }: { page: GuidePage }) {
   )
 }
 
+/** Each card opens its product's tab. */
+function Cards({ cards }: { cards: GuidePage['cards'] }) {
+  if (!cards.length) return null
+  return (
+    <div className="product-cards">
+      {cards.map((c) => {
+        const id = PRODUCT_BY_TITLE.get(c.title)
+        return (
+          <a key={c.title} className="product-card" href={id ? `#/${id}` : undefined} style={{ '--pc': id ? PRODUCT_COLOR[id] : undefined } as CSSProperties}>
+            <span className="pc-name">{c.title}</span>
+            <span className="pc-sub">{c.sub}</span>
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
+function Products() {
+  const [id, setId] = useState<ProductId>('cowork')
+  const product = PRODUCTS.find((p) => p.id === id)!
+  const page = PAGES.find((p) => p.id === product.page)!
+  return (
+    <div className="stack">
+      <div className="guide-product-bar">
+        <Segmented label="Product" value={id} options={PRODUCTS.map((p) => ({ id: p.id, label: p.title }))} onChange={setId} />
+        <a className="link-btn" href={`#/${id}`}>
+          Open {product.title}
+        </a>
+      </div>
+      <p className="section-note">{page.subtitle}</p>
+      <Sections page={page} />
+    </div>
+  )
+}
+
 export function Guide({ view }: { view: string }) {
+  if (view === 'products') return <Products />
   const page = PAGES.find((p) => p.id === BY_VIEW[view]) ?? PAGES[0]
   if (page.id === 'glossary') return <Glossary page={page} />
   return (
     <div className="stack">
-      {page.cards.length > 0 && (
-        <div className="product-cards">
-          {page.cards.map((c) => (
-            <div key={c.title} className="product-card" style={{ '--pc': CARD_COLOR[c.title] } as CSSProperties}>
-              <span className="pc-name">{c.title}</span>
-              <span className="pc-sub">{c.sub}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <Cards cards={page.cards} />
       <Sections page={page} />
       {page.id === 'intro' && (
         <Panel title="About this app">

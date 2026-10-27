@@ -361,6 +361,27 @@ a {
 .link-btn:hover {
   text-decoration: underline;
 }
+a.link-btn {
+  text-decoration: none;
+}
+.guide-product-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .icon-btn {
   display: grid;
@@ -786,7 +807,8 @@ input[type='search']::placeholder {
   list-style: none;
 }
 .barlist li > div,
-.barlist li > button {
+.barlist li > button,
+.barlist li > a {
   display: grid;
   grid-template-columns: minmax(0, 38%) minmax(0, 1fr) max-content;
   align-items: center;
@@ -799,10 +821,15 @@ input[type='search']::placeholder {
   background: transparent;
   text-align: left;
 }
+.barlist li > a {
+  color: inherit;
+  text-decoration: none;
+}
 .barlist li > button {
   cursor: pointer;
 }
-.barlist li > button:hover {
+.barlist li > button:hover,
+.barlist li > a:hover {
   background: var(--hover);
 }
 .barlist li.sel > button {
@@ -994,11 +1021,9 @@ input[type='search']::placeholder {
   flex: none;
   width: 1ch;
   color: var(--ink-3);
-  opacity: 0.45;
 }
 .sort.on {
   color: var(--accent);
-  opacity: 1;
 }
 .table-wrap td {
   height: 40px;
@@ -1068,7 +1093,7 @@ input[type='search']::placeholder {
   padding: 0 6px;
   border-radius: 999px;
   background: #e8eeec;
-  color: var(--ink-3);
+  color: var(--ink-2);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -1445,7 +1470,8 @@ input[type='search']::placeholder {
     padding: 14px;
   }
   .barlist li > div,
-  .barlist li > button {
+  .barlist li > button,
+  .barlist li > a {
     grid-template-columns: minmax(0, 42%) minmax(0, 1fr) 6ch;
     gap: 8px;
     padding-inline: 4px;
@@ -1549,10 +1575,8 @@ input[type='search']::placeholder {
 .note-title {
   margin-bottom: 2px;
   color: var(--accent-ink);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 .note-warn .note-title {
   color: #8a4a0a;

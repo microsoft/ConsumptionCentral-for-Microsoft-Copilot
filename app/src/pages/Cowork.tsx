@@ -1,13 +1,14 @@
 import { useMemo } from 'react'
 import { useData } from '../data/store'
 import type { CoworkPerson } from '../data/types'
-import { actionValue, billingBasis, coworkModel, forecastModel, optimisationModel, ratesInUse, SAVING_NOTE, weeklyCost, type CoworkModel } from '../metrics/cowork'
+import { actionValue, billingBasis, coworkModel, forecastModel, optimisationModel, periodWeeks, SAVING_NOTE, weeklyCost, type CoworkModel } from '../metrics/cowork'
 import { div } from '../metrics/stats'
 import { BarList, GroupedBars, LineChart } from '../ui/charts'
 import { DataTable, type Column } from '../ui/DataTable'
 import { dateLabel, dayLabel, int, pct, pct0, signedPct, usd, usd2, usd4 } from '../ui/format'
 import { Kpi, KpiRow, Note, NotSuppliedIf, Panel } from '../ui/primitives'
-import { ACTION_COLOR, PAYG, PREPAID, PRODUCT_COLOR, SECONDARY } from '../ui/theme'
+import { PAYG, PREPAID, PRODUCT_COLOR, SECONDARY } from '../ui/theme'
+import { ForecastChart, ForecastKpis } from './forecast'
 import { N } from './helpers'
 
 const C = PRODUCT_COLOR.cowork
@@ -29,16 +30,6 @@ interface Line {
 
 const personUse = (m: CoworkModel, p: CoworkPerson) => Math.round(m.per.get(p.upn) ?? 0)
 
-function RatesCard({ extra }: { extra?: string }) {
-  const { settings } = useData()
-  return (
-    <Panel title="Rates" help="Change rates and the capacity pack balance from Rates in the header.">
-      <p className="prose">{ratesInUse(settings)}</p>
-      {extra && <p className="section-note">{extra}</p>}
-    </Panel>
-  )
-}
-
 export function CoworkConsumption() {
   const { m, settings } = useCowork()
   const rows = m.groups.map((g) => ({
@@ -54,7 +45,7 @@ export function CoworkConsumption() {
         <Kpi label="Allowance used" value={pct(N(m.allowanceUsed))} help="Credits used divided by the person allowance." />
         <Kpi label="Consuming users" value={int(m.consuming)} sub={`of ${int(m.users)} on the roster`} help="People with any credits in the period." />
         <Kpi label="Weekly active users" value={int(m.activeAll)} sub="any credits in the weekly records" help="Distinct people with credits across the weekly records shown in the chart." />
-        <Kpi tone="warn" label="Users over limit" value={pct(N(m.overPct))} help="Share of people whose period credits exceed their monthly limit." />
+        <Kpi tone={N(m.overPct) > 0 ? 'warn' : 'neutral'} label="Users over limit" value={pct(N(m.overPct))} help="Share of people whose period credits exceed their monthly limit." />
       </KpiRow>
       <div className="grid grid-1-2">
         <Panel title={`Credits by ${m.attr.toLowerCase()}`} note="Expand a group to see its people.">
@@ -160,15 +151,9 @@ export function CoworkCost() {
           </Panel>
         </div>
       </div>
-      <div className="grid grid-2">
-        <RatesCard />
-        <Panel title="Billing basis">
-          <p className="prose">{billingBasis(m.used, settings)}</p>
-          <p className="section-note">
-            Capacity pack balance {int(settings.pack)} credits. Change it in the filters above or under Rates.
-          </p>
-        </Panel>
-      </div>
+      <Panel title="Billing basis" help="Change rates and the capacity pack balance from Rates in the header.">
+        <p className="prose">{billingBasis(m.used, settings)}</p>
+      </Panel>
     </>
   )
 }
@@ -176,7 +161,6 @@ export function CoworkCost() {
 export function CoworkOptimization() {
   const { m, settings } = useCowork()
   const o = useMemo(() => optimisationModel(m, settings), [m, settings])
-  const actionIdx = (a: string) => Math.max(0, Number(a.charAt(0)) - 1)
   const queue = m.groups.map((g) => {
     const people = g.people.map((p) => ({ id: p.upn, data: { label: p.name || p.upn, users: 1, used: personUse(m, p), allowance: p.limit, net: actionValue(p, settings), action: p.action } }))
     return {
@@ -201,18 +185,9 @@ export function CoworkOptimization() {
         <Kpi label="Dormant seats" value={usd2(o.dormant)} sub="a month" help="Allowance held by people who used no credits." />
         <Kpi label="Seats to upgrade" value={int(o.upgrade)} help="People over their limit in at least 60% of active weeks." />
         <Kpi label="Seats to downsize" value={int(o.downsize)} help="Active people whose recommended limit is below their current limit." />
-        <Kpi tone="warn" label="Licensed but inactive" value={int(o.inactive)} help="Licensed people with no credits used." />
+        <Kpi tone={o.inactive > 0 ? 'warn' : 'neutral'} label="Licensed but inactive" value={int(o.inactive)} help="Licensed people with no credits used." />
       </KpiRow>
-      <div className="grid grid-1-2">
-        <Panel title="Seats by recommended action">
-          <BarList
-            label="Seats by action"
-            color={C}
-            keepOrder
-            items={o.byAction.map((a) => ({ key: a.action, label: a.action, value: a.users, hint: `${usd2(a.net)} net a month`, color: ACTION_COLOR[actionIdx(a.action)] }))}
-          />
-        </Panel>
-        <Panel title="Financial impact by action">
+      <Panel title="Financial impact by action">
           <DataTable
             label="Financial impact by action"
             columns={[
@@ -225,17 +200,11 @@ export function CoworkOptimization() {
             rows={o.byAction.map((a) => ({ id: a.action, data: a }))}
             initialSort={{ key: 'action' }}
           />
-        </Panel>
-      </div>
+      </Panel>
       <Panel title="Action queue" note="Expand a group to see who to act on first.">
         <DataTable label="Action queue" childNoun="people" search={(r) => r.label} columns={queueCols} rows={queue} initialSort={{ key: 'net', desc: true }} />
       </Panel>
-      <div className="grid grid-2">
-        <RatesCard />
-        <Panel title="How savings are priced">
-          <p className="prose">{SAVING_NOTE}</p>
-        </Panel>
-      </div>
+      <Note>{SAVING_NOTE}</Note>
     </>
   )
 }
@@ -247,9 +216,13 @@ export function CoworkForecast() {
   return (
     <>
       <KpiRow>
-        <Kpi tone="cowork" label="Growth applied" value={signedPct(fc.growth)} sub={`a month · confidence ${fc.trend.confidence.toLowerCase()}`} help="Fitted monthly growth from the weekly trend, capped at 100%, unless you pick a growth assumption." />
-        <Kpi label="Next 12 months credits" value={int(fc.yearCredits)} />
-        <Kpi label="Next 12 months cost" value={usd(fc.yearCost)} sub="at today's blended rate" />
+        <ForecastKpis
+          fc={fc}
+          tone="cowork"
+          runRateSub={`last ${periodWeeks(filters)} weeks at today's blended rate`}
+          tooShort={`growth needs 6 weeks of history, this has ${int(fc.trend.weeks)}`}
+          costHelp="At today's blended rate. The range runs from the current rate held flat to the growth applied: fitted from the weekly trend and capped at 100% a month, unless you pick a growth assumption."
+        />
       </KpiRow>
       <div className="grid grid-2">
         <Panel title="Where the growth is">
@@ -266,25 +239,11 @@ export function CoworkForecast() {
             initialSort={{ key: 'yearCost', desc: true }}
           />
         </Panel>
-        <Panel title="Projected monthly cost, next 12 months" note={last ? `Months after ${dateLabel(last)}.` : undefined}>
-          <LineChart
-            label="Projected monthly cost"
-            area
-            xFmt={(k) => `M${k}`}
-            data={fc.months.map((x) => ({ key: String(x.m), values: [x.cost, x.credits] }))}
-            series={[
-              { name: 'Cost', color: C, fmt: usd },
-              { name: 'Credits', color: C, fmt: int, tipOnly: true },
-            ]}
-          />
+        <Panel title="Monthly cost, next 12 months" note={last ? `Months after ${dateLabel(last)}.` : undefined}>
+          <ForecastChart fc={fc} color={C} label="Projected monthly Cowork cost" />
         </Panel>
       </div>
-      <div className="grid grid-2">
-        <RatesCard />
-        <Panel title="Forecast summary">
-          <Note>{fc.summary}</Note>
-        </Panel>
-      </div>
+      <Note>{fc.summary}</Note>
     </>
   )
 }
