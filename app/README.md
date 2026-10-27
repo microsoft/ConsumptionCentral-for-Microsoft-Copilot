@@ -151,7 +151,7 @@ A synthetic sample in `public/sample/` loads on first open and is clearly labell
 | Copilot Studio | Consumption, Cost, Optimization, Forecast | 5–8. Studio: Consumption, Cost, Optimization, Forecast |
 | GitHub Copilot | Consumption, Cost, Optimization, Forecast | 11–14. GHCP: Consumption, Cost, Optimization, Forecast |
 | Azure AI Foundry | Spend, Capacity & health, Reconciliation | 9. Azure: Spend & Consumption, 10. Azure: Capacity & Health, 10.1. Billing: Reconciliation |
-| Guide | Start here, How to read, Cowork, Studio, GitHub, Azure, Glossary | Start here, How to read this, the four product "How to read" pages, Glossary |
+| Guide | Start here, How to read, Products, Glossary | Start here, How to read this, the four product "How to read" pages, Glossary |
 
 How the controls work:
 - The toolbar filters match each Power BI page's slicers, such as period, service, spending policy, agent, cost centre, model, subscription and billing pool. They apply to the tab you are on.

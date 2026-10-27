@@ -104,10 +104,13 @@ On narrow screens the tab strip and the segmented control scroll sideways. The a
   - `github` graphite
   - `azure` blue
 
-  These colours are used only where products appear side by side (Overview, the Guide cards) and for each product's own lines and bars.
-- **Prepaid and pay-as-you-go** always use the same two colours: `prepaid` light teal, then `payg` amber. Prepaid draws first, so it is always the lower or first segment.
-- **Recommended actions** use `ACTION_COLOR`, which runs from urgent red through amber and blue to healthy teal and greys. Its order matches the action priority used in the PBI.
-- **Small categorical series** (model, feature, task type) use the `SERIES` palette, never a rainbow.
+  These colours are used only where products appear side by side (Overview, the Guide cards) and for each product's own lines and bars. Never reuse a product hue for a category.
+- **Prepaid and pay-as-you-go** always use the same two colours: `prepaid` light teal, then `payg` amber. Prepaid draws first, so it is always the lower or first segment. Amber means pay-as-you-go and nothing else.
+- **Reference lines** (allowance, current rate, included pool) use `NEUTRAL` slate, dashed where they're a projection.
+- **Signed differences** use `OVER` red and `UNDER` teal. A difference that rounds to zero is `NEUTRAL`, and a KPI only takes the warning dot when its value is actually a problem.
+- **Model tiers** use `TIER_COLOR`, one slate hue that darkens with capability.
+- **Studio agent actions** use `ACTION_COLOR`, which runs from urgent reds through slate and green to a pale grey for unused agents. Its order matches the action priority used in the PBI.
+- **Small categorical series** (model, feature, task type) use the `SERIES` palette, never a rainbow. It avoids every product and PAYG hue.
 - `band` is only for the header. `band-accent` is only for the active-tab underline and for focus rings inside the band.
 - `accent` covers interactive states: primary buttons, active sort arrows, set filters and selected bar rows.
 - **SVG chart colours are constants** in `theme.ts`. SVG presentation attributes don't resolve CSS variables reliably inside the Managed App host.
@@ -168,7 +171,9 @@ Mostly flat:
   - "Show more" pages through the rows, 25 at a time.
 - **Rates sheet:** a native `<dialog>` that holds the report parameters: credit rates, the prepaid pack balance, GitHub seat prices, included credits and the allowance change date.
 - **Data source sheet:** a centred dialog with a file drop. It lists every recognised source and whether it was supplied.
-- **Segmented control:** a grey trough. The active segment is white, with a hairline shadow.
+- **Segmented control:** a grey trough. The active segment is white, with a hairline shadow. Arrow keys, Home and End move between segments; only the active one is in the tab order.
+- **Info button:** opens on hover or keyboard focus. A click or tap pins it open until Esc, a second click or a tap elsewhere.
+- **Forecast view:** the monthly run rate first, then the next 12 months as a range from the current rate to the growth trend, with its confidence. With too little history the range is replaced by "Not enough history" and the chart shows only the current rate.
 - **Focus:** a 2px `accent` outline with a 2px offset everywhere. Inside the header band, the outline is `band-accent`.
 
 ## Do's and Don'ts

@@ -4,7 +4,7 @@ import { dateLabel, int, pct0 } from '../ui/format'
 import { div } from './stats'
 
 export const REPORTING_CAVEAT =
-  'One date window applies to all dated sources on this page. Cowork uses whole weekly records dated within the window, not daily proration. Studio user/agent snapshots cannot be date-aligned and are excluded. Credits are product-specific units; cost bases differ, so no misleading grand total is shown.'
+  'This page uses the date filter for every product, so a total can differ from the product tab, which shows its own period. Cowork counts whole weeks dated in the range. Studio user and agent snapshots have no dates and are left out.'
 
 export const PRODUCTS = ['Cowork / Work IQ', 'Copilot Studio', 'GitHub Copilot', 'Azure AI Foundry'] as const
 export type Product = (typeof PRODUCTS)[number]
@@ -22,19 +22,30 @@ export interface ProductRow {
   cost: number | null
   basis: string
   coverage: string
+  /** The dates this product's figures actually cover inside the selected range. */
+  covered: string
   rows: number
 }
 
-function coverage(dates: string[], inWindow: number, lo: string, hi: string): string {
-  if (!dates.length) return 'No source loaded'
+function span(dates: string[]): [string, string] | null {
+  if (!dates.length) return null
   let min = dates[0]
   let max = dates[0]
   for (const d of dates) {
     if (d < min) min = d
     if (d > max) max = d
   }
-  const state = inWindow === 0 ? 'No rows in selected dates; not confirmed zero' : min > lo || max < hi ? 'Partial date coverage' : 'Date span covered'
-  return `${state} | source ${min} to ${max}`
+  return [min, max]
+}
+
+const spanLabel = ([a, b]: [string, string]) => (a === b ? dateLabel(a) : `${dateLabel(a)} – ${dateLabel(b)}`)
+
+function coverage(dates: string[], lo: string, hi: string): { coverage: string; covered: string } {
+  const all = span(dates)
+  if (!all) return { coverage: 'No source loaded', covered: 'Not loaded' }
+  const inW = span(dates.filter((d) => d >= lo && d <= hi))
+  const state = !inW ? 'No rows in the selected dates; not confirmed zero' : all[0] > lo || all[1] < hi ? 'Partial date coverage' : 'Date range covered'
+  return { coverage: `${state} · source ${spanLabel(all)}`, covered: inW ? spanLabel(inW) : 'No rows in these dates' }
 }
 
 export function combinedModel(ds: Dataset, f: Filters, s: Settings) {
@@ -58,12 +69,7 @@ export function combinedModel(ds: Dataset, f: Filters, s: Settings) {
       cost: ds.credits.length ? cwCredits * s.coworkPayg : null,
       rows: cw.length,
       basis: COST_BASIS['Cowork / Work IQ'],
-      coverage: coverage(
-        ds.credits.map((c) => c.date),
-        cw.length,
-        lo,
-        hi,
-      ),
+      ...coverage(ds.credits.map((c) => c.date), lo, hi),
     },
     {
       product: 'Copilot Studio',
@@ -71,12 +77,7 @@ export function combinedModel(ds: Dataset, f: Filters, s: Settings) {
       cost: ds.studioTenant.length ? stPrepaid * s.studioPrepaid + stPayg * s.studioPayg : null,
       rows: st.length,
       basis: COST_BASIS['Copilot Studio'],
-      coverage: coverage(
-        ds.studioTenant.map((t) => t.date),
-        st.length,
-        lo,
-        hi,
-      ),
+      ...coverage(ds.studioTenant.map((t) => t.date), lo, hi),
     },
     {
       product: 'GitHub Copilot',
@@ -84,12 +85,7 @@ export function combinedModel(ds: Dataset, f: Filters, s: Settings) {
       cost: ds.ghUsage.length ? gh.reduce((a, r) => a + r.net, 0) : null,
       rows: gh.length,
       basis: COST_BASIS['GitHub Copilot'],
-      coverage: coverage(
-        ds.ghUsage.map((r) => r.date),
-        gh.length,
-        lo,
-        hi,
-      ),
+      ...coverage(ds.ghUsage.map((r) => r.date), lo, hi),
     },
     {
       product: 'Azure AI Foundry',
@@ -97,12 +93,7 @@ export function combinedModel(ds: Dataset, f: Filters, s: Settings) {
       cost: foundryAll.length ? fd.reduce((a, r) => a + r.cost, 0) : null,
       rows: fd.length,
       basis: COST_BASIS['Azure AI Foundry'],
-      coverage: coverage(
-        foundryAll.map((r) => r.date),
-        fd.length,
-        lo,
-        hi,
-      ),
+      ...coverage(foundryAll.map((r) => r.date), lo, hi),
     },
   ]
 
@@ -116,17 +107,11 @@ export function combinedModel(ds: Dataset, f: Filters, s: Settings) {
       ? `Studio counts only credits attributed to a named user. Its agent and environment exports carry no person, so about ${int(gap)} credits (${pct0(div(gap, tenant) ?? 0)} of Studio usage) sit outside the per-person and per-department views.`
       : 'Studio counts only credits attributed to a named user. All Studio credits in this export carry a person, so nothing is missing here.'
 
-  const cwWeeks = new Set(ds.credits.map((c) => c.date)).size
-  const ghMonths = new Set(ds.ghUsage.map((r) => r.date.slice(0, 7))).size
-  const stDays = new Set(ds.studioTenant.map((t) => t.date)).size
-  const parts = [cwWeeks && `Cowork ${int(cwWeeks)} weeks`, ghMonths && `GitHub ${int(ghMonths)} months`, stDays && `Studio ${int(stDays)} days`].filter(Boolean)
-
   return {
     lo,
     hi,
     window: lo ? `${dateLabel(lo)} - ${dateLabel(hi)}` : '',
     rows,
     studioCaveat,
-    sourceWindows: parts.length ? parts.join('   |   ') : 'No consumption data loaded.',
   }
 }

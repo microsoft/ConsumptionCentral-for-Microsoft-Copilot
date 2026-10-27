@@ -3,22 +3,18 @@ import { useData } from '../data/store'
 import { ghModel, type GhModel } from '../metrics/ghcp'
 import { BarList, LineChart } from '../ui/charts'
 import { DataTable } from '../ui/DataTable'
-import { dateLabel, dayLabel, dec1, int, monthLabel, pct, signedPct, usd, usd2 } from '../ui/format'
+import { dateLabel, dayLabel, dec1, int, monthLabel, pct, usd, usd2 } from '../ui/format'
 import { Kpi, KpiRow, Note, Panel } from '../ui/primitives'
-import { PAYG, PREPAID, PRODUCT_COLOR } from '../ui/theme'
+import { PAYG, PREPAID, PRODUCT_COLOR, TIER_COLOR } from '../ui/theme'
+import { ForecastChart, ForecastKpis } from './forecast'
 import { N } from './helpers'
 
 const C = PRODUCT_COLOR.github
-const TIER_COLOR: Record<string, string> = { '1. Lightweight': '#94a3b8', '2. Versatile': '#2563eb', '3. Powerful': '#1f2937' }
 
 function useGh() {
   const { ds, filters, settings } = useData()
   const m = useMemo(() => ghModel(ds, filters, settings), [ds, filters, settings])
   return { m, settings }
-}
-
-function PeriodKpi({ m }: { m: GhModel }) {
-  return <Kpi label="Billing period" value={m.billingPeriod} wide />
 }
 
 interface DevLine {
@@ -46,12 +42,11 @@ export function GitHubConsumption() {
   return (
     <>
       <KpiRow>
-        <Kpi tone="github" label="Credits used" value={int(m.credits)} help="Billed GitHub Copilot AI credits in the period." />
+        <Kpi tone="github" label="Credits used" value={int(m.credits)} sub={m.billingPeriod} help="Billed GitHub Copilot AI credits in the period." />
         <Kpi label="Active developers" value={int(m.devs)} />
         <Kpi label="Credits per developer" value={dec1(N(m.perDev))} />
         <Kpi label="Coding agent share" value={pct(N(m.coding))} sub="of credits" />
         <Kpi label="Powerful model share" value={pct(N(m.powerful))} sub="of credits" />
-        <PeriodKpi m={m} />
       </KpiRow>
       <div className="grid grid-2-1">
         <Panel title="Credit consumption over time">
@@ -74,7 +69,7 @@ export function GitHubConsumption() {
         </Panel>
       </div>
       <div className="grid grid-2-1">
-        <Panel title="Credits by model">
+        <Panel title="Credits by model" note="Darker bars are more capable model tiers.">
           <BarList label="Credits by model" color={C} items={m.byModel.map((x) => ({ key: x.model, label: x.model, value: x.credits, hint: x.tier, color: TIER_COLOR[x.tier] }))} />
         </Panel>
         <Panel title="Heaviest developers">
@@ -99,11 +94,10 @@ export function GitHubCost() {
     <>
       <KpiRow>
         <Kpi tone="github" label="Seat cost" value={usd(m.seatCost)} sub="a month" />
-        <Kpi label="Overage cost" value={usd2(m.net)} sub="pay-as-you-go credits" help="Credit value beyond the included allowance." />
+        <Kpi label="Overage cost" value={usd2(m.net)} sub={m.billingPeriod} help="Pay-as-you-go credit value beyond the included allowance, in the period." />
         <Kpi label="Allowance absorbed" value={usd2(m.absorbed)} help="Credit value covered by the included monthly allowance." />
         <Kpi label="Gross value" value={usd2(m.gross)} sub="before allowance" />
         <Kpi label="Cost per developer" value={usd2(N(m.costPerDev))} sub="seats plus overage, per licensed seat" />
-        <PeriodKpi m={m} />
       </KpiRow>
       <Note title="Headline">{m.costHeadline}</Note>
       <div className="grid grid-2">
@@ -172,14 +166,12 @@ export function GitHubOptimization() {
     <>
       <KpiRow>
         <Kpi tone="github" label="Seats with no credit use" value={int(m.idleSeats)} sub={`of ${int(m.licensed)} licensed`} />
-        <Kpi tone="warn" label="Their seat cost" value={usd(m.idleSeatCost)} sub="a month, at list price" />
+        <Kpi tone={N(m.idleSeatCost) > 0 ? 'warn' : 'neutral'} label="Their seat cost" value={usd(m.idleSeatCost)} sub="a month, at list price" />
         <Kpi label="Top 10% share" value={pct(N(m.top10))} sub="of credits" />
         <Kpi label="Powerful model share" value={pct(N(m.powerful))} sub="of credits" />
-        <Kpi label="Pool used" value={pct(N(m.poolUsed))} sub={`latest month vs ${int(m.pool)} included`} />
-        <PeriodKpi m={m} />
+        <Kpi tone={N(m.poolUsed) > 1 ? 'warn' : 'neutral'} label="Pool used" value={pct(N(m.poolUsed))} sub={`latest month vs ${int(m.pool)} included`} help="Over 100% means the latest month's credits ran past the included pool and were billed as overage." />
       </KpiRow>
-      <div className="grid grid-2">
-        <Panel title="Developers by consumption" note="Expand a group to see its developers.">
+      <Panel title="Developers by consumption" note="Expand a group to see its developers.">
           <DataTable
             label="Developers by consumption"
             minWidth={580}
@@ -195,11 +187,7 @@ export function GitHubOptimization() {
             initialSort={{ key: 'credits', desc: true }}
             pageSize={8}
           />
-        </Panel>
-        <Panel title="Where credits go by model tier" note="Bars are coloured by tier: grey lightweight, blue versatile, dark powerful.">
-          <BarList label="Credits by model and tier" color={C} items={m.byModel.map((x) => ({ key: x.model, label: x.model, value: x.credits, hint: x.tier, color: TIER_COLOR[x.tier] }))} />
-        </Panel>
-      </div>
+      </Panel>
       <div className="grid grid-2">
         <Panel title="By GitHub cost centre">
           <DataTable
@@ -230,14 +218,6 @@ export function GitHubOptimization() {
           />
         </Panel>
       </div>
-      <div className="grid grid-2">
-        <Panel title="Cost headline">
-          <p className="prose">{m.costHeadline}</p>
-        </Panel>
-        <Panel title="Concentration">
-          <p className="prose">{m.concentration}</p>
-        </Panel>
-      </div>
     </>
   )
 }
@@ -249,12 +229,15 @@ export function GitHubForecast() {
   return (
     <>
       <KpiRow>
-        <Kpi tone="github" label="Growth applied" value={signedPct(fc.growth)} sub={`a month · confidence ${fc.confidence.toLowerCase()}`} />
-        <Kpi label="Next 12 months credits" value={int(fc.yearCredits)} />
-        <Kpi label="Next 12 months cost" value={usd(fc.yearCost)} sub="seats plus overage" />
+        <ForecastKpis
+          fc={fc}
+          tone="github"
+          runRateSub="seats plus overage, latest month"
+          tooShort={`growth needs 5 months of history, this has ${int(m.monthsObserved)}`}
+          costHelp="Seats plus overage. The range runs from the current rate held flat to the growth applied."
+        />
         <Kpi label="Monthly pool" value={int(m.pool)} sub="included credits today" />
         <Kpi label="Pool from change date" value={int(m.poolNext)} sub={`from ${change}`} />
-        <PeriodKpi m={m} />
       </KpiRow>
       <div className="grid grid-2">
         <div className="stack">
@@ -289,23 +272,19 @@ export function GitHubForecast() {
           </Panel>
         </div>
         <div className="stack">
-          <Panel title="Projected monthly cost, next 12 months" note="Hover for projected credits and the included pool each month.">
-            <LineChart
+          <Panel
+            title="Monthly cost, next 12 months"
+            note={`${m.poolNext < m.pool ? `Cost steps up from ${change}, when the included pool shrinks. ` : ''}Hover for credits and the pool each month.`}
+          >
+            <ForecastChart
+              fc={fc}
+              color={C}
               label="Projected monthly GitHub Copilot cost"
-              area
-              height={260}
-              xFmt={(k) => monthLabel(fc.months[Number(k) - 1]?.month ?? '') || `M${k}`}
-              data={fc.months.map((x) => ({ key: String(x.m), values: [x.cost, x.credits, x.pool] }))}
-              series={[
-                { name: 'Cost', color: C, fmt: usd },
-                { name: 'Credits', color: C, fmt: int, tipOnly: true },
-                { name: 'Included pool', color: PREPAID, fmt: int, tipOnly: true },
-              ]}
+              extra={[{ series: { name: 'Included pool', color: PREPAID, fmt: int }, values: fc.months.map((x) => x.pool) }]}
             />
           </Panel>
           <Panel title="Forecast summary">
             <p className="prose">{fc.summary}</p>
-            <p className="section-note">{m.costHeadline}</p>
           </Panel>
         </div>
       </div>
