@@ -44,11 +44,15 @@ value, consumption and governance in one place. It includes Consumption Central 
 
 **Demo: what the report covers, page by page** *(1m 51s)*
 
-https://github.com/user-attachments/assets/702d94f7-74fc-43ad-a259-d00695f76a9c
+[![Watch the Consumption Central overview on YouTube](https://img.youtube.com/vi/JdOVx_6kw5Y/maxresdefault.jpg)](https://youtu.be/JdOVx_6kw5Y)
+
+**▶ [Watch overview on YouTube](https://youtu.be/JdOVx_6kw5Y)**
 
 **Setup guide: getting your own data in, every source, start to finish** *(10m 49s)*
 
-https://github.com/user-attachments/assets/480af64f-53ab-4f4c-b5d2-6f35546fdcfb
+[![Watch the Consumption Central setup guide on YouTube](https://img.youtube.com/vi/0fgvP8mutTo/maxresdefault.jpg)](https://youtu.be/0fgvP8mutTo)
+
+**▶ [Watch setup guide on YouTube](https://youtu.be/0fgvP8mutTo)**
 
 Where a video differs from the written steps, follow the steps.
 
