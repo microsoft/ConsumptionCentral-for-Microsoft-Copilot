@@ -10,6 +10,11 @@ chargeback model, undoing it in memory and running the fix again gives the
 shipped template back byte for byte, a second run changes nothing, a dropped
 description comes back, and text the fix does not recognise is refused.
 
+The last part expands each template to a PBIP project and runs the report page
+generator (chargeback/apply.py) on it: the page lands after the task page,
+reads only fields the model has, fits the page without overlaps, keeps the
+Cost page's slicer sync groups, and a second run changes nothing.
+
     python docs/scripts/test_chargeback.py
 """
 import contextlib
@@ -18,6 +23,7 @@ import csv
 import io
 import json
 import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -556,6 +562,148 @@ class CommandLine(unittest.TestCase):
                 F.publish(path, b"before", b"later")
             self.assertEqual(path.read_bytes(), b"after")
             self.assertEqual([entry.name for entry in Path(folder).iterdir()], ["template.pbit"])
+
+
+# ---------------------------------------------------------------------------
+# The report page generator (chargeback/apply.py), run on each template's PBIP
+# ---------------------------------------------------------------------------
+
+def fields(value):
+    """Every (kind, table, name) a visual reads, wherever it sits in the JSON."""
+    if isinstance(value, dict):
+        for kind in ("Column", "Measure"):
+            ref = value.get(kind)
+            if isinstance(ref, dict) and "Entity" in ref.get("Expression", {}).get("SourceRef", {}):
+                yield kind, ref["Expression"]["SourceRef"]["Entity"], ref["Property"]
+        for item in value.values():
+            yield from fields(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from fields(item)
+
+
+def snapshot(folder):
+    return {path.relative_to(folder).as_posix(): path.read_bytes() for path in folder.rglob("*") if path.is_file()}
+
+
+class ReportPage(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "chargeback"))
+        import page
+        import pbit_to_pbip
+        cls.page, cls.folder = page, tempfile.TemporaryDirectory()
+        cls.reports = {}
+        for variant, path in F.TEMPLATES.items():
+            with contextlib.redirect_stdout(io.StringIO()):
+                project = pbit_to_pbip.convert(path, cls.folder.name, variant.lower()[:4])
+            report = next(project.glob("*.Report"))
+            cls.reports[variant] = report, snapshot(report / "definition")
+            page.apply(report)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.folder.cleanup()
+
+    def pages(self, variant):
+        return self.reports[variant][0] / "definition" / "pages"
+
+    def visuals(self, variant):
+        root = self.pages(variant) / self.page.PAGE / "visuals"
+        return {path.parent.name: json.loads(path.read_text(encoding="utf-8"))
+                for path in root.glob("*/visual.json")}
+
+    def test_the_page_follows_the_task_page_and_nothing_else_moves(self):
+        for variant, (report, before) in self.reports.items():
+            after = snapshot(report / "definition")
+            changed = {name for name in after if before.get(name) != after[name]}
+            self.assertTrue(all(name.startswith(f"pages/{self.page.PAGE}/") or name == "pages/pages.json"
+                                for name in changed), variant)
+            order = json.loads(after["pages/pages.json"])["pageOrder"]
+            self.assertEqual(order[order.index("cowork-tasks") + 1], self.page.PAGE, variant)
+            old = json.loads(before["pages/pages.json"])["pageOrder"]
+            self.assertEqual([name for name in order if name != self.page.PAGE], old, variant)
+            page = json.loads(after[f"pages/{self.page.PAGE}/page.json"])
+            self.assertEqual((page["name"], page["displayName"]), (self.page.PAGE, self.page.DISPLAY_NAME))
+
+    def test_every_field_is_in_the_model(self):
+        for variant, (report, _) in self.reports.items():
+            model = json.loads(next(report.parent.glob("*.SemanticModel")).joinpath("model.bim")
+                               .read_text(encoding="utf-8-sig"))
+            known = {(kind, t["name"], item["name"]) for t in model["model"]["tables"]
+                     for kind, key in (("Column", "columns"), ("Measure", "measures")) for item in t.get(key, [])}
+            read = {ref for item in self.visuals(variant).values() for ref in fields(item)}
+            self.assertTrue(read, variant)
+            self.assertEqual(sorted(read - known), [], variant)
+            self.assertTrue({("Measure", "CoworkBilling", "Allocated Cost"),
+                             ("Column", "SpendingPolicy", "CostCentre"),
+                             ("Column", "SpendingPolicy", "ChargeCode")} <= read, variant)
+
+    def test_visuals_fit_the_page_without_overlapping(self):
+        for variant in self.reports:
+            boxes = {}
+            for name, item in self.visuals(variant).items():
+                p = item["position"]
+                self.assertEqual(item["name"], name)
+                self.assertTrue(p["x"] >= 0 and p["y"] >= 0 and p["x"] + p["width"] <= 1280
+                                and p["y"] + p["height"] <= 720, f"{variant} {name}")
+                boxes[name] = (p["x"], p["y"], p["x"] + p["width"], p["y"] + p["height"])
+            names = sorted(boxes)
+            for i, a in enumerate(names):
+                for b in names[i + 1:]:
+                    (ax, ay, ax2, ay2), (bx, by, bx2, by2) = boxes[a], boxes[b]
+                    self.assertFalse(ax < bx2 and bx < ax2 and ay < by2 and by < ay2, f"{variant}: {a} overlaps {b}")
+
+    def test_copied_slicers_stay_in_the_cost_pages_sync_groups(self):
+        for variant in self.reports:
+            visuals = self.visuals(variant)
+            cost = self.pages(variant) / self.page.COST_PAGE / "visuals"
+            for old, new, _, _ in self.page.COPIED:
+                source = json.loads((cost / old / "visual.json").read_text(encoding="utf-8-sig"))
+                self.assertEqual(visuals[new]["visual"].get("syncGroup"), source["visual"].get("syncGroup"))
+                self.assertEqual(visuals[new]["visual"].get("query"), source["visual"].get("query"))
+            groups = [visuals[new]["visual"].get("syncGroup") for old, new, _, _ in self.page.COPIED
+                      if visuals[new]["visual"]["visualType"] == "slicer"]
+            self.assertEqual(len(groups), 4)
+            self.assertTrue(all(groups), variant)
+
+    def test_a_second_run_changes_nothing(self):
+        report = self.reports[F.LOCAL][0]
+        first = snapshot(report / "definition")
+        self.page.apply(report)
+        self.assertEqual(snapshot(report / "definition"), first)
+
+    def copy_local(self, folder):
+        """A copy of the Local CSV project's report and model, as (report, model folder)."""
+        source = self.reports[F.LOCAL][0]
+        model = next(source.parent.glob("*.SemanticModel"))
+        return (shutil.copytree(source, Path(folder) / source.name),
+                shutil.copytree(model, Path(folder) / model.name))
+
+    def test_without_the_task_page_it_follows_the_cost_page(self):
+        with tempfile.TemporaryDirectory() as folder:
+            report, _ = self.copy_local(folder)
+            order_path = report / "definition" / "pages" / "pages.json"
+            order = json.loads(order_path.read_text(encoding="utf-8"))
+            order["pageOrder"] = [name for name in order["pageOrder"] if name not in ("cowork-tasks", self.page.PAGE)]
+            order_path.write_text(json.dumps(order), encoding="utf-8")
+            self.page.apply(report)
+            names = json.loads(order_path.read_text(encoding="utf-8"))["pageOrder"]
+            self.assertEqual(names[names.index("dept-chargeback") + 1], self.page.PAGE)
+
+    def test_a_model_without_the_chargeback_fix_is_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            report, model_dir = self.copy_local(folder)
+            target = report / "definition" / "pages" / self.page.PAGE
+            shutil.rmtree(target)
+            bim = model_dir / "model.bim"
+            model = json.loads(bim.read_text(encoding="utf-8-sig"))
+            billing = table(model, "CoworkBilling")
+            billing["measures"] = [m for m in billing["measures"] if m["name"] != "Allocated Cost"]
+            bim.write_text(json.dumps(model), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "no Allocated Cost. Run docs/scripts/fix_chargeback.py"):
+                self.page.apply(report)
+            self.assertFalse(target.exists())
 
 
 if __name__ == "__main__":
