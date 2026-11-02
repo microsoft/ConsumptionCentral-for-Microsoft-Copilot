@@ -24,6 +24,11 @@ This page covers where to find each, and which can be looked up automatically.
 Every one of these is also written into the parameter's own description, so hovering the **ⓘ** in
 the template prompt tells you what to type without coming here.
 
+The **Cowork: Chargeback** page and the app's Chargeback view price with the same three Cowork values:
+the prepaid share of each cost centre's credits at `PrepaidCreditRate`, the rest at `CreditRate`,
+with the share set by `PrepaidCreditBalance`. The Fabric App uses the commercial terms typed in it.
+No separate chargeback rate exists to set.
+
 ---
 
 ## Can any of it be looked up automatically?
@@ -155,6 +160,26 @@ Reservations API plus Cost Management.
 
 There is no single endpoint, so this is pipeline work, not a template query. If you hold P3 capacity
 and are on the Fabric path, it is the automation with the best return of the five.
+
+### Chargeback actuals — possible later, not built
+
+Chargeback today is an *allocation*: credits from Viva Insights, priced at the rates above. Azure Cost
+Management could supply the *billed* amount, through the same Query API that
+`Ingest_CommercialTerms.ipynb` already calls and `Ingest_Azure_AI.ipynb` uses for
+`copilot_payg_spend`. What it can and can't add:
+
+- **It can** give the billed pay-as-you-go total for Copilot credits per subscription, resource group
+  or tag, per day. That is enough to check the allocation against the invoice.
+- **It can't** give a cost per person or per spending policy. Cost Management is resource-grained,
+  with no person in the data, so it can't replace the allocation.
+- **Per department** actuals would need each cost centre billed through its own subscription, resource
+  group or tag, plus a mapping table from that scope to the `CostCentre` column.
+- Prepaid capacity shows as reservation draw-down (`AmortizedCost`), not per cost centre, so the
+  pro-rata share would still be needed.
+
+So the useful later step is a `copilot_cost_actuals` table and a billed-against-allocated
+reconciliation, not a different chargeback. The Fabric App's Cowork stage already shows what was
+billed in Azure next to the estimate.
 
 ### What genuinely cannot be automated
 

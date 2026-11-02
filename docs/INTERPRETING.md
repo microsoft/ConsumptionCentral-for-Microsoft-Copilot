@@ -107,6 +107,23 @@ The expert-equivalent scenario is explicitly assumed, not measured time saved. T
 selected, unmapped categories remain in observed totals, and monetary equivalent needs an explicit
 hourly value. Read the [task-page guide](COWORK-TASKS.md) before comparing value and consumption cost.
 
+### Optional chargeback page
+
+**2.2. Cowork: Chargeback**, after the task page, charges Cowork credits to each cost centre or
+department, with the spending policies under each. It needs the optional
+[billing columns](DATA-SOURCES.md#spending-policy-billing-columns-optional) in the spending policy
+file; without them, every policy shows as `(Not assigned)`. The app has the same Chargeback view, and
+the Fabric App has a Chargeback stage.
+
+Read **Allocated Cost**, not Cowork Total Cost, by cost centre. Cowork Total Cost applies the whole
+capacity pack to each row, so the rows would add up to more than the bill. Allocated Cost shares the
+pack pro rata: every cost centre gets the tenant's prepaid share of its credits at the prepaid rate
+and the rest at the pay-as-you-go rate, so the cost centres add up to Cowork Total Cost. Each person
+is charged to their current spending policy for the whole period.
+
+It is an allocation from usage and your rates, not an invoice line. Check the total against the bill
+before booking it.
+
 ## Reading the key figures
 
 ### Usage Intensity — three attributes, not one
@@ -170,6 +187,7 @@ very different responses.
 | **Someone appears twice in a total** | Usually two spending policies, or a cohort used as a filter across products | Check the Group By attribute is a single product's cohort |
 | **Forecast looks implausible** | Too little history | Load more weeks |
 | **Cost doesn't match the invoice** | Credit rate, or PAYG vs prepaid | Check the rate parameters against your agreement |
+| **Chargeback is all "(Not assigned)"** | The spending policy file has no billing columns, often after a fresh Viva export | Add `CostCentre` or `Department` back. See [billing columns](DATA-SOURCES.md#spending-policy-billing-columns-optional) |
 
 ---
 

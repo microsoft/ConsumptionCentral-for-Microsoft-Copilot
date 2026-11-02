@@ -113,6 +113,11 @@ To get the real names: Viva Insights → **Analysis results** → your query →
 **`M365SpendingPolicyMetaData.csv`** into your `DataFolder`. Nothing else from that ZIP is needed.
 The names appear on the next refresh.
 
+The same file can carry the optional billing columns for **2.2. Cowork: Chargeback**: `CostCentre`,
+`Department`, `BillingOwner` and `ChargeCode`. The connector has no policy table, so this file is the
+only place Viva Direct reads them from. Viva Insights doesn't export them, so add them back after each
+download. See [Spending policy billing columns](../docs/DATA-SOURCES.md#spending-policy-billing-columns-optional).
+
 ---
 
 ## Optional Cowork task breakdown

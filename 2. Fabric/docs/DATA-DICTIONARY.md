@@ -84,6 +84,8 @@ See [Cowork task inputs and assumptions](../../docs/COWORK-TASKS.md).
 
 ---
 
+<a id="viva_spending_policy"></a>
+
 ## `viva_spending_policy`
 
 Policy names and limits. One row per policy. Optional: without it, policies show as GUIDs but

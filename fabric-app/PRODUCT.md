@@ -48,7 +48,7 @@ left out.
 | ValueLens | Governance | Estate health · Exposure · Accountability · Review queue · Shadow AI |
 | ValueLens | Feedback | Feedback |
 | ValueLens | Guide | Glossary · Signal → Impact |
-| Consumption Central | Consumption | All products · Budget runway · Cowork / Work IQ · Copilot Studio · Azure |
+| Consumption Central | Consumption | All products · Budget runway · Cowork / Work IQ · Chargeback · Copilot Studio · Azure |
 | Beside the switcher | Ask · Assumptions | Questions to the data agent · Time per task |
 
 Known differences from the products' CSV apps (follow-ups, not dropped on purpose):
@@ -57,6 +57,8 @@ Known differences from the products' CSV apps (follow-ups, not dropped on purpos
   has the `AzureDeploymentHealth` and `AzureBillingReconciliation` tables. There is no GitHub
   Copilot view and no separate Consumption guide.
 - Cowork task mix and the forecast scenarios are folded into Budget runway.
+- Chargeback needs the billing columns in the Consumption Central model. On a model installed
+  before them, the stage asks for an update instead of querying.
 - ValueLens: the app/surface leaderboard table, the engagement-mode split and the role
   breakdowns are summarised rather than tabled.
 
