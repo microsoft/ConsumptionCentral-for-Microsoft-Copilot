@@ -1,0 +1,61 @@
+// Each cost centre, then the spending policies charged to it, priced the way
+// the report's Chargeback page prices them: every person's credits go to the
+// cost centre on their current spending policy, and the capacity pack is
+// shared pro rata across the tenant, so the rows add up to Cowork's total
+// cost. The measures are the query's own, so the rates typed in the app price
+// them and the model only needs the billing columns on SpendingPolicy. The
+// Department lens swaps CostCentre and Department throughout.
+DEFINE
+    MEASURE 'CoworkBilling'[Chargeback Prepaid Share %] =
+        // Tenant-wide: the period and the Cowork / Work IQ choice still apply.
+        VAR Used =
+            CALCULATE(
+                [Cowork Total Credits Used],
+                REMOVEFILTERS('SpendingPolicy'),
+                REMOVEFILTERS('Org'),
+                REMOVEFILTERS('Group By'),
+                REMOVEFILTERS('CoworkBilling')
+            )
+        RETURN DIVIDE(MIN(Used, [Cowork Prepaid Balance]), Used)
+    MEASURE 'CoworkBilling'[Allocated Credits] =
+        // A person's weeks under an earlier policy follow them to their current one.
+        VAR People = VALUES('CoworkBilling'[UserPrincipalName])
+        RETURN
+            IF(
+                NOT ISEMPTY(People),
+                CALCULATE(
+                    [Cowork Total Credits Used],
+                    REMOVEFILTERS('SpendingPolicy'),
+                    TREATAS(People, 'CoworkBilling'[UserPrincipalName])
+                )
+            )
+    MEASURE 'CoworkBilling'[Allocated Prepaid Credits] = [Allocated Credits] * [Chargeback Prepaid Share %]
+    MEASURE 'CoworkBilling'[Allocated Prepaid Cost] = [Allocated Prepaid Credits] * [Cowork Prepaid Rate Value]
+    MEASURE 'CoworkBilling'[Allocated PAYG Cost] =
+        ([Allocated Credits] - [Allocated Prepaid Credits]) * [Cowork PAYG Rate Value]
+EVALUATE
+SUMMARIZECOLUMNS(
+    ROLLUPADDISSUBTOTAL(
+        'SpendingPolicy'[CostCentre], "Is Grand Total",
+        ROLLUPGROUP(
+            'SpendingPolicy'[SpendingPolicyId],
+            'SpendingPolicy'[Policy Name],
+            'SpendingPolicy'[Department],
+            'SpendingPolicy'[BillingOwner],
+            'SpendingPolicy'[ChargeCode]
+        ), "Is Group Total"
+    ),
+    "Credits", [Allocated Credits],
+    "Prepaid Cost", [Allocated Prepaid Cost],
+    "PAYG Cost", [Allocated PAYG Cost],
+    "Cost", [Allocated Prepaid Cost] + [Allocated PAYG Cost],
+    // Tenant-wide, so it would keep every policy that charged nothing.
+    "Prepaid Share", IF(NOT ISBLANK([Allocated Credits]), [Chargeback Prepaid Share %])
+)
+ORDER BY
+    [Is Grand Total] DESC,
+    [Is Group Total] DESC,
+    [Cost] DESC,
+    'SpendingPolicy'[CostCentre] ASC,
+    'SpendingPolicy'[Policy Name] ASC,
+    'SpendingPolicy'[SpendingPolicyId] ASC

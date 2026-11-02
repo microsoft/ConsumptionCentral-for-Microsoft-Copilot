@@ -25,6 +25,7 @@ import {
 import { consumptionConnection } from "@/queries/shared";
 import { AzureStage } from "./azure-stage";
 import { BudgetRunwayStage } from "./budget-runway-stage";
+import { ChargebackStage } from "./chargeback-stage";
 import { CoworkStage } from "./cowork-stage";
 import { OverviewStage } from "./overview-stage";
 import { useConsumptionSummary, useConsumptionTable } from "./data";
@@ -92,6 +93,7 @@ function ConsumptionPage() {
             {show("consumption-overview") && <OverviewStage />}
             {show("budget-runway") && <BudgetRunwayStage options={options} azure={azure} sources={sources.row} />}
             {show("cowork-credits") && <CoworkStage options={options} rates={rates} />}
+            {show("chargeback") && <ChargebackStage options={options} rates={rates} />}
             {show("studio-credits") && <StudioStage options={options} rates={rates} />}
             {show("azure-spend") && <AzureStage options={options} />}
         </div>
