@@ -69,6 +69,12 @@ Where a video differs from the written steps, follow the steps.
 
 ## Before you start
 
+- [ ] <a id="viva-identification-before-setup"></a>**Recommended: turn on Viva identification first**
+  for department breakdowns and per-person cross-product spend. A **Global Administrator or
+  AI Administrator** opens **Microsoft 365 admin center → Settings → Org settings →
+  Viva feature access → Viva Insights**. Create or edit a policy with **Feature = Identifiable
+  Export** and **Access = On**. Allow **up to 24 hours**, then re-run your exports.
+  It is not retroactive. [Details, privacy and preview caveats →](docs/DATA-SOURCES.md#identified-vs-de-identified)
 - [ ] Data for at least one product. [What each needs →](docs/DATA-SOURCES.md)
 - [ ] Two admin settings, turned on once. [Which →](app/README.md#admin-settings)
 - [ ] Power Apps Premium or Copilot Credits for each app user. [Details →](app/README.md#licensing)
@@ -111,6 +117,8 @@ flowchart LR
 4. Pick a route. **Fabric** loads your data into a workspace daily. **No Fabric: SharePoint + PAX**
    reads a SharePoint folder and also deploys the app.
 5. Answer the questions. The defaults suit most organisations.
+   For Viva per-person or department views, complete the [identification step](#viva-identification-before-setup)
+   before loading your exports.
 6. Approve the plan. Nothing is created before you do.
 7. Follow the cards on the **Done** page, then [check it worked](docs/INSTALL.md#check-it-worked).
 
@@ -137,7 +145,8 @@ route, build the app first so the installer can deploy it from a clone:
 
    Not sure? Start with Local CSV. Try it on the [sample data](1.%20Local%20CSV/sample-data/).
 5. <a id="viva-identification"></a><a id="turn-on-viva-identification-only-if-you-want-per-person-or-department-views"></a>**Optional: per-person and department views.**
-   An admin turns on Viva identification. [Steps →](docs/DATA-SOURCES.md#identified-vs-de-identified)
+   An admin must turn on Viva identification before you get your exports.
+   Follow the [early identification step](#viva-identification-before-setup).
 
 **Already using a Power BI template (Local CSV or Viva Direct)?** Deploy the app (step 1), then
 load the same exports in **Change data**. Your report keeps working. On Viva Direct, download the
