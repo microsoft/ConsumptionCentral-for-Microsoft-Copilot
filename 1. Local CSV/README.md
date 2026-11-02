@@ -25,6 +25,10 @@ Anywhere. `C:\Consumption Central\Data` is fine.
 
 File names don't have to match exactly — the template recognises the usual variations.
 
+To charge Cowork credits back to cost centres or departments, add the optional billing columns to
+`SpendingPolicyMetadata.csv` before you load: see
+[Spending policy billing columns](../docs/DATA-SOURCES.md#spending-policy-billing-columns-optional).
+
 **[Full click-paths and permissions →](../docs/DATA-SOURCES.md)**
 
 ### 3. Open the template

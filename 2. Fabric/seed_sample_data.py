@@ -131,6 +131,10 @@ def main():
         "plan_limit": pol["PlanLimit"].astype("Int64"),
         "user_limit": pol["UserLimit"].astype("Int64"),
         "included_services": pol["IncludedServices"].astype(str),
+        # Optional billing columns added to the policy export for chargeback.
+        **{col: (pol[src].astype("string") if src in pol else pd.Series([None] * len(pol), dtype="string"))
+           for col, src in (("cost_centre", "CostCentre"), ("department", "Department"),
+                            ("billing_owner", "BillingOwner"), ("charge_code", "ChargeCode"))},
     }))
 
     # ---- Studio -----------------------------------------------------------

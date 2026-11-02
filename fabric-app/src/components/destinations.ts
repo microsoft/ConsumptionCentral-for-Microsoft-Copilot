@@ -122,6 +122,7 @@ export const destinations = [
             { id: "consumption-overview", label: "All products", ready: true },
             { id: "budget-runway", label: "Budget runway", ready: true },
             { id: "cowork-credits", label: "Cowork / Work IQ", ready: true },
+            { id: "chargeback", label: "Chargeback", ready: true },
             { id: "studio-credits", label: "Copilot Studio", ready: true },
             { id: "azure-spend", label: "Azure", ready: true },
         ],

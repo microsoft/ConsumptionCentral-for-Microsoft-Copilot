@@ -32,7 +32,7 @@ function useRequirementProbe(requirement: ModelObjectRequirement): RequirementPr
 
 /** Checks that a page's newer model dependencies are present before it runs its page queries. */
 export function useModelRequirementState(scope: ModelRequirementScope): RequirementProbeState {
-    const requirements = MODEL_REQUIREMENTS[scope];
-    const governance = useRequirementProbe(requirements[0]!);
-    return useMemo(() => combineRequirementStates([governance]), [governance]);
+    const [requirement] = MODEL_REQUIREMENTS[scope];
+    const probe = useRequirementProbe(requirement);
+    return useMemo(() => combineRequirementStates([probe]), [probe]);
 }

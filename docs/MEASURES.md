@@ -7,7 +7,7 @@ field list.
 you see in a tooltip when you hover a field in Power BI. If a measure is missing, it has no
 description in the model and should be given one.
 
-221 documented measures.
+235 documented measures.
 
 ---
 
@@ -638,6 +638,51 @@ Consumption that falls inside the prepaid commitment. What the period actually c
 
 **`Seat Saving Basis Note`** · *CoworkBilling*  
 States the basis used to price the right-sizing opportunity, so the number on the page is never read as a cash refund.
+
+---
+
+## Chargeback
+
+What to charge each cost centre or department on the **Cowork: Chargeback** page. The cost centre
+and department come from the optional billing columns of the spending policy file (see
+[Spending policy billing columns](DATA-SOURCES.md#spending-policy-billing-columns-optional)).
+
+**`Allocated Cost`** · *CoworkBilling*  
+What to charge back: the prepaid share at the prepaid rate plus the rest at the pay-as-you-go rate. Its total over every cost centre is Cowork Total Cost. Use it rather than Cowork Total Cost by cost centre, which would give every cost centre the whole capacity pack.
+
+**`Allocated Cost Share %`** · *CoworkBilling*  
+This row's share of the Allocated Cost of everything selected.
+
+**`Allocated Credits`** · *CoworkBilling*  
+Credits used in the period by the people in scope, each charged to their own spending policy for the whole period.
+
+**`Allocated PAYG Cost`** · *CoworkBilling*  
+Allocated PAYG Credits at the pay-as-you-go rate.
+
+**`Allocated PAYG Credits`** · *CoworkBilling*  
+The pay-as-you-go part of Allocated Credits: what the capacity pack did not cover.
+
+**`Allocated Prepaid Cost`** · *CoworkBilling*  
+Allocated Prepaid Credits at the prepaid rate.
+
+**`Allocated Prepaid Credits`** · *CoworkBilling*  
+The prepaid part of Allocated Credits: its share of the capacity pack, pro rata.
+
+**`Chargeback $`** · *CoworkBilling*  
+List-price cost: credits used at the pay-as-you-go rate, ignoring any capacity pack. For what to charge each cost centre, use Allocated Cost.
+
+**`Chargeback Prepaid Share %`** · *CoworkBilling*  
+The tenant's prepaid share for the period: prepaid credits used divided by all credits used, across every person whatever the policy, org or Group By filters. Each cost centre is charged this share of its credits at the prepaid rate.
+
+---
+
+## Budget
+
+**`Chargeback`** · *CoworkBilling*  
+Overage only: the cost of credits used above each person's allowance (Over Limit $). For what to charge each cost centre, use Allocated Cost.
+
+**`Chargeback %`** · *CoworkBilling*  
+Overage as a share of allowance: credits used above each person's allowance divided by the allowance.
 
 ---
 

@@ -25,7 +25,7 @@ function CoworkFilters({ view }: { view: string }) {
       <Select label="Spending policy" value={filters.policy ?? ''} onChange={(v) => setFilter('policy', v)} options={opts(policies)} allLabel="All policies" />
       <GroupByFields />
       <Select label="Usage cohort" value={filters.cohort ?? ''} onChange={(v) => setFilter('cohort', v)} options={opts(cohorts)} allLabel="All cohorts" />
-      {view === 'cost' && (
+      {(view === 'cost' || view === 'chargeback') && (
         <NumberField
           label="Capacity pack balance"
           value={settings.pack}

@@ -246,6 +246,30 @@ python docs\scripts\check_cowork_kpi_cards.py
 Repeat for every variant with its own profile. `check_cowork_kpi_cards.py` replays the same patch
 against every shipped template and fails if anything would still change.
 
+### Chargeback page
+
+The chargeback model (four optional `SpendingPolicy` billing columns and the `Allocated …`
+measures) is a model-only patch, so `fix_chargeback.py` writes it straight into all three templates.
+The **2.2. Cowork: Chargeback** page is a report-layer change, so it comes in through a PBIP
+project. `docs\scripts\chargeback\apply.py` generates it, and refuses a model that hasn't had
+`fix_chargeback.py` run on it:
+
+```powershell
+python docs\scripts\fix_chargeback.py
+python docs\scripts\pbit_to_pbip.py "1. Local CSV\Consumption Central - Local CSV.pbit" --out C:\pbip --project-name csv
+python docs\scripts\chargeback\apply.py C:\pbip\csv\csv.pbip
+# Desktop: open csv.pbip, refresh against sample-data\, check the page, File -> Export -> Power BI template over the repo copy
+python docs\scripts\fix_pbit_defaults.py --path "1. Local CSV\Consumption Central - Local CSV.pbit"
+python docs\scripts\fix_chargeback.py
+python docs\scripts\check_chargeback.py
+```
+
+Repeat for `2. Fabric` and `3. Viva Direct`. If Desktop can't reach a variant's source, use
+`prepare_offline_export.py` and its neutral reference as described above. The export drops
+descriptions, which is why `fix_chargeback.py` runs again afterwards. The page copies the Cost
+page's period, service, pack balance and spending policy slicers into the same sync groups, so a
+selection carries between the two pages. A second run of `apply.py` changes nothing.
+
 ### Keep `docs/scripts/*_query_org/` in step with the templates
 
 `fix_viva_query_org.py` repairs the org queries by *replacing* them with the `.m` files under
@@ -274,6 +298,7 @@ take `--dry-run` and all are idempotent:
 
 | Script | Repairs |
 |---|---|
+| `fix_chargeback.py` | Local CSV, Fabric and Viva Direct. Loads the optional `CostCentre`, `Department`, `BillingOwner` and `ChargeCode` columns from the spending policy file (Fabric: `viva_spending_policy`) into `SpendingPolicy`, and adds the `Allocated …` measures in `CoworkBilling`'s Chargeback folder, which share the capacity pack pro rata at the template's own rates. Edits both model parts; `--check` exits 1 if a template is stale, and CI runs `check_chargeback.py` and `test_chargeback.py`. The page is a separate report-layer step: see [Chargeback page](#chargeback-page). |
 | `fix_limit_and_token_measures.py` | Local CSV, Fabric and Viva Direct. Ports three of Analytics Hub's measure fixes: `Users Over Limit` counts only people who have a Cowork limit and gives 0 rather than blank when nobody is over, `Policy Allowance` is blank rather than 0 when no spending policy sets a limit, and `Foundry Tokens (M)` converts each billing row by its meter's unit (per 1K or per 1M tokens) and leaves out meters that aren't tokens. Only `DataModelSchema` changes, and each measure moves only from the exact text it shipped with. A Desktop re-export drops descriptions, so run `fix_pbit_defaults.py --reference` first. `--check` exits 1 if a template is stale, and CI runs `check_limit_and_token_measures.py` and `test_limit_and_token_measures.py`. |
 | `fix_org_upn_case.py` | Folds the `Org` key to lower case. `Table.Distinct`, `Table.NestedJoin` and `Record.FromList` all compare case-sensitively while the DAX relationship does not, so a tenant whose directory says `AlexW@x` and whose Viva export says `alexw@x` got two `Org` rows for one person and the refresh died on the duplicate key. Only bites when two sources are present at once. |
 | `fix_query_body_drift.py` | Resettles the `UnappliedChanges` copy of a query on the schema copy. A Desktop re-export trims trailing blank lines from one and not the other; it refuses to touch anything that differs by more than that. |

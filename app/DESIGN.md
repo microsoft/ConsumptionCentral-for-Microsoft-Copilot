@@ -91,7 +91,7 @@ components:
 
 Navigation always has three levels, in the same places:
 1. **Top tabs:** Overview, Cowork & Work IQ, Copilot Studio, GitHub Copilot, Azure AI Foundry, Guide.
-2. **Segmented sub-views** under the page title. Each product tab has Consumption, Cost, Optimization and Forecast; Cowork also has Tasks. Azure has Spend, Capacity & health and Reconciliation.
+2. **Segmented sub-views** under the page title. Each product tab has Consumption, Cost, Optimization and Forecast; Cowork also has Chargeback and Tasks. Azure has Spend, Capacity & health and Reconciliation.
 3. **Filters** in the toolbar. Each tab shows only its own slicers, matching the Power BI page, and a set filter is tinted. Filters reset when you change tab.
 
 On narrow screens the tab strip and the segmented control scroll sideways. The active tab and segment are scrolled into view automatically, so the current location is never hidden off-screen.
