@@ -6,6 +6,7 @@
 //-----------------------------------------------------------------------
 
 import { describe, expect, it } from "vitest";
+import { chargeback } from "@/queries/consumption";
 import { governanceExposure, governanceOwners, governanceReviewQueue, governanceSummary } from "@/queries/governance";
 import {
     MODEL_REQUIREMENTS,
@@ -53,5 +54,20 @@ describe("model requirements", () => {
         for (const column of governance.columns) {
             expect(dax).toContain(`'Agents 365'[${column}]`);
         }
+    });
+
+    it("probes the Consumption Central model for every billing column the Chargeback stage reads", () => {
+        const [chargebackRequirement] = MODEL_REQUIREMENTS.chargeback;
+        expect(chargebackRequirement.model).toBe(chargeback().connection);
+        const dax = [chargeback("costCentre").query, chargeback("department").query].join("\n");
+        for (const column of chargebackRequirement.columns) {
+            expect(dax).toContain(`'SpendingPolicy'[${column}]`);
+        }
+        expect(
+            readRequirementProbeState(chargebackRequirement, {
+                loaded: false,
+                error: "The column 'SpendingPolicy'[CostCentre] cannot be found or may not be used in this expression.",
+            }),
+        ).toEqual({ status: "outdated", missing: ["SpendingPolicy[CostCentre]"] });
     });
 });

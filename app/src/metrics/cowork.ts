@@ -1,7 +1,7 @@
 import type { CoworkPerson, CreditRow, Dataset } from '../data/types'
 import { ZERO_GUID } from '../data/types'
 import type { Filters, Settings } from '../data/store'
-import { dayNum } from '../data/csv'
+import { dayNum, eomonth } from '../data/csv'
 import { groupAttr, groupOf, inGroup } from './common'
 import { clamp, div, groupRows, ols, scenarioRate } from './stats'
 import { int, pct, usd, usd4 } from '../ui/format'
@@ -318,10 +318,26 @@ export function forecastModel(ds: Dataset, f: Filters, m: CoworkModel) {
   const t = trend(ds, m.credits)
   const g = growthApplied(t, f.growth)
   const proj = projection(m.used, g, m.cost.blended)
+  const flat = projection(m.used, 0, m.cost.blended)
+  const fitted = scenarioRate(f.growth || 'fitted') === null
   const groups = m.groups.map((gr) => {
     const gt = trend(ds, selectCredits(ds, f, gr.people))
     const gg = growthApplied(gt, f.growth)
     return { group: gr.group, used: gr.used, growth: gg, yearCost: projection(gr.used, gg, gr.cost.blended).yearCost }
   })
-  return { trend: t, growth: g, ...proj, groups, summary: forecastSummary(m.used, t, g, proj.yearCost, f.growth) }
+  return {
+    trend: t,
+    growth: g,
+    fitted,
+    // Under six weeks of history the trend is too short to project growth.
+    reliable: !fitted || (t.confidence !== 'Too early to say' && t.confidence !== 'Indicative only'),
+    confidence: t.confidence,
+    runRate: (m.used ?? 0) * (m.cost.blended ?? 0),
+    ...proj,
+    months: proj.months.map((x, i) => ({ ...x, month: ds.coworkMax ? eomonth(ds.coworkMax, x.m) : '', flatCredits: flat.months[i].credits, flatCost: flat.months[i].cost })),
+    flatYearCost: flat.yearCost,
+    flatYearCredits: flat.yearCredits,
+    groups,
+    summary: forecastSummary(m.used, t, g, proj.yearCost, f.growth),
+  }
 }

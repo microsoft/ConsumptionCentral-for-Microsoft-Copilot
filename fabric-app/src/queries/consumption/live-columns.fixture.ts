@@ -60,6 +60,22 @@ export const liveColumns = {
         "[Billing Name]",
         "[Total]",
     ],
+    // Authored contract: the billing columns are newer than the last live run.
+    chargeback: [
+        "SpendingPolicy[CostCentre]",
+        "SpendingPolicy[SpendingPolicyId]",
+        "SpendingPolicy[Policy Name]",
+        "SpendingPolicy[Department]",
+        "SpendingPolicy[BillingOwner]",
+        "SpendingPolicy[ChargeCode]",
+        "[Is Grand Total]",
+        "[Is Group Total]",
+        "[Credits]",
+        "[Prepaid Cost]",
+        "[PAYG Cost]",
+        "[Cost]",
+        "[Prepaid Share]",
+    ],
     studioCreditsSummary: [
         "[Credits Consumed]",
         "[Active Users]",

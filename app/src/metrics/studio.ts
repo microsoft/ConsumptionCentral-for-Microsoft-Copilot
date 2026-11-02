@@ -1,6 +1,6 @@
 import type { Dataset, StudioAgentRow, StudioTenantRow, StudioUserRow } from '../data/types'
 import type { Filters, Settings } from '../data/store'
-import { addDays, dayNum } from '../data/csv'
+import { addDays, dayNum, eomonth } from '../data/csv'
 import { groupAttr, groupOf } from './common'
 import { clamp, div, groupRows, ols, scenarioRate } from './stats'
 import { dateLabel, int, pct, pct0, usd } from '../ui/format'
@@ -225,12 +225,17 @@ export function studioModel(ds: Dataset, f: Filters, s: Settings) {
   const cost30 = proj30 === null ? null : proj30 * (effective ?? 0)
   const months = Array.from({ length: 12 }, (_, i) => {
     const credits = (runRate ?? 0) * 30 * (1 + growth) ** (i + 1)
-    return { m: i + 1, credits, cost: credits * (effective ?? 0) }
+    const flatCredits = (runRate ?? 0) * 30
+    return { m: i + 1, month: hi ? eomonth(hi, i + 1) : '', credits, cost: credits * (effective ?? 0), flatCredits, flatCost: flatCredits * (effective ?? 0) }
   })
   const yearCredits = months.reduce((a, m) => a + m.credits, 0)
   const yearCost = months.reduce((a, m) => a + m.cost, 0)
+  const flatYearCredits = (runRate ?? 0) * 30 * 12
+  const flatYearCost = flatYearCredits * (effective ?? 0)
 
   const fitted = scen === null
+  // Under 14 days the history is too short to project growth.
+  const reliable = !fitted || (confidence !== 'No data' && confidence !== 'Indicative only')
   const basis = fitted
     ? fit === null
       ? ' A fit needs at least 28 calendar days and 7 days with positive consumption. This selection has insufficient usable history, so the daily average is projected flat.'
@@ -290,7 +295,25 @@ export function studioModel(ds: Dataset, f: Filters, s: Settings) {
     byAction,
     byModel,
     byFeature,
-    forecast: { runRate, fit, growth, confidence, coverage, proj30, cost30, months, yearCredits, yearCost, note: forecastNote, summary: forecastSummary },
+    forecast: {
+      runRate,
+      monthlyCost: (runRate ?? 0) * 30 * (effective ?? 0),
+      fit,
+      growth,
+      fitted,
+      reliable,
+      confidence,
+      coverage,
+      proj30,
+      cost30,
+      months,
+      yearCredits,
+      yearCost,
+      flatYearCredits,
+      flatYearCost,
+      note: forecastNote,
+      summary: forecastSummary,
+    },
     snapshotNote: notes.join(' '),
   }
 }

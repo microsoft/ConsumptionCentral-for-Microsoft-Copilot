@@ -282,7 +282,8 @@ run (the pipeline's `SkipCowork` parameter), so the other loads aren't marked as
 they fail at `Refresh_Cowork_Credits`. Fabric also adds **DataflowsStagingLakehouse** and
 **DataflowsStagingWarehouse** to the workspace for the Dataflow; leave them in place. The spending
 policies still come from the `SpendingPolicyMetadata.csv` export, and exports can fill weeks
-before the query.
+before the query. For the Chargeback page, add the optional billing columns to that file before you
+upload it (see [Spending policy billing columns](../docs/DATA-SOURCES.md#spending-policy-billing-columns-optional)).
 
 ### Cowork task categories
 

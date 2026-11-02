@@ -445,6 +445,7 @@ describe("The band", () => {
             "All products",
             "Budget runway",
             "Cowork / Work IQ",
+            "Chargeback",
             "Copilot Studio",
             "Azure",
         ]);

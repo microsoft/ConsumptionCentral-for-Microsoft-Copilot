@@ -5,10 +5,14 @@ import { BarList, LineChart } from '../ui/charts'
 import { DataTable } from '../ui/DataTable'
 import { dayLabel, dec1, dec2, int, money, pct } from '../ui/format'
 import { Kpi, KpiRow, Note, Panel } from '../ui/primitives'
-import { PRODUCT_COLOR, SERIES } from '../ui/theme'
+import { NEUTRAL, OVER, PRODUCT_COLOR, SERIES, UNDER } from '../ui/theme'
 import { N } from './helpers'
 
 const C = PRODUCT_COLOR.azure
+
+/** A difference that rounds to zero in whole currency units is a match, not a variance. */
+const isVariance = (d: number | null): d is number => d !== null && Math.abs(d) >= 0.5
+const diffColor = (d: number | null) => (!isVariance(d) ? NEUTRAL : d > 0 ? OVER : UNDER)
 
 export function AzureSpend() {
   const { ds, filters } = useData()
@@ -37,7 +41,7 @@ export function AzureSpend() {
             series={[
               { name: 'Model', color: C, fmt: cur },
               { name: 'AI service', color: SERIES[0], fmt: cur },
-              { name: 'Supporting', color: SERIES[4], fmt: cur },
+              { name: 'Supporting', color: NEUTRAL, fmt: cur },
             ]}
           />
         </Panel>
@@ -127,7 +131,7 @@ export function AzureRecon() {
       <KpiRow>
         <Kpi tone="azure" label="Usage estimate" value={cur(N(m.estimate))} sub="product-derived" />
         <Kpi label="Azure actual" value={cur(N(m.actual))} sub="shared billing pool" />
-        <Kpi tone={m.difference === null ? 'neutral' : 'warn'} label="Difference" value={cur(N(m.difference))} sub={m.status} help="Azure actual minus usage estimate. Only shown when period, pool and currency are aligned." />
+        <Kpi tone={isVariance(m.difference) ? 'warn' : 'neutral'} label="Difference" value={cur(N(m.difference))} sub={m.status} help="Azure actual minus usage estimate. Only shown when period, pool and currency are aligned." />
         <Kpi label="Evidence" value={cur(N(m.evidence))} sub="fictional sample evidence" />
         <Kpi label="Unexplained residual" value={cur(N(m.residual))} sub="difference less evidence" />
       </KpiRow>
@@ -135,8 +139,8 @@ export function AzureRecon() {
         <Panel title="Usage estimate by product">
           <BarList label="Usage estimate by product" color={C} fmt={cur} items={m.byProduct.map((p) => ({ key: p.product, label: p.product, value: N(p.estimate) }))} />
         </Panel>
-        <Panel title="Difference by status" note="Aligned groups only.">
-          <BarList label="Difference by status" color={SERIES[2]} fmt={cur} items={aligned.map((s) => ({ key: s.label, label: s.label, value: N(s.difference) }))} />
+        <Panel title="Difference by status" note="Aligned groups only. Red is billed above the estimate, teal below it, grey a match.">
+          <BarList label="Difference by status" color={NEUTRAL} fmt={cur} items={aligned.map((s) => ({ key: s.label, label: s.label, value: N(s.difference), color: diffColor(s.difference) }))} />
         </Panel>
       </div>
       <Note title="Comparison guardrails">{RECON_NOTE}</Note>

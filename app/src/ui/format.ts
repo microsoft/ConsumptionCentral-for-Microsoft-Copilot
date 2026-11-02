@@ -48,7 +48,8 @@ const sign = (n: number, dp = 0) => (Math.round(n * 10 ** dp) < 0 ? '−' : '')
 
 /** US dollars, whole. */
 export const usd: Fmt = (n) => (ok(n) ? `${sign(n)}$${nf0.format(Math.abs(n))}` : DASH)
-export const usd2: Fmt = (n) => (ok(n) ? `${sign(n, 2)}$${nf2.format(Math.abs(n))}` : DASH)
+/** US dollars with cents below $1,000; whole dollars from $1,000 up, where cents are noise. */
+export const usd2: Fmt = (n) => (ok(n) ? (Math.abs(n) >= 1000 ? usd(n) : `${sign(n, 2)}$${nf2.format(Math.abs(n))}`) : DASH)
 export const usd4: Fmt = (n) => (ok(n) ? `${sign(n, 4)}$${nf4.format(Math.abs(n))}` : DASH)
 export const usdCompact: Fmt = (n) => (ok(n) ? `${sign(n, 1)}$${compact(Math.abs(n))}` : DASH)
 

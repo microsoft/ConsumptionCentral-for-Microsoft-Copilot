@@ -15,7 +15,7 @@ compares like with like.
 | File | Rows | Represents |
 |---|---|---|
 | `PersonServiceCreditsMetrics.csv` | 1,500 | Cowork credits, person × week, **de-identified shape** |
-| `SpendingPolicyMetadata.csv` | 42 | Spending policies with plan and user limits |
+| `SpendingPolicyMetadata.csv` | 42 | Spending policies with plan and user limits, plus the optional billing columns (`CostCentre`, `Department`, `BillingOwner`, `ChargeCode`) for chargeback |
 | `PersonPolicyMap.csv` | 1,020 | Person → policy map |
 | `PeopleMetaData.csv` | 1,020 | Organisation and licence flag per person |
 | `entra_org.csv` | 1,020 | Department, cost centre, job family, manager, country, city |

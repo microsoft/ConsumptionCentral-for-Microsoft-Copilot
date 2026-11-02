@@ -9,6 +9,8 @@ export interface Series {
   fmt?: Fmt
   /** Shown in the tooltip only: not drawn, not scaled, not in the legend. */
   tipOnly?: boolean
+  /** Drawn as a dashed reference line, never filled. */
+  dashed?: boolean
 }
 export interface Point {
   key: string
@@ -75,17 +77,16 @@ export function LineChart(props: {
           const pts = data.map((d, i) => `${x(i)},${y(d.values[si])}`)
           return (
             <g key={s.name}>
-              {props.area && (
+              {props.area && !s.dashed && (
                 <path
                   d={`M${x(0)},${y(0)} L${pts.join(' L')} L${x(data.length - 1)},${y(0)} Z`}
                   fill={s.color}
                   opacity={0.12}
                 />
               )}
-              <polyline points={pts.join(' ')} fill="none" stroke={s.color} strokeWidth={2.25} strokeLinejoin="round" />
-              {data.map((d, i) => (
-                <circle key={d.key} cx={x(i)} cy={y(d.values[si])} r={hover === i ? 4.5 : 2.5} fill={s.color} />
-              ))}
+              <polyline points={pts.join(' ')} fill="none" stroke={s.color} strokeWidth={2.25} strokeLinejoin="round" strokeDasharray={s.dashed ? '6 5' : undefined} />
+              {!s.dashed &&
+                data.map((d, i) => <circle key={d.key} cx={x(i)} cy={y(d.values[si])} r={hover === i ? 4.5 : 2.5} fill={s.color} />)}
             </g>
           )
         })}
@@ -203,6 +204,7 @@ export interface BarItem {
   value: number
   hint?: string
   color?: string
+  href?: string
 }
 
 /** Ranked horizontal bars. Replaces the PBI treemaps and single-measure org column charts. */
@@ -246,6 +248,8 @@ export function BarList(props: {
                 <button type="button" onClick={() => props.onSelect!(i.key)} aria-pressed={props.selected === i.key}>
                   {inner}
                 </button>
+              ) : i.href ? (
+                <a href={i.href}>{inner}</a>
               ) : (
                 <div>{inner}</div>
               )}

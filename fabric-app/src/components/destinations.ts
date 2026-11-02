@@ -122,6 +122,7 @@ export const destinations = [
             { id: "consumption-overview", label: "All products", ready: true },
             { id: "budget-runway", label: "Budget runway", ready: true },
             { id: "cowork-credits", label: "Cowork / Work IQ", ready: true },
+            { id: "chargeback", label: "Chargeback", ready: true },
             { id: "studio-credits", label: "Copilot Studio", ready: true },
             { id: "azure-spend", label: "Azure", ready: true },
         ],
@@ -178,7 +179,7 @@ export const destinations = [
         filters: ["dateRange", "organizations"] as FilterKey[],
         stages: [
             { id: "license-readiness", label: "License readiness", ready: true },
-            { id: "habit-licence", label: "Heavy users without a licence", ready: true },
+            { id: "habit-licence", label: "Heavy users without a license", ready: true },
             { id: "cowork-readiness", label: "Cowork readiness", ready: true },
         ],
     },
@@ -234,7 +235,7 @@ export const destinations = [
     },
     {
         id: "appendix",
-        label: "Appendix",
+        label: "Guide",
         tab: "Guide",
         product: "valuelens",
         connection,

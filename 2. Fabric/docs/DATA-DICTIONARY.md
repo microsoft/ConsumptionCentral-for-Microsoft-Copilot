@@ -84,6 +84,8 @@ See [Cowork task inputs and assumptions](../../docs/COWORK-TASKS.md).
 
 ---
 
+<a id="viva_spending_policy"></a>
+
 ## `viva_spending_policy`
 
 Policy names and limits. One row per policy. Optional: without it, policies show as GUIDs but
@@ -96,6 +98,14 @@ pricing is unaffected, because the limits already travel inline on the metrics r
 | `plan_limit` | long | Monthly credit budget for the whole policy |
 | `user_limit` | long | Optional per-person cap within it |
 | `included_services` | string | e.g. `Cowork;WorkIQ` |
+| `cost_centre` | string | Optional `CostCentre` column (`CostCenter` also accepted). Null when blank or missing; the Chargeback page shows `(Not assigned)` |
+| `department` | string | Optional `Department` column. Null when blank or missing; shown as `(Not assigned)` |
+| `billing_owner` | string | Optional `BillingOwner` column: who approves the charge |
+| `charge_code` | string | Optional `ChargeCode` column: the finance code the charge is booked to |
+
+The four billing columns are added to the spending policy file by hand, so a fresh Viva export
+doesn't have them; re-add them after each export. Header matching ignores case, spaces, `_` and `-`.
+See [Spending policy billing columns](../../docs/DATA-SOURCES.md#spending-policy-billing-columns-optional).
 
 **Load:** full replace. Small and slow-moving.
 

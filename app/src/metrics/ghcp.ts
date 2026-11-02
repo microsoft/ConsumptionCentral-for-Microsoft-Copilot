@@ -130,22 +130,31 @@ export function ghModel(ds: Dataset, f: Filters, s: Settings) {
   const scen = scenarioRate(f.growth || 'fitted')
   const fitted = scen === null
   const growth = fitted ? (observedGrowth ?? 0) : scen
+  const monthCost = (m: number, c: number) => {
+    const p = lastDay && eomonth(lastDay, m) >= s.changeDate ? poolNext : pool
+    return { pool: p, creditCost: Math.max(0, c - p) * s.githubRate }
+  }
   const forecastMonths = Array.from({ length: 12 }, (_, i) => {
     const m = i + 1
     const c = latestMonth * (1 + growth) ** m
-    const p = lastDay && eomonth(lastDay, m) >= s.changeDate ? poolNext : pool
-    const creditCost = Math.max(0, c - p) * s.githubRate
-    return { m, month: lastDay ? eomonth(lastDay, m) : '', credits: c, pool: p, creditCost, cost: seatCost + creditCost }
+    const { pool: p, creditCost } = monthCost(m, c)
+    const flat = monthCost(m, latestMonth)
+    return { m, month: lastDay ? eomonth(lastDay, m) : '', credits: c, pool: p, creditCost, cost: seatCost + creditCost, flatCredits: latestMonth, flatCost: seatCost + flat.creditCost }
   })
   const yearCost = forecastMonths.reduce((a, m) => a + m.cost, 0)
   const yearCredits = forecastMonths.reduce((a, m) => a + m.credits, 0)
+  const flatYearCost = forecastMonths.reduce((a, m) => a + m.flatCost, 0)
+  const flatYearCredits = latestMonth * 12
+  const runRate = seatCost + Math.max(0, latestMonth - pool) * s.githubRate
   const confidence = monthsObserved >= 9 ? 'High' : monthsObserved >= 5 ? 'Moderate' : monthsObserved >= 2 ? 'Low' : 'Insufficient history'
-  const basisBit = fitted
-    ? `Fitted from ${int(monthsObserved)} ${monthsObserved === 1 ? 'month' : 'months'} of history, usage is growing ${pct(growth)} a month`
-    : `Using your rate of ${pct(growth)} a month`
+  // Fewer than five months can't support a growth trend: the forecast falls back to the current rate.
+  const reliable = !fitted || monthsObserved >= 5
+  const history = `${int(monthsObserved)} ${monthsObserved === 1 ? 'month' : 'months'}`
   const forecastSummary = !latestMonth
     ? 'No GitHub Copilot consumption in this selection.'
-    : `${basisBit}. The next twelve months come to ${usd(yearCost)} - seats ${usd(seatCost * 12)}, credits ${usd(yearCost - seatCost * 12)}.`
+    : !reliable
+      ? `Only ${history} of history, too few to project growth. At the current rate the next twelve months come to ${usd(flatYearCost)}, seats ${usd(seatCost * 12)} and credits ${usd(flatYearCost - seatCost * 12)}.`
+      : `${fitted ? `Fitted from ${history} of history, usage is growing ${pct(growth)} a month` : `Using your rate of ${pct(growth)} a month`}. The next twelve months come to ${usd(flatYearCost)} at the current rate and ${usd(yearCost)} with growth.`
 
   const lo = scopedDates[0]
   return {
@@ -183,7 +192,7 @@ export function ghModel(ds: Dataset, f: Filters, s: Settings) {
     byCostCenter,
     byPlan,
     daily,
-    forecast: { growth, confidence, months: forecastMonths, yearCost, yearCredits, summary: forecastSummary },
+    forecast: { growth, fitted, reliable, confidence, runRate, months: forecastMonths, yearCost, yearCredits, flatYearCost, flatYearCredits, summary: forecastSummary },
   }
 }
 

@@ -100,6 +100,12 @@ class Expression:
     def isNull(self):
         return Expression(lambda row: self.evaluate(row) is None)
 
+    def __ne__(self, value):
+        def evaluate(row):
+            left = self.evaluate(row)
+            return None if left is None else left != value
+        return Expression(evaluate)
+
     def __gt__(self, value):
         return Expression(lambda row: self.evaluate(row) > value)
 
@@ -144,6 +150,18 @@ class Functions:
     def current_timestamp():
         return Functions.lit(datetime.datetime(2026, 9, 10))
 
+    @staticmethod
+    def trim(column):
+        return Expression(lambda row: None if column.evaluate(row) is None else column.evaluate(row).strip(" "))
+
+    @staticmethod
+    def when(condition, value):
+        return Expression(lambda row: value.evaluate(row) if condition.evaluate(row) else None)
+
+    @staticmethod
+    def coalesce(*columns):
+        return Expression(lambda row: next((v for v in (c.evaluate(row) for c in columns) if v is not None), None))
+
 
 class Frame:
     def __init__(self, rows, columns=None):
@@ -171,6 +189,9 @@ class Frame:
 
     def alias(self, _name):
         return self
+
+    def __getitem__(self, name):
+        return Expression(lambda row: row.get(name), name)
 
 
 class LocalRDD:
@@ -464,6 +485,38 @@ class FabricIngestionTests(unittest.TestCase):
         for space in (" ", "\t", "\n", "\r", "\u00a0", "\u2003", "\x1c"):
             value = space + "ALICE@EXAMPLE.COM" + space
             self.assertEqual(re.sub(regex, "", value).lower(), value.strip().lower())
+
+    def test_policy_billing_columns_reach_the_fabric_template(self):
+        sources = self.viva["billing_sources"]
+        headers = ["SpendingPolicyId", "Cost Center", "cost_centre", "DEPARTMENT", "Billing-Owner", "Name"]
+        self.assertEqual(sources(headers), {"cost_centre": ["Cost Center", "cost_centre"],
+                                            "department": ["DEPARTMENT"], "billing_owner": ["Billing-Owner"],
+                                            "charge_code": []})
+        # The table's names are the ones the Fabric template's SpendingPolicy query reads.
+        spec = importlib.util.spec_from_file_location("fix_chargeback", ROOT / "docs" / "scripts" / "fix_chargeback.py")
+        fix = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fix)
+        self.assertEqual(list(sources([])), [source for source, _ in fix.BILLING.values()])
+
+        # Run the cell's own billing() and projection line on a stand-in frame.
+        cell = source(VIVA, 8)
+        self.assertIn("*[billing(names).alias(name) for name, names in billing_sources(pol_raw.columns).items()],", cell)
+        guard = ast.parse(cell).body[0]
+        billing = next(node for node in guard.body if isinstance(node, ast.FunctionDef) and node.name == "billing")
+        pol_raw = Frame([
+            {"SpendingPolicyId": "a", "Cost Center": " CC-1 ", "cost_centre": "CC-9", "DEPARTMENT": ""},
+            {"SpendingPolicyId": "b", "Cost Center": "  ", "cost_centre": "CC-2", "DEPARTMENT": None},
+            {"SpendingPolicyId": "c"},
+        ], ["SpendingPolicyId", "Cost Center", "cost_centre", "DEPARTMENT"])
+        scope = {"F": Functions, "pol_raw": pol_raw}
+        exec(compile(ast.Module(body=[billing], type_ignores=[]), "<policy billing>", "exec"), scope)
+        projected = pol_raw.select(*[scope["billing"](names).alias(name)
+                                     for name, names in sources(pol_raw.columns).items()])
+        self.assertEqual(projected.rows, [
+            {"cost_centre": "CC-1", "department": None, "billing_owner": None, "charge_code": None},
+            {"cost_centre": "CC-2", "department": None, "billing_owner": None, "charge_code": None},
+            {"cost_centre": None, "department": None, "billing_owner": None, "charge_code": None},
+        ])
 
     def test_notebook_metadata_outputs_and_untargeted_cells_unchanged(self):
         targets = {

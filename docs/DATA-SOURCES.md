@@ -194,6 +194,41 @@ The ZIP is named like `ConsumptionDashboard-Weekly-Identified_Aug04_2026_1859Hou
 > differs, Consumption Central matches column names case-insensitively and ignoring spaces, dashes and
 > underscores, so minor naming changes are absorbed automatically. A genuinely new column is ignored.
 
+### Spending policy billing columns (optional)
+
+To charge Cowork credits back to the business, add any of these four columns to
+`SpendingPolicyMetadata.csv`, one value per policy. Viva Insights doesn't export them, so you add them by hand,
+for example from a finance mapping of policy to cost centre.
+
+| Column | Notes |
+|---|---|
+| `CostCentre` | The cost centre the policy's credits are charged to. `CostCenter` also works; use one, not both |
+| `Department` | The department, for charging by department instead |
+| `BillingOwner` | Who approves the charge |
+| `ChargeCode` | The code a finance system books the charge to |
+
+- **All four are optional.** A file without them still loads, and the Chargeback page and view then
+  show every policy as `(Not assigned)`.
+- Column names match as above: case, spaces, `_` and `-` are ignored, so `Cost Centre` and `cost_centre` work.
+- A blank `CostCentre` or `Department` shows as `(Not assigned)`. People whose spending policy isn't
+  in the file are charged separately: as `(Blank)` on the Power BI page, as `(No policy)` in the Fabric
+  App, and as a `(No policy)` row under `(Not assigned)` in the app.
+- **A re-export from Viva Insights drops the columns.** Keep your mapping and add them back each time.
+- Each person is charged to their current policy for the whole period, so the cost centres add up to
+  the tenant total.
+- The capacity pack is shared pro rata across the tenant: each cost centre's credits are charged at the
+  same prepaid share as the whole tenant, at `PrepaidCreditRate`, and the rest at `CreditRate`. See
+  [commercial terms](COMMERCIAL-TERMS.md).
+
+Each path reads them from the file it already loads:
+
+- **Local CSV and the app** read `SpendingPolicyMetadata.csv`.
+- **Fabric** carries them into `viva_spending_policy` as `cost_centre`, `department`, `billing_owner`
+  and `charge_code` (see the [data dictionary](../2.%20Fabric/docs/DATA-DICTIONARY.md)). The Fabric App reads them from
+  the Fabric model.
+- **Viva Direct** reads them from the spending policy file it already uses, because the connector has
+  no policy table.
+
 ### Optional Cowork task categories
 
 The separate `CoworkWeeklyMetrics.csv` export supplies person/week/category/type task counts and

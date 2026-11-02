@@ -62,7 +62,9 @@ than swallowed; only `PeopleHistorical` answered.
 So the policy name exists in your tenant and is in your own export, and the API will not serve it.
 Until that changes, Viva Direct labels a nameless policy by its id
 (`Policy f1a2bfe2 — name not in export`) instead of calling it *(Unassigned)*, and reads the real
-names from `M365SpendingPolicyMetaData.csv` if you drop it in `DataFolder`.
+names from `M365SpendingPolicyMetaData.csv` if you drop it in `DataFolder`. The same file is where
+Viva Direct reads the optional chargeback columns (`CostCentre`, `Department`, `BillingOwner`,
+`ChargeCode`); see [Spending policy billing columns](DATA-SOURCES.md#spending-policy-billing-columns-optional).
 
 ---
 

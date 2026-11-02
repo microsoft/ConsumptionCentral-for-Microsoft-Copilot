@@ -169,6 +169,16 @@ The existing Viva connector/Dataflow route remains supported for consumption. It
 to produce this separate task export automatically. See the [task guide](../docs/COWORK-TASKS.md)
 and [table contract](docs/DATA-DICTIONARY.md#cowork_tasks_weekly).
 
+## Optional chargeback columns
+
+`SpendingPolicyMetadata.csv` can carry four optional billing columns: `CostCentre`, `Department`,
+`BillingOwner` and `ChargeCode`. `Ingest_Viva_Consumption` loads them into `viva_spending_policy`
+as `cost_centre`, `department`, `billing_owner` and `charge_code`. A file without them still loads
+and leaves them null. The **2.2. Cowork: Chargeback** page and the Fabric App's Chargeback stage read
+them. Viva Insights doesn't export them, so add them back after each export. See
+[Spending policy billing columns](../docs/DATA-SOURCES.md#spending-policy-billing-columns-optional)
+and the [table contract](docs/DATA-DICTIONARY.md#viva_spending_policy).
+
 ## Reference
 
 | | |

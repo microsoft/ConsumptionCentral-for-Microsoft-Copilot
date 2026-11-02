@@ -6,9 +6,9 @@
 //-----------------------------------------------------------------------
 
 import { isMissingFromModelError, parseMissingModelObject } from "@/lib/model-errors";
-import { connection } from "@/queries/shared";
+import { connection, consumptionConnection } from "@/queries/shared";
 
-export type ModelRequirementScope = "governance";
+export type ModelRequirementScope = "governance" | "chargeback";
 
 export interface ModelObjectRequirement {
     /** Connection alias from `fabric.yaml`, e.g. `vl`. */
@@ -27,14 +27,23 @@ export type RequirementProbeState =
 /**
  * Optional model objects newer app pages rely on. Keep requirements grouped
  * by page so a version-skewed semantic model can be stopped before its page
- * queries produce raw engine errors.
+ * queries produce raw engine errors. Each page has one requirement, so its
+ * probe is a single query.
  */
-export const MODEL_REQUIREMENTS: Readonly<Record<ModelRequirementScope, readonly ModelObjectRequirement[]>> = {
+export const MODEL_REQUIREMENTS: Readonly<Record<ModelRequirementScope, readonly [ModelObjectRequirement]>> = {
     governance: [
         {
             model: connection,
             table: "Agents 365",
             columns: ["Owner account", "Governance Flags", "Data Access", "Sharing Scope"],
+        },
+    ],
+    // Consumption Central models from before the chargeback columns.
+    chargeback: [
+        {
+            model: consumptionConnection,
+            table: "SpendingPolicy",
+            columns: ["CostCentre", "Department", "BillingOwner", "ChargeCode"],
         },
     ],
 };
