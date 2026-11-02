@@ -36,6 +36,7 @@ export const TABS: TabDef[] = [
     views: [
       { id: 'consumption', label: 'Consumption', intro: 'Who is consuming credits, and how much?' },
       { id: 'cost', label: 'Cost', intro: 'What does it cost: prepaid, pay-as-you-go and blended?' },
+      { id: 'chargeback', label: 'Chargeback', intro: 'What should each cost centre or department be charged?' },
       { id: 'tasks', label: 'Tasks', intro: 'Task mix, credit intensity and estimated work equivalent.' },
       { id: 'optimization', label: 'Optimization', intro: 'How do we optimize credit capacity and configuration?' },
       { id: 'forecast', label: 'Forecast', intro: 'Where is demand heading, and how confident are we?' },

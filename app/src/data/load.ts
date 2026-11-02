@@ -105,7 +105,23 @@ function readPolicies(p: Parsed | undefined): Policy[] {
   const name = getter(h, 'Name', 'Policy Name')
   const plan = getter(h, 'PlanLimit')
   const user = getter(h, 'UserLimit')
-  return p.rows.map((r) => ({ id: id(r), name: name(r), planLimit: num(plan(r)), userLimit: num(user(r)) })).filter((x) => x.id)
+  // Optional chargeback columns. Matching ignores case and separators, so "Cost Center" also works.
+  const cc = getter(h, 'CostCentre', 'CostCenter')
+  const dept = getter(h, 'Department')
+  const owner = getter(h, 'BillingOwner')
+  const code = getter(h, 'ChargeCode')
+  return p.rows
+    .map((r) => ({
+      id: id(r),
+      name: name(r),
+      planLimit: num(plan(r)),
+      userLimit: num(user(r)),
+      costCentre: cc(r),
+      department: dept(r),
+      billingOwner: owner(r),
+      chargeCode: code(r),
+    }))
+    .filter((x) => x.id)
 }
 
 interface Meta {

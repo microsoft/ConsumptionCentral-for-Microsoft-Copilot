@@ -32,6 +32,11 @@ export interface Policy {
   name: string
   planLimit: number
   userLimit: number
+  /** Optional billing columns added to the policy export for chargeback; '' when absent. */
+  costCentre: string
+  department: string
+  billingOwner: string
+  chargeCode: string
 }
 
 export interface StudioTenantRow {

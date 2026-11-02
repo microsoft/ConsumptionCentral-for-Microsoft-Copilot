@@ -11,9 +11,9 @@ A web app that ships two ways: as a single self-contained HTML file that runs of
 They know their own billing and are familiar with the Power BI report. They open the app monthly, often while preparing a cost review.
 
 ## Purpose
-This is an app version of the Consumption Central Power BI report. It keeps **the same information as the PBI**: every measure, chart and table, including the Cowork Tasks page, with the same DAX definitions.
+This is an app version of the Consumption Central Power BI report. It keeps **the same information as the PBI**: every measure, chart and table, including the Cowork Tasks and Chargeback pages, with the same DAX definitions.
 
-The navigation is simpler. Instead of 24 report pages, there are six top tabs with short sub-views:
+The navigation is simpler. Instead of 25 report pages, there are six top tabs with short sub-views:
 - Overview
 - Cowork & Work IQ
 - Copilot Studio
@@ -22,7 +22,7 @@ The navigation is simpler. Instead of 24 report pages, there are six top tabs wi
 - Guide
 
 ## Data
-- The input is the CSV exports used by the Local CSV path: Cowork credits and tasks, people metadata, spending policies, Copilot Studio, GitHub AI usage, Azure AI spend, deployment health, billing reconciliation and Entra org attributes.
+- The input is the CSV exports used by the Local CSV path: Cowork credits and tasks, people metadata, spending policies (optionally with billing columns for chargeback), Copilot Studio, GitHub AI usage, Azure AI spend, deployment health, billing reconciliation and Entra org attributes.
 - All parsing and metric calculation happens in the browser. Data never leaves the tenant.
 - Any subset of sources can be loaded. Missing sources show a dash or an empty state.
 - A synthetic sample is bundled, and it is always clearly labelled as sample data.

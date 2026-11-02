@@ -3,6 +3,7 @@ import { useData } from './data/store'
 import { FilterBar } from './FilterBar'
 import { AzureHealth, AzureRecon, AzureSpend } from './pages/Azure'
 import { CoworkConsumption, CoworkCost, CoworkForecast, CoworkOptimization } from './pages/Cowork'
+import { CoworkChargeback } from './pages/Chargeback'
 import { CoworkTasks } from './pages/Tasks'
 import { GitHubConsumption, GitHubCost, GitHubForecast, GitHubOptimization } from './pages/GitHub'
 import { Guide } from './pages/Guide'
@@ -24,6 +25,7 @@ function Page({ route }: { route: Route }) {
       return <Overview />
     case 'cowork':
       if (view === 'cost') return <CoworkCost />
+      if (view === 'chargeback') return <CoworkChargeback />
       if (view === 'tasks') return <CoworkTasks />
       if (view === 'optimization') return <CoworkOptimization />
       if (view === 'forecast') return <CoworkForecast />

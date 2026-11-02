@@ -1,6 +1,6 @@
 # Consumption Central app (preview)
 
-The Consumption Central Power BI report as an app: the same measures and DAX definitions, with the 24 report pages in six tabs.
+The Consumption Central Power BI report as an app: the same measures and DAX definitions, with the 25 report pages in six tabs.
 
 It runs in the browser. It reads your CSV exports locally, and no data is sent anywhere.
 
@@ -138,6 +138,8 @@ Click **Change data** in the header and drop in any of the Local CSV path's expo
 | Azure billing reconciliation | `AzureBillingReconciliation.csv` | `Representation` + `PoolName` |
 | Entra org attributes | `entra_org.csv` | A UPN or email column, plus department, job title, cost centre or country |
 
+`SpendingPolicyMetadata.csv` can carry four optional billing columns for the Chargeback view: `CostCentre` (`CostCenter` also works), `Department`, `BillingOwner` and `ChargeCode`. Column matching ignores case and separators. A Viva Insights export doesn't include them, so add them back after each re-export. See [docs/DATA-SOURCES.md](../docs/DATA-SOURCES.md#spending-policy-billing-columns-optional).
+
 No source is required, and one is enough. Sources you don't supply show as "Not supplied" in the dialog, and their measures show a dash. Day-first dates are detected automatically.
 
 A synthetic sample in `public/sample/` loads on first open and is clearly labelled as sample data. To rebuild it, run `npm run prepare-sample`. The script copies the synthetic files from `1. Local CSV/sample-data` and generates a synthetic Cowork task export for the same fictional people. In the sample, all Cowork credit usage sits in one department, as a single-department pilot. This matches the Power BI sample.
@@ -147,7 +149,7 @@ A synthetic sample in `public/sample/` loads on first open and is clearly labell
 | Tab | Views | Power BI pages it replaces |
 |---|---|---|
 | Overview | — | 0. Overall: Combined |
-| Cowork & Work IQ | Consumption, Cost, Tasks, Optimization, Forecast | 1. Cowork: Consumption, 2. Cowork: Cost, 2.1. Cowork: Tasks, 3. Cowork: Optimization, 4. Cowork: Forecast |
+| Cowork & Work IQ | Consumption, Cost, Chargeback, Tasks, Optimization, Forecast | 1. Cowork: Consumption, 2. Cowork: Cost, 2.2. Cowork: Chargeback, 2.1. Cowork: Tasks, 3. Cowork: Optimization, 4. Cowork: Forecast |
 | Copilot Studio | Consumption, Cost, Optimization, Forecast | 5–8. Studio: Consumption, Cost, Optimization, Forecast |
 | GitHub Copilot | Consumption, Cost, Optimization, Forecast | 11–14. GHCP: Consumption, Cost, Optimization, Forecast |
 | Azure AI Foundry | Spend, Capacity & health, Reconciliation | 9. Azure: Spend & Consumption, 10. Azure: Capacity & Health, 10.1. Billing: Reconciliation |

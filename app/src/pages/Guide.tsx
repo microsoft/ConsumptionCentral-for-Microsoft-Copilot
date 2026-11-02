@@ -36,7 +36,7 @@ const PRODUCT_BY_TITLE = new Map(PRODUCTS.map((p) => [p.title, p.id]))
 const NOTES: { title: string; body: string }[] = [
   {
     title: 'Same numbers, simpler layout',
-    body: 'Every measure, chart and table in the Power BI report is here. Its 24 pages (17 data pages and 7 guide pages) are grouped into six tabs, and each product tab has views for consumption, cost, optimization and forecast.',
+    body: 'Every measure, chart and table in the Power BI report is here. Its 25 pages (18 data pages and 7 guide pages) are grouped into six tabs, and each product tab has views for consumption, cost, optimization and forecast.',
   },
   {
     title: 'Charts that changed shape',

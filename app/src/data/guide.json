@@ -442,6 +442,15 @@
      ],
      [
       {
+       "t": "Chargeback",
+       "b": true
+      },
+      {
+       "t": " what each cost centre or department should be charged."
+      }
+     ],
+     [
+      {
        "t": "Optimization",
        "b": true
       },
@@ -564,6 +573,33 @@
      [
       {
        "t": "Hours = reported tasks x category minutes / 60. Monetary equivalent requires an explicit hourly value. PAYG cost uses task credits only; neither estimate is realized savings."
+      }
+     ]
+    ]
+   },
+   {
+    "heading": "Chargeback (optional billing columns)",
+    "paras": [
+     [
+      {
+       "t": "Add four columns to SpendingPolicyMetadata.csv: "
+      },
+      {
+       "t": "CostCentre, Department, BillingOwner, ChargeCode",
+       "b": true
+      },
+      {
+       "t": ". Each spending policy then charges its users' credits to that cost centre. A Viva Insights re-export drops them, so keep a copy and add them back."
+      }
+     ],
+     [
+      {
+       "t": "The capacity pack is shared pro rata. If the pack covered 40% of the period's credits, every cost centre pays 40% of its credits at the prepaid rate and 60% at the pay-as-you-go rate, so the charges add up to the Cost view's total cost."
+      }
+     ],
+     [
+      {
+       "t": "Policies with no cost centre are charged to (Not assigned). Download CSV gives one line per cost centre and policy for a finance system."
       }
      ]
     ]
@@ -967,7 +1003,25 @@
        "b": true
       },
       {
-       "t": "Billing a group only for the credits its people used above their limit. Usage within the limit is not charged."
+       "t": "Charging each cost centre or department for the Copilot credits its people used: its share of the capacity pack at the prepaid rate, the rest at the pay-as-you-go rate. The charges add up to the tenant's total cost. Over Limit $ is a different figure: only the credits used above a limit."
+      }
+     ],
+     [
+      {
+       "t": "Prepaid share — ",
+       "b": true
+      },
+      {
+       "t": "The fraction of the period's credits that the capacity pack covered. The Chargeback view applies the same share to every cost centre, so filters change which lines you see but not the rate each line pays."
+      }
+     ],
+     [
+      {
+       "t": "Cost centre, Department, Billing owner, Charge code — ",
+       "b": true
+      },
+      {
+       "t": "Optional billing columns on SpendingPolicyMetadata.csv that say who pays for each spending policy. A Viva Insights export doesn't include them, so add them back after each re-export. CostCenter is accepted too. Policies without a cost centre show as (Not assigned)."
       }
      ],
      [
@@ -1021,7 +1075,7 @@
        "b": true
       },
       {
-       "t": "Credits above the limit as a share of the limit — how far a group went over."
+       "t": "Credits above the limit as a share of the limit — how far a group went over. It measures overage, not the Chargeback view's charge."
       }
      ],
      [
@@ -1284,11 +1338,11 @@
      ],
      [
       {
-       "t": "- Chargeback = overage only. ",
+       "t": "- Over-limit charge = overage only. ",
        "b": true
       },
       {
-       "t": "A group is charged only for the credits its people used above their limit. Usage within the limit is not billed, so an org-wide figure under 100% does not mean nothing is chargeable — individuals can still exceed their own limit."
+       "t": "The Over Limit $ figure (the Power BI Chargeback measure) counts only the credits people used above their limit, so an org-wide figure under 100% does not mean nothing is over — individuals can still exceed their own limit. The Chargeback view is different: it charges all usage, split between prepaid and pay-as-you-go."
       }
      ],
      [

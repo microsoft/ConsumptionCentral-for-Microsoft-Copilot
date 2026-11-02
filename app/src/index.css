@@ -574,6 +574,13 @@ input[type='search']::placeholder {
   gap: 12px;
   margin-bottom: 14px;
 }
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
 .panel-head h3 {
   display: flex;
   align-items: center;
