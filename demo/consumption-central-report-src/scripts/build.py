@@ -2,6 +2,7 @@
 """Build a self-contained static report demo from the repository's three PBIR templates."""
 
 import collections
+import base64
 import json
 import re
 import shutil
@@ -27,19 +28,28 @@ def clean_label(value: str) -> str:
     return " ".join(value.replace("\ufffd", "—").replace("\n", " ").split())[:100]
 
 
-def query_labels(value, found: list[str]) -> None:
-    if isinstance(value, dict):
-        for key in ("displayName", "nativeQueryRef"):
-            label = value.get(key)
-            if isinstance(label, str):
-                cleaned = clean_label(label)
-                if cleaned and cleaned not in found:
-                    found.append(cleaned)
-        for child in value.values():
-            query_labels(child, found)
-    elif isinstance(value, list):
-        for child in value:
-            query_labels(child, found)
+def literal(value):
+    if not isinstance(value, dict):
+        return value
+    raw = value.get("expr", {}).get("Literal", {}).get("Value")
+    if raw is not None:
+        if raw.startswith("'") and raw.endswith("'"):
+            return raw[1:-1].replace("''", "'")
+        if raw in ("true", "false"):
+            return raw == "true"
+        try:
+            return float(raw.rstrip("DL"))
+        except ValueError:
+            return raw
+    return None
+
+
+def property_value(objects, group, key, default=None):
+    for entry in objects.get(group, []):
+        if key in entry.get("properties", {}):
+            value = literal(entry["properties"][key])
+            return default if value is None else value
+    return default
 
 
 def template_pages(path: Path) -> tuple[list[str], dict[str, dict]]:
@@ -56,10 +66,37 @@ def template_pages(path: Path) -> tuple[list[str], dict[str, dict]]:
                 source_visual = json_from_zip(archive, name)
                 visual = source_visual.get("visual", {})
                 position = source_visual.get("position", {})
-                labels: list[str] = []
-                query_labels(visual.get("query", {}).get("queryState", {}), labels)
+                roles = {}
+                for role, binding in visual.get("query", {}).get("queryState", {}).items():
+                    roles[role] = [
+                        {
+                            "ref": p["queryRef"],
+                            "label": p.get("displayName", p.get("nativeQueryRef", p["queryRef"])),
+                            "kind": next(iter(p["field"])),
+                        }
+                        for p in binding.get("projections", [])
+                        if p.get("active", True)
+                    ]
+                container = visual.get("visualContainerObjects", {})
+                objects = visual.get("objects", {})
+                paragraphs = [
+                    paragraph
+                    for entry in objects.get("general", [])
+                    for paragraph in entry.get("properties", {}).get("paragraphs", [])
+                ]
+                image = None
+                for entry in objects.get("general", []):
+                    resource = entry.get("properties", {}).get("imageUrl", {}).get("expr", {}).get("ResourcePackageItem")
+                    if resource:
+                        asset = f"Report/StaticResources/{resource['PackageName']}/{resource['ItemName']}"
+                        if not asset.endswith(".png"):
+                            raise ValueError(f"Unsupported report image: {asset}")
+                        image = "data:image/png;base64," + base64.b64encode(archive.read(asset)).decode("ascii")
+                fill = objects.get("fill", [{}])[0].get("properties", {})
+                color = literal(fill.get("fillColor", {}).get("solid", {}).get("color", {}))
                 visuals.append(
                     {
+                        "id": source_visual["name"],
                         "type": visual.get("visualType", "unknown"),
                         "position": {
                             "x": round(float(position.get("x", 0)), 2),
@@ -68,8 +105,15 @@ def template_pages(path: Path) -> tuple[list[str], dict[str, dict]]:
                             "height": round(float(position.get("height", 0)), 2),
                             "z": int(position.get("z", 1)),
                         },
-                        "label": labels[0] if labels else "",
-                        "fields": labels[:5],
+                        "label": property_value(container, "title", "text", ""),
+                        "subtitle": property_value(container, "subTitle", "text", ""),
+                        "roles": roles,
+                        "paragraphs": paragraphs,
+                        "image": image,
+                        "fill": color,
+                        "target": property_value(container, "visualLink", "navigationSection"),
+                        "action": property_value(container, "visualLink", "type"),
+                        "sort": visual.get("query", {}).get("sortDefinition", {}),
                     }
                 )
             visuals.sort(key=lambda item: (item["position"]["z"], item["position"]["y"], item["position"]["x"]))
@@ -138,19 +182,26 @@ def build() -> None:
             for index, page_id in enumerate(reference_order)
         ],
     }
+    with zipfile.ZipFile(TEMPLATES[0]) as archive:
+        model = json.loads(archive.read("DataModelSchema").decode("utf-16-le"))["model"]
+        schema["measures"] = {
+            f"{table['name']}.{measure['name']}": {
+                "format": measure.get("formatString", ""),
+                "dax": "\n".join(measure["expression"]) if isinstance(measure["expression"], list) else measure["expression"],
+            }
+            for table in model["tables"]
+            for measure in table.get("measures", [])
+        }
     definitions = measure_definitions()
     if not definitions:
         raise ValueError("No measure definitions were found.")
 
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    for name in ("index.html", "styles.css", "app.js"):
-        shutil.copy2(SOURCE / name, OUTPUT / name)
+    if (OUTPUT / "assets").exists():
+        shutil.rmtree(OUTPUT / "assets")
+    for name in ("app.js", "styles.css"):
+        (OUTPUT / name).unlink(missing_ok=True)
     shutil.copy2(ROOT / "LICENSE", OUTPUT / "LICENSE")
-    with (OUTPUT / "THIRD-PARTY-NOTICES.txt").open("w", encoding="utf-8", newline="\n") as stream:
-        stream.write(
-            "This static report bundle has no third-party runtime dependencies. "
-            "The report port and its source templates are covered by the repository MIT License.\n"
-        )
     with (OUTPUT / "report-schema.json").open("w", encoding="utf-8", newline="\n") as stream:
         stream.write(json.dumps(schema, ensure_ascii=False, separators=(",", ":")) + "\n")
     with (OUTPUT / "measure-definitions.json").open("w", encoding="utf-8", newline="\n") as stream:

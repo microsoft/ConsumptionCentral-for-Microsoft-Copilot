@@ -35,6 +35,21 @@ function embeddedSample(embed: boolean, sampleDir = SAMPLE_DIR): Plugin {
 function demoSampleLabel(): Plugin {
   return {
     name: "demo-sample-label",
+    transformIndexHtml() {
+      return [
+        {
+          tag: "style",
+          children: ".demo-navigation{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 24px;background:#0b3d3a;color:#fff;font:14px system-ui,sans-serif}.demo-navigation a{color:inherit;text-underline-offset:3px}.demo-navigation a:focus-visible{outline:2px solid #fff;outline-offset:4px}",
+          injectTo: "head",
+        },
+        {
+          tag: "nav",
+          attrs: { class: "demo-navigation", "aria-label": "Demo navigation" },
+          children: '<a href="/#solutions">Back to solutions</a><span>Synthetic demo data</span>',
+          injectTo: "body-prepend",
+        },
+      ];
+    },
     transform(code, id) {
       if (!id.split("?")[0].replaceAll("\\", "/").endsWith("/src/data/load.ts")) return;
       return code.replace(

@@ -1,395 +1,373 @@
-const schemaPromise = fetch("./report-schema.json").then((response) => {
-  if (!response.ok) throw new Error(`Report definition returned ${response.status}`);
-  return response.json();
-});
-const definitionsPromise = fetch("./measure-definitions.json").then((response) => {
-  if (!response.ok) throw new Error(`Measure definitions returned ${response.status}`);
-  return response.json();
-});
+import { defaultSelection, optionsFor, queryVisual, verifyBindings } from "./runtime";
 
-const fixtures = {
-  groups: [
-    { name: "Engineering", people: 34, credits: 18400, cost: 184 },
-    { name: "Operations", people: 27, credits: 14200, cost: 142 },
-    { name: "Finance", people: 18, credits: 8600, cost: 86 },
-    { name: "Research", people: 21, credits: 12100, cost: 121 },
-  ],
-  agents: [
-    { name: "Agent 01", credits: 8200, cost: 82 },
-    { name: "Agent 02", credits: 5900, cost: 59 },
-    { name: "Agent 03", credits: 3600, cost: 36 },
-    { name: "Agent 04", credits: 2400, cost: 24 },
-  ],
-  models: [
-    { name: "Model A", credits: 12100, cost: 121 },
-    { name: "Model B", credits: 7800, cost: 78 },
-    { name: "Model C", credits: 5300, cost: 53 },
-    { name: "Model D", credits: 3100, cost: 31 },
-  ],
-  weeks: [
-    { name: "May 04", credits: 6100 },
-    { name: "May 11", credits: 6700 },
-    { name: "May 18", credits: 6400 },
-    { name: "May 25", credits: 7350 },
-    { name: "Jun 01", credits: 7600 },
-    { name: "Jun 08", credits: 8100 },
-    { name: "Jun 15", credits: 7950 },
-    { name: "Jun 22", credits: 8800 },
-  ],
-  products: [
-    { name: "Cowork & Work IQ", credits: 52400, cost: 524 },
-    { name: "Copilot Studio", credits: 31800, cost: 318 },
-    { name: "GitHub Copilot", credits: 26900, cost: 269 },
-    { name: "Azure AI Foundry", credits: 15400, cost: 154 },
-  ],
-};
-
-const state = { pageIndex: 0, filters: {}, globalPeriod: "Current 4 weeks" };
+const state = { pageIndex: 0, selections: new Map(), trail: [] };
 const nav = document.querySelector("#page-nav");
 const title = document.querySelector("#page-title");
 const frame = document.querySelector("#report-frame");
-const measureQuery = document.querySelector("#measure-query");
-const measureResults = document.querySelector("#measure-results");
-const globalPeriod = document.querySelector("#global-period");
+const search = document.querySelector("#measure-query");
+const results = document.querySelector("#measure-results");
+let schema;
+let definitions;
 
-globalPeriod.addEventListener("change", () => {
-  state.globalPeriod = globalPeriod.value;
-  renderPage();
-});
-measureQuery.addEventListener("input", () => renderMeasureSearch());
-
-function el(tag, className, text) {
+function el(tag, className = "", text) {
   const node = document.createElement(tag);
-  if (className) node.className = className;
+  node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
 }
 
-function groupForPage(page) {
-  const name = page.title.toLowerCase();
-  if (name.includes("start here")) return "Start";
-  if (name.includes("overall")) return "Overall";
-  if (name.includes("cowork")) return "Cowork & Work IQ";
-  if (name.includes("studio")) return "Copilot Studio";
-  if (name.includes("azure")) return "Azure AI Foundry";
-  if (name.includes("ghcp") || name.includes("github")) return "GitHub Copilot";
-  return "Guide";
+function selection() {
+  const id = schema.pages[state.pageIndex].id;
+  if (!state.selections.has(id)) state.selections.set(id, defaultSelection());
+  return state.selections.get(id);
 }
 
-function renderNavigation(pages) {
-  nav.replaceChildren();
-  const groups = new Map();
-  pages.forEach((page, index) => {
-    const group = groupForPage(page);
-    if (!groups.has(group)) groups.set(group, []);
-    groups.get(group).push({ page, index });
-  });
-  for (const [label, items] of groups) {
-    const section = el("section", "nav-group");
-    section.append(el("h3", "", label));
-    for (const { page, index } of items) {
-      const button = el("button", "nav-page", page.title);
-      button.type = "button";
-      button.setAttribute("aria-current", index === state.pageIndex ? "page" : "false");
-      button.addEventListener("click", () => {
-        state.pageIndex = index;
-        renderNavigation(pages);
-        renderPage();
-      });
-      section.append(button);
-    }
-    nav.append(section);
-  }
+function format(value, projection) {
+  if (value === null) return "\u2014";
+  if (typeof value !== "number") return value;
+  const pattern = schema.measures[projection.ref]?.format || "";
+  const percent = pattern.includes("%");
+  const currency = pattern.includes("$");
+  const decimals = (pattern.match(/\.(0+)/)?.[1] || "").length;
+  return new Intl.NumberFormat("en-US", {
+    ...(percent ? { style: "percent" } : currency ? { style: "currency", currency: "USD" } : {}),
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: pattern ? decimals : (Number.isInteger(value) ? 0 : 2),
+  }).format(value);
 }
 
-function filterOptions(label) {
-  const key = label.toLowerCase();
-  if (key.includes("period") || key.includes("window")) return ["All", "Current 4 weeks", "Last 8 weeks", "All history"];
-  if (key.includes("scenario") || key.includes("growth")) return ["All", "Fitted from history", "Flat run rate", "Growth case"];
-  if (key.includes("attribute") || key.includes("group")) return ["All", "Department", "Cost centre", "Region"];
-  if (key.includes("department")) return ["All", ...fixtures.groups.map((row) => row.name)];
-  if (key.includes("product")) return ["All", ...fixtures.products.map((row) => row.name)];
-  if (key.includes("agent")) return ["All", ...fixtures.agents.map((row) => row.name)];
-  if (key.includes("environment")) return ["All", "Environment 01", "Environment 02"];
-  if (key.includes("model")) return ["All", ...fixtures.models.map((row) => row.name)];
-  if (key.includes("status")) return ["All", "Matched", "Estimated", "Needs review"];
-  if (key.includes("action")) return ["All", "Review", "Right-size", "Keep"];
-  if (key.includes("type") || key.includes("service")) return ["All", "Category 01", "Category 02", "Category 03"];
-  return ["All", "Option 01", "Option 02", "Option 03"];
+function cellValue(node, projection, value) {
+  node.dataset.measure = projection.ref;
+  node.dataset.value = JSON.stringify(value);
+  node.textContent = format(value, projection);
+  return node;
 }
 
-function filterFactor() {
-  const selected = Object.values(state.filters).filter((value) => value && value !== "All");
-  if (!selected.length && state.globalPeriod === "Current 4 weeks") return 1;
-  const seed = selected.join("|").split("").reduce((sum, char) => sum + char.charCodeAt(0), state.globalPeriod.length);
-  return Math.max(0.58, Math.min(1.34, 0.82 + (seed % 47) / 100));
-}
-
-function numbersFor(page, visual) {
-  const key = `${page.index}:${visual.index}:${Object.values(state.filters).join("|")}:${state.globalPeriod}`;
-  let seed = 0;
-  for (const char of key) seed = (seed * 31 + char.charCodeAt(0)) >>> 0;
-  const factor = filterFactor();
-  return Array.from({ length: 8 }, (_, index) => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return Math.max(8, Math.round((35 + (seed % 145)) * factor * (1 + index / 70)));
-  });
-}
-
-function fieldDefinition(label, definitions) {
-  if (!label) return "";
-  const direct = definitions[label];
-  if (direct) return direct;
-  const normalized = label.toLocaleLowerCase().replace(/[^a-z0-9]/g, "");
-  const match = Object.entries(definitions).find(([name]) =>
-    name.toLocaleLowerCase().replace(/[^a-z0-9]/g, "") === normalized,
-  );
-  return match?.[1] ?? "";
-}
-
-function addDefinition(container, label, definitions) {
-  const description = fieldDefinition(label, definitions);
-  if (!description) return;
+function info(projection) {
+  const name = projection.ref.slice(projection.ref.indexOf(".") + 1);
+  const description = definitions[name];
+  if (!description) return null;
   const details = el("details", "definition");
   const summary = el("summary", "", "i");
-  summary.setAttribute("aria-label", `Definition for ${label}`);
-  const text = el("p", "", description);
-  details.append(summary, text);
-  container.append(details);
+  summary.setAttribute("aria-label", `Definition for ${projection.label}`);
+  details.append(summary, el("p", "", description));
+  return details;
 }
 
-function createVisual(page, visual, definitions) {
-  const box = el("section", `visual ${visual.type}`);
-  box.setAttribute("aria-label", visual.label || visual.type);
-  const { x, y, width, height, z } = visual.position;
-  const canvas = page.canvas;
-  box.style.left = `${(x / canvas.width) * 100}%`;
-  box.style.top = `${(y / canvas.height) * 100}%`;
-  box.style.width = `${(width / canvas.width) * 100}%`;
-  box.style.height = `${(height / canvas.height) * 100}%`;
-  box.style.zIndex = String(Math.max(1, Math.round(z)));
+function selectPage(id, remember = true) {
+  const index = schema.pages.findIndex((p) => p.id === id);
+  if (index < 0) throw new Error(`Unknown source page ${id}`);
+  if (remember && index !== state.pageIndex) state.trail.push(schema.pages[state.pageIndex].id);
+  state.pageIndex = index;
+  history.replaceState(null, "", `#${id}`);
+  renderNav();
+  renderPage();
+}
 
-  if (visual.type === "basicShape" || visual.type === "shape") {
-    box.classList.add("shape");
-    return box;
-  }
-  if (visual.type === "image") {
-    box.classList.add("image-visual");
-    box.append(el("div", "image-mark", "CC"));
-    return box;
-  }
-  if (visual.type === "actionButton") {
-    box.classList.add("action-visual");
-    const button = el("button", "action", "How to read");
+function renderNav() {
+  nav.replaceChildren();
+  schema.pages.forEach((page, index) => {
+    const button = el("button", "nav-page", page.title);
     button.type = "button";
-    button.addEventListener("click", () => {
-      const target = page.pages.findIndex((item) => item.title.toLowerCase() === "how to read this");
-      if (target >= 0) {
-        state.pageIndex = target;
-        renderNavigation(page.pages);
-        renderPage();
-      }
-    });
-    box.append(button);
-    return box;
-  }
-
-  const label = visual.label || fallbackTitle(visual.type);
-  const heading = el("div", "visual-title");
-  heading.append(el("span", "", label));
-  addDefinition(heading, label, definitions);
-  box.append(heading);
-
-  if (visual.type === "slicer") {
-    const wrap = el("div", "slicer");
-    const selectLabel = el("label", "", label);
-    const select = document.createElement("select");
-    select.setAttribute("aria-label", `${label} filter`);
-    const options = filterOptions(label);
-    for (const option of options) {
-      const item = el("option", "", option);
-      item.value = option;
-      select.append(item);
-    }
-    select.value = state.filters[label] || "All";
-    select.addEventListener("change", () => {
-      state.filters[label] = select.value;
-      renderPage();
-    });
-    wrap.append(selectLabel, select);
-    box.append(wrap);
-  } else if (visual.type === "cardVisual") {
-    const values = numbersFor(page, visual);
-    const total = values.reduce((sum, value) => sum + value, 0);
-    const looksLikeCost = /cost|spend|amount|price|bill/i.test(label);
-    const value = looksLikeCost ? `$${(total / 22).toFixed(2)}` : total.toLocaleString("en-US");
-    box.append(el("div", "metric", value), el("div", "metric-sub", "Illustrative value · synthetic data"));
-  } else if (visual.type === "pivotTable") {
-    box.append(makeTable(page, visual));
-  } else if (["lineChart", "lineClusteredColumnComboChart", "lineStackedColumnComboChart", "clusteredBarChart", "barChart", "columnChart", "funnel"].includes(visual.type)) {
-    box.append(makeChart(page, visual));
-  } else {
-    box.append(el("p", "copy", introCopy(page)));
-  }
-  return box;
-}
-
-function fallbackTitle(type) {
-  const labels = {
-    cardVisual: "Summary",
-    pivotTable: "Detail",
-    lineChart: "Trend",
-    clusteredBarChart: "Comparison",
-    barChart: "Comparison",
-    columnChart: "Usage by period",
-    funnel: "Breakdown",
-  };
-  return labels[type] || "Report visual";
-}
-
-function introCopy(page) {
-  const name = page.title.toLowerCase();
-  if (name.includes("start here")) return "Explore the report pages using the navigation and filters. All figures are invented for this browser demo.";
-  if (name.includes("glossary") || name.includes("read")) return "Select the information icon on a measure to see its source definition. Search for any measure above.";
-  return "This visual follows the report's layout. Values are illustrative and respond to local filters.";
-}
-
-function makeTable(page, visual) {
-  const wrap = el("div", "table-wrap");
-  const table = document.createElement("table");
-  const labels = visual.fields.length ? visual.fields.slice(0, 4) : ["Group", "Credits", "Cost"];
-  const head = document.createElement("thead");
-  const row = document.createElement("tr");
-  for (const label of labels) row.append(el("th", "", label));
-  head.append(row);
-  const body = document.createElement("tbody");
-  const rows = /agent/i.test(labels.join(" ")) ? fixtures.agents : /model/i.test(labels.join(" ")) ? fixtures.models : fixtures.groups;
-  const factor = filterFactor();
-  rows.forEach((source, rowIndex) => {
-    const tr = document.createElement("tr");
-    const name = source.name || `Group ${String(rowIndex + 1).padStart(2, "0")}`;
-    tr.dataset.selectable = "true";
-    tr.title = "Select this row to apply a local group filter";
-    tr.addEventListener("click", () => {
-      state.filters.Group = name;
-      renderPage();
-    });
-    labels.forEach((label, columnIndex) => {
-      const cell = document.createElement("td");
-      if (columnIndex === 0) cell.textContent = name;
-      else if (/cost|amount|price|spend|value/i.test(label)) cell.textContent = `$${(source.cost * factor).toFixed(2)}`;
-      else if (/people|user|dev|count|agent/i.test(label)) cell.textContent = String(source.people || rowIndex + 1);
-      else cell.textContent = Math.round((source.credits || 1000) * factor).toLocaleString("en-US");
-      tr.append(cell);
-    });
-    body.append(tr);
+    button.dataset.page = page.id;
+    button.setAttribute("aria-current", index === state.pageIndex ? "page" : "false");
+    button.addEventListener("click", () => selectPage(page.id));
+    nav.append(button);
   });
-  table.append(head, body);
+}
+
+function renderText(visual, box) {
+  box.classList.add("source-text");
+  for (const paragraph of visual.paragraphs) {
+    const p = el("p");
+    for (const run of paragraph.textRuns || []) {
+      const span = el("span", "", run.value);
+      const style = run.textStyle || {};
+      if (style.fontWeight) span.style.fontWeight = style.fontWeight;
+      if (style.fontSize) span.style.fontSize = style.fontSize;
+      if (style.color) span.style.color = style.color;
+      p.append(span);
+    }
+    if (!p.textContent) p.append(document.createElement("br"));
+    box.append(p);
+  }
+}
+
+function renderSlicer(visual, box) {
+  const projection = visual.roles.Values[0];
+  const ref = projection.ref;
+  const label = el("label", "slicer");
+  label.append(el("span", "", projection.label));
+  const selections = selection();
+  if (ref === "Reporting Date.Date") {
+    for (const [key, caption] of [["from", "From"], ["to", "To"]]) {
+      const dateLabel = el("label", "date-label", caption);
+      const input = document.createElement("input");
+      input.type = "date";
+      input.setAttribute("aria-label", `Reporting ${caption.toLowerCase()}`);
+      input.value = selections[key] || (key === "from" ? "2026-05-01" : "2026-07-31");
+      input.addEventListener("change", () => { selections[key] = input.value; renderPage(); });
+      dateLabel.append(input);
+      label.append(dateLabel);
+    }
+  } else {
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `${projection.label} filter`);
+    select.dataset.filter = ref;
+    const choices = optionsFor(ref);
+    for (const { value, label: caption } of choices) {
+      const option = el("option", "", caption);
+      option.value = value;
+      select.append(option);
+    }
+    select.value = selections[ref] ?? choices[0]?.value ?? "";
+    select.addEventListener("change", () => { selections[ref] = select.value; renderPage(); });
+    label.append(select);
+  }
+  box.append(label);
+}
+
+function makeTable(data, totals = true) {
+  const wrap = el("div", "table-wrap");
+  const table = el("table");
+  const head = el("thead");
+  const header = el("tr");
+  for (const p of [...data.dimensions, ...data.columns]) {
+    const th = el("th", "", p.label);
+    th.scope = "col";
+    header.append(th);
+  }
+  head.append(header);
+  table.append(head);
+  const body = el("tbody");
+  for (const row of data.rows) {
+    const tr = el("tr");
+    for (const label of row.labels) tr.append(el("td", "", label));
+    row.values.forEach((value, i) => tr.append(cellValue(el("td", "numeric"), data.columns[i], value)));
+    body.append(tr);
+  }
+  table.append(body);
+  if (totals && data.dimensions.length && data.totals.length === data.columns.length) {
+    const foot = el("tfoot");
+    const tr = el("tr");
+    data.dimensions.forEach((_, i) => tr.append(el("th", "", i === 0 ? "Total" : "")));
+    data.totals.forEach((value, i) => tr.append(cellValue(el("td", "numeric"), data.columns[i], value)));
+    foot.append(tr);
+    table.append(foot);
+  }
   wrap.append(table);
   return wrap;
 }
 
-function makeChart(page, visual) {
+const COLORS = ["#4f73b8", "#0b2c57", "#74a7aa", "#c79a54", "#824f86", "#609047"];
+function svgNode(tag, attrs, parent, text) {
+  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [key, value] of Object.entries(attrs)) n.setAttribute(key, String(value));
+  if (text !== undefined) n.textContent = text;
+  parent.append(n);
+  return n;
+}
+
+function renderChart(visual, data, box) {
   const wrap = el("div", "chart");
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 320 150");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `${visual.label || "Synthetic chart"} with invented values`);
-  const values = numbersFor(page, visual);
-  const max = Math.max(...values) * 1.15;
-  for (let grid = 1; grid <= 3; grid++) {
-    const line = document.createElementNS(svg.namespaceURI, "line");
-    line.setAttribute("x1", "28");
-    line.setAttribute("x2", "312");
-    line.setAttribute("y1", String(20 + grid * 30));
-    line.setAttribute("y2", String(20 + grid * 30));
-    line.setAttribute("class", "grid-line");
-    svg.append(line);
+  const chartWidth = Math.max(240, visual.position.width - 12);
+  const chartHeight = Math.max(180, visual.position.height - 48);
+  const svg = svgNode("svg", { viewBox: `0 0 ${chartWidth} ${chartHeight}`, role: "img", "aria-label": visual.label || data.columns.map((p) => p.label).join(", ") }, wrap);
+  const horizontal = ["clusteredBarChart", "barChart", "funnel"].includes(visual.type);
+  const line = visual.type === "lineChart";
+  const combo = visual.type.includes("Combo");
+  const stacked = ["barChart", "columnChart", "lineStackedColumnComboChart"].includes(visual.type);
+  const numeric = (value) => typeof value === "number" && Number.isFinite(value) ? value : 0;
+  const rows = data.rows;
+  if (!rows.length) {
+    box.append(el("p", "empty", "No records match these filters."));
+    return;
   }
-  const isLine = visual.type.toLowerCase().includes("line");
-  const labels = fixtures.weeks.slice(0, values.length).map((item) => item.name);
-  if (isLine) {
-    const points = values.map((value, index) => `${34 + index * 38},${126 - (value / max) * 100}`).join(" ");
-    const polyline = document.createElementNS(svg.namespaceURI, "polyline");
-    polyline.setAttribute("points", points);
-    polyline.setAttribute("class", "line");
-    svg.append(polyline);
-    values.forEach((value, index) => {
-      const circle = document.createElementNS(svg.namespaceURI, "circle");
-      circle.setAttribute("cx", String(34 + index * 38));
-      circle.setAttribute("cy", String(126 - (value / max) * 100));
-      circle.setAttribute("r", "3");
-      circle.setAttribute("fill", "#176f65");
-      circle.setAttribute("title", `${labels[index]}: ${value}`);
-      svg.append(circle);
-    });
-  } else {
-    values.slice(0, 7).forEach((value, index) => {
-      const rect = document.createElementNS(svg.namespaceURI, "rect");
-      const barHeight = (value / max) * 104;
-      rect.setAttribute("x", String(35 + index * 38));
-      rect.setAttribute("y", String(126 - barHeight));
-      rect.setAttribute("width", "23");
-      rect.setAttribute("height", String(barHeight));
-      rect.setAttribute("rx", "2");
-      rect.setAttribute("class", index % 2 ? "bar alt" : "bar");
-      rect.setAttribute("title", `${labels[index]}: ${value}`);
-      svg.append(rect);
-    });
+  const tooltip = (row, column, value) => `${row.labels.join(" / ")}\n${column.label}: ${format(value, column)}\n${row.tooltips.map((p) => `${p.label}: ${p.value ?? "\u2014"}`).join("\n")}`;
+  const max1 = Math.max(0, ...rows.map((r) => stacked ? r.values.slice(0, combo ? visual.roles.Y.length : r.values.length).reduce((n, v) => n + numeric(v), 0) : Math.max(0, ...r.values.slice(0, combo ? visual.roles.Y.length : r.values.length).map(numeric)))) || 1;
+  const min1 = Math.min(0, ...rows.flatMap((r) => r.values.slice(0, combo ? visual.roles.Y.length : r.values.length).map(numeric)));
+  const max2 = Math.max(0, ...rows.flatMap((r) => r.values.slice(visual.roles.Y?.length || 0).map(numeric))) || 1;
+  const short = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value.slice(5) : String(value);
+  const x0 = horizontal ? Math.max(76, Math.min(155, chartWidth * .28)) : 55;
+  const width = chartWidth - x0 - (combo ? 64 : 20);
+  const labelEvery = Math.max(1, Math.ceil(rows.length / Math.max(2, Math.floor(width / 60))));
+  const y0 = 18, height = chartHeight - 62;
+  const y = (v, second = false) => y0 + height - ((v - (second ? 0 : min1)) / (second ? max2 : max1 - min1)) * height;
+  const x = (v) => x0 + (v - min1) / (max1 - min1) * width;
+  for (let tick = 0; tick <= 4; tick++) {
+    const value = min1 + (max1 - min1) * tick / 4;
+    if (horizontal) {
+      svgNode("line", { x1: x(value), x2: x(value), y1: y0, y2: y0 + height, class: "grid-line" }, svg);
+      svgNode("text", { x: x(value), y: y0 + height + 18, "text-anchor": "middle", class: "chart-label" }, svg, format(value, data.columns[0]));
+    } else {
+      svgNode("line", { x1: x0, x2: x0 + width, y1: y(value), y2: y(value), class: "grid-line" }, svg);
+      svgNode("text", { x: x0 - 5, y: y(value) + 4, "text-anchor": "end", class: "chart-label" }, svg, format(value, data.columns[0]));
+      if (combo) svgNode("text", { x: x0 + width + 5, y: y(max2 * tick / 4, true) + 4, class: "chart-label" }, svg, format(max2 * tick / 4, data.columns.at(-1)));
+    }
   }
-  labels.forEach((label, index) => {
-    const text = document.createElementNS(svg.namespaceURI, "text");
-    text.setAttribute("x", String(32 + index * 38));
-    text.setAttribute("y", "144");
-    text.setAttribute("class", "chart-label");
-    text.textContent = label;
-    svg.append(text);
+  data.columns.forEach((column, series) => {
+    const second = combo && series >= visual.roles.Y.length;
+    const useLine = line || second;
+    const points = [];
+    rows.forEach((row, i) => {
+      const value = numeric(row.values[series]);
+      const step = (horizontal ? height : width) / rows.length;
+      const center = (horizontal ? y0 : x0) + step * (i + .5);
+      const color = COLORS[series % COLORS.length];
+      let mark;
+      if (useLine) {
+        points.push(`${center},${y(value, second)}`);
+        mark = svgNode("circle", { cx: center, cy: y(value, second), r: 3, fill: color }, svg);
+      } else if (visual.type === "funnel") {
+        const w = value / max1 * width;
+        const h = Math.max(6, step - 3);
+        const cx = x0 + width / 2;
+        mark = svgNode("polygon", { points: `${cx - w / 2},${center - h / 2} ${cx + w / 2},${center - h / 2} ${cx + w * .42},${center + h / 2} ${cx - w * .42},${center + h / 2}`, fill: COLORS[i % COLORS.length] }, svg);
+      } else {
+        const prior = stacked ? row.values.slice(0, series).reduce((n, v) => n + numeric(v), 0) : 0;
+        const bands = stacked ? 1 : (combo ? visual.roles.Y.length : data.columns.length);
+        const band = step * .7 / bands;
+        const position = center - step * .35 + (stacked ? 0 : series * band);
+        mark = horizontal
+          ? svgNode("rect", { x: Math.min(x(prior), x(prior + value)), y: position, width: Math.abs(x(prior + value) - x(prior)), height: Math.max(1, band - 1), fill: color }, svg)
+          : svgNode("rect", { x: position, y: Math.min(y(prior), y(prior + value)), width: Math.max(1, band - 1), height: Math.abs(y(prior) - y(prior + value)), fill: color }, svg);
+      }
+      mark.dataset.measure = column.ref;
+      mark.dataset.value = JSON.stringify(row.values[series]);
+      svgNode("title", {}, mark, tooltip(row, column, row.values[series]));
+      if (series === 0 && (horizontal || i % labelEvery === 0)) {
+        const caption = short(row.labels.join(" / "));
+        const limit = horizontal ? Math.max(10, Math.floor(x0 / 5.2)) : 26;
+        svgNode("text", horizontal
+          ? { x: x0 - 6, y: center + 3, "text-anchor": "end", class: "chart-label" }
+          : { x: center, y: y0 + height + 18, "text-anchor": "middle", class: "chart-label" }, svg, caption.length > limit ? caption.slice(0, limit - 2) + "\u2026" : caption);
+      }
+    });
+    if (useLine) svgNode("polyline", { points: points.join(" "), fill: "none", stroke: COLORS[series % COLORS.length], "stroke-width": 2 }, svg);
   });
-  wrap.append(svg);
-  return wrap;
+  const legend = el("div", "chart-legend");
+  data.columns.forEach((p, i) => {
+    const item = el("span", "", `${combo && i >= visual.roles.Y.length ? "Line / right axis: " : ""}${p.label}`);
+    item.style.setProperty("--series-color", COLORS[i % COLORS.length]);
+    legend.append(item);
+  });
+  const details = el("details", "chart-data");
+  details.append(el("summary", "", "Show data"), makeTable(data, false));
+  box.append(wrap, legend, details);
 }
 
-function renderMeasureSearch() {
-  if (!definitions) return;
-  const query = measureQuery.value.trim().toLocaleLowerCase();
-  measureResults.replaceChildren();
-  if (query.length < 2) return;
-  const matches = Object.entries(definitions)
-    .filter(([name, description]) => `${name} ${description}`.toLocaleLowerCase().includes(query))
-    .slice(0, 8);
-  for (const [name, description] of matches) {
-    const hit = el("article", "measure-hit");
-    hit.append(el("strong", "", name), el("p", "", description));
-    measureResults.append(hit);
+function renderVisual(visual) {
+  const box = el("section", `visual ${visual.type}`);
+  box.dataset.visual = visual.id;
+  box.dataset.visualType = visual.type;
+  box.setAttribute("aria-label", visual.label || visual.type);
+  const { x, y, width, height, z } = visual.position;
+  Object.assign(box.style, { left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px`, zIndex: z });
+  if (["shape", "basicShape"].includes(visual.type)) {
+    box.classList.add("shape");
+    box.style.background = visual.fill || "#fff";
+    return box;
   }
-  if (!matches.length) measureResults.append(el("div", "measure-hit", "No matching measure definition."));
+  if (visual.type === "textbox") { renderText(visual, box); return box; }
+  if (visual.type === "image") {
+    const img = document.createElement("img");
+    img.src = visual.image;
+    img.alt = "Copilot";
+    box.append(img);
+    return box;
+  }
+  if (visual.type === "actionButton") {
+    if (visual.action === "Back") {
+      const button = el("button", "source-action", "\u2190");
+      button.type = "button";
+      button.setAttribute("aria-label", "Back to previous report page");
+      button.addEventListener("click", () => selectPage(state.trail.pop() || schema.pages[0].id, false));
+      box.append(button);
+      return box;
+    }
+    const target = schema.pages.find((p) => p.id === visual.target);
+    if (!target) throw new Error(`Unsupported navigation in ${visual.id}`);
+    const button = el("button", "source-action", "?");
+    button.type = "button";
+    button.setAttribute("aria-label", target.title);
+    button.addEventListener("click", () => selectPage(target.id));
+    box.append(button);
+    return box;
+  }
+  if (visual.type === "slicer") { renderSlicer(visual, box); return box; }
+  const data = queryVisual(visual, selection());
+  if (visual.type === "cardVisual") {
+    const cards = el("div", "cards");
+    data.columns.forEach((p, i) => {
+      const value = data.totals[i];
+      const tile = el("article", typeof value === "string" ? "metric-tile narrative" : "metric-tile");
+      tile.append(cellValue(el("div", "metric"), p, value));
+      const label = el("div", "metric-label", p.label);
+      const definition = info(p);
+      if (definition) label.append(definition);
+      tile.append(label);
+      cards.append(tile);
+    });
+    box.append(cards);
+  } else {
+    if (visual.label) box.append(el("div", "visual-title", visual.label));
+    if (visual.type === "pivotTable") box.append(makeTable(data));
+    else renderChart(visual, data, box);
+  }
+  return box;
 }
 
-let pages = [];
-let definitions = {};
-
+let observer;
 function renderPage() {
-  const page = pages[state.pageIndex];
-  if (!page) return;
+  const page = schema.pages[state.pageIndex];
   title.textContent = page.title;
   const canvas = el("div", "report-canvas");
-  canvas.style.aspectRatio = `${page.canvas.width} / ${page.canvas.height}`;
-  canvas.setAttribute("aria-label", `${page.title} report visuals`);
-  page.pages = pages;
-  page.visuals.forEach((visual) => canvas.append(createVisual(page, visual, definitions)));
+  canvas.setAttribute("aria-label", `${page.title} source report canvas`);
+  canvas.style.width = `${page.canvas.width}px`;
+  canvas.style.height = `${page.canvas.height}px`;
+  page.visuals.forEach((v) => canvas.append(renderVisual(v)));
   frame.replaceChildren(canvas);
+  observer?.disconnect();
+  const scale = () => {
+    const ratio = Math.min(1, (frame.clientWidth - 2) / page.canvas.width);
+    canvas.style.transform = `scale(${ratio})`;
+    frame.style.height = `${page.canvas.height * ratio + 2}px`;
+  };
+  observer = new ResizeObserver(scale);
+  observer.observe(frame);
+  scale();
 }
 
-async function start() {
-  const [schema, measureMap] = await Promise.all([schemaPromise, definitionsPromise]);
-  pages = schema.pages;
-  definitions = measureMap;
-  renderNavigation(pages);
+function renderSearch() {
+  results.replaceChildren();
+  const query = search.value.trim().toLowerCase();
+  if (query.length < 2) return;
+  for (const [name, description] of Object.entries(definitions).filter(([name, description]) => `${name} ${description}`.toLowerCase().includes(query)).slice(0, 8)) {
+    const hit = el("article", "measure-hit");
+    hit.append(el("strong", "", name), el("p", "", description));
+    results.append(hit);
+  }
+  if (!results.childElementCount) results.append(el("p", "measure-hit", "No matching measure definition."));
+}
+
+document.querySelector("#reset-filters").addEventListener("click", () => {
+  state.selections.delete(schema.pages[state.pageIndex].id);
   renderPage();
-  renderMeasureSearch();
-}
+});
+search.addEventListener("input", renderSearch);
 
+async function load(path) {
+  const response = await fetch(path);
+  if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+  return response.json();
+}
+async function start() {
+  [schema, definitions] = await Promise.all([load("./report-schema.json"), load("./measure-definitions.json")]);
+  verifyBindings(schema.pages);
+  const selected = schema.pages.find((p) => p.id === location.hash.slice(1));
+  selectPage(selected?.id || schema.pages[0].id);
+}
 start().catch((error) => {
-  const message = el("div", "error", `The static report could not load its local definition: ${error.message}`);
-  document.querySelector(".report-main").replaceChildren(message);
+  console.error(error);
+  document.querySelector(".report-main").replaceChildren(el("p", "error", `The report demo could not load: ${error.message}`));
 });

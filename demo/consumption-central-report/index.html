@@ -5,24 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="A static, interactive Consumption Central report demo with invented data." />
     <title>Consumption Central report demo</title>
-    <link rel="stylesheet" href="./styles.css" />
-    <script type="module" src="./app.js"></script>
+    <script type="module" crossorigin src="./assets/index-BJHSOFrY.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BOYJdWF0.css">
   </head>
   <body>
     <div class="app">
       <header class="topbar">
         <div>
-          <div class="brand"><span class="brand-mark" aria-hidden="true">CC</span><div><h1>Consumption Central</h1><p>Power BI report · browser demo</p></div></div>
+          <div class="brand"><span class="brand-mark" aria-hidden="true">CC</span><div><h1>Consumption Central</h1><p>Power BI report · browser port</p></div></div>
         </div>
         <div class="top-actions">
+          <a class="back-link" href="/#solutions">Back to solutions</a>
           <span class="demo-badge">Synthetic demo data</span>
-          <label class="period-control">Period
-            <select id="global-period" aria-label="Global period filter">
-              <option>Current 4 weeks</option>
-              <option>Last 8 weeks</option>
-              <option>All history</option>
-            </select>
-          </label>
+          <button type="button" class="reset-filters" id="reset-filters">Reset page filters</button>
         </div>
       </header>
       <div class="layout">
@@ -30,7 +25,7 @@
         <main class="report-main">
           <div class="page-heading">
             <div>
-              <p class="eyebrow">Static report preview</p>
+              <p class="eyebrow">Source report layout · local calculations</p>
               <h2 id="page-title">Loading report…</h2>
             </div>
             <div class="measure-search">
@@ -40,7 +35,7 @@
           </div>
           <div id="measure-results" class="measure-results" aria-live="polite"></div>
           <div id="report-frame" class="report-frame" tabindex="0" aria-label="Report page visuals"></div>
-          <footer class="footnote">All people, groups, workloads and amounts shown are invented. Filters only change this local preview.</footer>
+          <footer class="footnote">Synthetic records, calculated locally. This browser port does not run the Power BI engine. Studio dates affect tenant totals only; agent/user detail remains an undated snapshot. Tables show the source's active hierarchy level; native Power BI drill, bookmarks and cross-highlighting are not reproduced. Rates use fixed fixture settings. Forecasts and task work equivalents are estimates, not measured outcomes.</footer>
         </main>
       </div>
     </div>

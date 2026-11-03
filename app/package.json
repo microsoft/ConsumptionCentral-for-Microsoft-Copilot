@@ -8,6 +8,9 @@
     "build": "tsc -b && vite build",
     "build:file": "tsc -b && vite build --mode file",
     "build:demo": "python ../demo/scripts/prepare-fixtures.py --out demo-public/sample && tsc -b && vite build --mode demo",
+    "build:report-demo": "python ../demo/consumption-central-report-src/scripts/build.py && vite build --config vite.report-demo.config.ts",
+    "test:report-demo": "tsc -p tsconfig.report-demo.json && node scripts/test-report-demo.mjs",
+    "test:report-demo:browser": "node scripts/test-report-demo-browser.mjs",
     "lint": "eslint .",
     "prepare-sample": "node scripts/prepare-sample.mjs",
     "preview": "vite preview"
@@ -23,6 +26,7 @@
     "@microsoft/managed-apps-cli": "0.29.0",
     "@microsoft/managed-apps-vite-plugin": "^0.3.11",
     "@microsoft/rayfin-cli": "^1.35.1",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^24.12.3",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.2.14",
