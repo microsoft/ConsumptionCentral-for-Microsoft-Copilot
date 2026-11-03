@@ -146,13 +146,15 @@ def build() -> None:
     for name in ("index.html", "styles.css", "app.js"):
         shutil.copy2(SOURCE / name, OUTPUT / name)
     shutil.copy2(ROOT / "LICENSE", OUTPUT / "LICENSE")
-    (OUTPUT / "THIRD-PARTY-NOTICES.txt").write_text(
-        "This static report bundle has no third-party runtime dependencies. "
-        "The report port and its source templates are covered by the repository MIT License.\n",
-        encoding="utf-8",
-    )
-    (OUTPUT / "report-schema.json").write_text(json.dumps(schema, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
-    (OUTPUT / "measure-definitions.json").write_text(json.dumps(definitions, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+    with (OUTPUT / "THIRD-PARTY-NOTICES.txt").open("w", encoding="utf-8", newline="\n") as stream:
+        stream.write(
+            "This static report bundle has no third-party runtime dependencies. "
+            "The report port and its source templates are covered by the repository MIT License.\n"
+        )
+    with (OUTPUT / "report-schema.json").open("w", encoding="utf-8", newline="\n") as stream:
+        stream.write(json.dumps(schema, ensure_ascii=False, separators=(",", ":")) + "\n")
+    with (OUTPUT / "measure-definitions.json").open("w", encoding="utf-8", newline="\n") as stream:
+        stream.write(json.dumps(definitions, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
 if __name__ == "__main__":
