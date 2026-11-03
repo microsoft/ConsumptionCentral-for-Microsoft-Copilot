@@ -49,7 +49,7 @@ Microsoft's guide: [Copilot Managed Runtime licensing FAQ](https://learn.microso
 
 #### Commands
 
-You need [Node.js](https://nodejs.org) 24.11 or later and [Git](https://git-scm.com/downloads). Run the commands one at a time: pasting them all at once can feed later lines to an earlier prompt. If PowerShell says running scripts is disabled, use Command Prompt. The `ms` CLI (`@microsoft/managed-apps-cli`) is pinned in [`package.json`](package.json), so `npm ci` installs the tested version.
+You need [Node.js](https://nodejs.org) 24.x and [Git](https://git-scm.com/downloads). Run the commands one at a time: pasting them all at once can feed later lines to an earlier prompt. If PowerShell says running scripts is disabled, use Command Prompt. The `ms` CLI (`@microsoft/managed-apps-cli`) is pinned in [`package.json`](package.json), so `npm ci` installs the tested version.
 
 Get the code:
 
@@ -100,7 +100,7 @@ npx ms app deploy
 | `npx ms app init` times out looking up your environment | Add `-e` followed by the environment ID, from the environment's page in the Power Platform admin center. |
 | `npx ms app share` is refused | An admin checks the group's **Sharing** rule in the Microsoft 365 admin center, under **Apps** › **Settings** › **Environment groups**. |
 | A viewer you shared it with can't open the app | They need Power Apps Premium or Copilot Credits (see [Licensing](#licensing)). Sharing alone isn't enough. |
-| `npx ms` complains about the Node.js version | Install Node.js 24.11 or later. To check your version, run `node --version`. |
+| `npx ms` complains about the Node.js version | Install Node.js 24.x. To check your version, run `node --version`. |
 
 <a id="as-a-fabric-app-in-a-fabric-workspace"></a>
 
@@ -170,9 +170,12 @@ npm run dev         # local dev server
 npm run lint
 npm run build       # type-check and build to dist/ (Managed App and Fabric App hosting)
 npm run build:file  # build the single-file download to download/Consumption-Central-App.html
+npm run build:demo  # build a self-contained synthetic demo to ../demo/consumption-central/
 ```
 
 `download/Consumption-Central-App.html` is committed so people can download it. Whenever you change the app or the sample, run `npm run build:file` and commit the result. The single-file build inlines the code and styles, and embeds the sample CSVs listed in `public/sample/manifest.json`, gzipped.
+
+`npm run build:demo` is separate from the production and download builds. It replaces entity labels in a generated copy of the bundled synthetic sample, embeds that copy in a single `index.html`, and writes the demo bundle outside `app/`. It requires Python 3.12+ for fixture generation.
 
 If Git converts line endings in your checkout (`core.autocrlf=true`, the Git for Windows default), run `npm run prepare-sample` before `npm run build:file`. It rewrites the sample with the line endings the committed page was built from. Otherwise every embedded sample file gains a carriage return and the download changes even when the app hasn't.
 

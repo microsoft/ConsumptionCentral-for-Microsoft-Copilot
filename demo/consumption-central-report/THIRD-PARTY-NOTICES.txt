@@ -1,0 +1,1 @@
+This static report bundle has no third-party runtime dependencies. The report port and its source templates are covered by the repository MIT License.

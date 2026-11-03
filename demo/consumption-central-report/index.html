@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="A static, interactive Consumption Central report demo with invented data." />
+    <title>Consumption Central report demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div>
+          <div class="brand"><span class="brand-mark" aria-hidden="true">CC</span><div><h1>Consumption Central</h1><p>Power BI report · browser demo</p></div></div>
+        </div>
+        <div class="top-actions">
+          <span class="demo-badge">Synthetic demo data</span>
+          <label class="period-control">Period
+            <select id="global-period" aria-label="Global period filter">
+              <option>Current 4 weeks</option>
+              <option>Last 8 weeks</option>
+              <option>All history</option>
+            </select>
+          </label>
+        </div>
+      </header>
+      <div class="layout">
+        <nav class="page-nav" aria-label="Report pages" id="page-nav"></nav>
+        <main class="report-main">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Static report preview</p>
+              <h2 id="page-title">Loading report…</h2>
+            </div>
+            <div class="measure-search">
+              <label for="measure-query">Find a measure</label>
+              <input id="measure-query" type="search" placeholder="Search definitions" autocomplete="off" />
+            </div>
+          </div>
+          <div id="measure-results" class="measure-results" aria-live="polite"></div>
+          <div id="report-frame" class="report-frame" tabindex="0" aria-label="Report page visuals"></div>
+          <footer class="footnote">All people, groups, workloads and amounts shown are invented. Filters only change this local preview.</footer>
+        </main>
+      </div>
+    </div>
+    <noscript>This interactive report needs JavaScript enabled in your browser.</noscript>
+  </body>
+</html>

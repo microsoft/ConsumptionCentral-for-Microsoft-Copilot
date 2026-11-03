@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:file": "tsc -b && vite build --mode file",
+    "build:demo": "python ../demo/scripts/prepare-fixtures.py --out demo-public/sample && tsc -b && vite build --mode demo",
     "lint": "eslint .",
     "prepare-sample": "node scripts/prepare-sample.mjs",
     "preview": "vite preview"
