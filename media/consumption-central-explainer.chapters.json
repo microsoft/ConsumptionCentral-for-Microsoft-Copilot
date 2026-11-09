@@ -1,0 +1,182 @@
+[
+  {
+    "seconds": 0.0,
+    "end_seconds": 63.75,
+    "label": "Start here / A simple guide to Consumption Central",
+    "key": "orientation"
+  },
+  {
+    "seconds": 63.75,
+    "end_seconds": 132.5,
+    "label": "Start here / Dates, filters and detail",
+    "key": "filters"
+  },
+  {
+    "seconds": 132.5,
+    "end_seconds": 196.0,
+    "label": "Start here / Rates and settings",
+    "key": "rates"
+  },
+  {
+    "seconds": 196.0,
+    "end_seconds": 261.75,
+    "label": "Start here / Change data and source coverage",
+    "key": "data"
+  },
+  {
+    "seconds": 261.75,
+    "end_seconds": 328.917,
+    "label": "Overview / Overview",
+    "key": "overview"
+  },
+  {
+    "seconds": 328.917,
+    "end_seconds": 396.333,
+    "label": "Cowork & Work IQ / Consumption",
+    "key": "cowork/consumption"
+  },
+  {
+    "seconds": 396.333,
+    "end_seconds": 464.25,
+    "label": "Cowork & Work IQ / Cost",
+    "key": "cowork/cost"
+  },
+  {
+    "seconds": 464.25,
+    "end_seconds": 534.0,
+    "label": "Cowork & Work IQ / Chargeback",
+    "key": "cowork/chargeback"
+  },
+  {
+    "seconds": 534.0,
+    "end_seconds": 610.0,
+    "label": "Cowork & Work IQ / Tasks",
+    "key": "cowork/tasks"
+  },
+  {
+    "seconds": 610.0,
+    "end_seconds": 682.417,
+    "label": "Cowork & Work IQ / Optimization",
+    "key": "cowork/optimization"
+  },
+  {
+    "seconds": 682.417,
+    "end_seconds": 753.0,
+    "label": "Cowork & Work IQ / Forecast",
+    "key": "cowork/forecast"
+  },
+  {
+    "seconds": 753.0,
+    "end_seconds": 824.75,
+    "label": "Copilot Studio / Consumption",
+    "key": "studio/consumption"
+  },
+  {
+    "seconds": 824.75,
+    "end_seconds": 897.75,
+    "label": "Copilot Studio / Cost",
+    "key": "studio/cost"
+  },
+  {
+    "seconds": 897.75,
+    "end_seconds": 971.25,
+    "label": "Copilot Studio / Optimization",
+    "key": "studio/optimization"
+  },
+  {
+    "seconds": 971.25,
+    "end_seconds": 1043.5,
+    "label": "Copilot Studio / Forecast",
+    "key": "studio/forecast"
+  },
+  {
+    "seconds": 1043.5,
+    "end_seconds": 1109.0,
+    "label": "GitHub Copilot / Consumption",
+    "key": "github/consumption"
+  },
+  {
+    "seconds": 1109.0,
+    "end_seconds": 1176.75,
+    "label": "GitHub Copilot / Cost",
+    "key": "github/cost"
+  },
+  {
+    "seconds": 1176.75,
+    "end_seconds": 1245.0,
+    "label": "GitHub Copilot / Optimization",
+    "key": "github/optimization"
+  },
+  {
+    "seconds": 1245.0,
+    "end_seconds": 1312.333,
+    "label": "GitHub Copilot / Forecast",
+    "key": "github/forecast"
+  },
+  {
+    "seconds": 1312.333,
+    "end_seconds": 1390.583,
+    "label": "Azure AI Foundry / Spend",
+    "key": "azure/spend"
+  },
+  {
+    "seconds": 1390.583,
+    "end_seconds": 1471.5,
+    "label": "Azure AI Foundry / Capacity & health",
+    "key": "azure/health"
+  },
+  {
+    "seconds": 1471.5,
+    "end_seconds": 1545.833,
+    "label": "Azure AI Foundry / Reconciliation",
+    "key": "azure/recon"
+  },
+  {
+    "seconds": 1545.833,
+    "end_seconds": 1613.583,
+    "label": "Guide / Start here",
+    "key": "guide/start"
+  },
+  {
+    "seconds": 1613.583,
+    "end_seconds": 1681.75,
+    "label": "Guide / How to read",
+    "key": "guide/read"
+  },
+  {
+    "seconds": 1681.75,
+    "end_seconds": 1743.083,
+    "label": "Guide / Products: Cowork & Work IQ",
+    "key": "guide/products-cowork"
+  },
+  {
+    "seconds": 1743.083,
+    "end_seconds": 1804.25,
+    "label": "Guide / Products: Copilot Studio",
+    "key": "guide/products-studio"
+  },
+  {
+    "seconds": 1804.25,
+    "end_seconds": 1858.833,
+    "label": "Guide / Products: GitHub Copilot",
+    "key": "guide/products-github"
+  },
+  {
+    "seconds": 1858.833,
+    "end_seconds": 1915.333,
+    "label": "Guide / Products: Azure AI Foundry",
+    "key": "guide/products-azure"
+  },
+  {
+    "seconds": 1915.333,
+    "end_seconds": 1979.667,
+    "label": "Guide / Glossary",
+    "key": "guide/glossary"
+  },
+  {
+    "seconds": 1979.667,
+    "end_seconds": 2059.167,
+    "label": "Putting it together / A practical review routine",
+    "key": "closing"
+  }
+]
