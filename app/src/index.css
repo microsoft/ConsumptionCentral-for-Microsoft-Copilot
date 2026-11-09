@@ -1422,6 +1422,7 @@ input[type='search']::placeholder {
     padding-inline: 14px;
   }
   .band-top {
+    flex-wrap: wrap;
     padding-block: 12px 6px;
   }
   .brand p,
