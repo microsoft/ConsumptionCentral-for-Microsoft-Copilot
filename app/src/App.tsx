@@ -129,6 +129,9 @@ export default function App() {
               </div>
             </div>
             <div className="band-actions">
+              <a className="band-btn" href="https://ai-datalab.github.io/#/watch/consumption-central-explainer" target="_blank" rel="noopener noreferrer">
+                Explainer
+              </a>
               <button type="button" className="source-chip" onClick={() => setSheet('source')} title="Change data source">
                 {ds.sample && <span className="tag">Sample data</span>}
                 <span className="source-dates">

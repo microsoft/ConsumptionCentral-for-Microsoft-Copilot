@@ -1,0 +1,485 @@
+# Consumption Central - a simple guide to reading each page
+
+Synthetic demo data · AI-generated narration. Fictional examples are not dashboard results or contract prices. Captions are sentence-timed approximations, not word-aligned transcription. Main visuals show the current source build using the public repository synthetic sample. One labelled Overview comparison shows the older deployed public demo with an optional source missing.
+
+Source baseline: `373d4bfc5fb8c4f1248657f5f7649d4f21937cfc`.
+
+## 00:00:00 - Start here / A simple guide to Consumption Central
+
+Source: `app/src/routes.ts`
+
+**On screen:** What it shows. How to read it. What to do next.
+
+Consumption Central helps you understand Copilot credits and AI spend. This is a practical guide to every current app view: what it shows, how to read it, and what action to take. We use genuine app screens with synthetic sample data. The people, agents, organisations and amounts are fictional. The voice is AI generated.
+
+**On screen:** Four products, four different billing stories
+
+The six main tabs are Overview, Cowork and Work IQ, Copilot Studio, GitHub Copilot, Azure AI Foundry, and Guide. They answer related questions, but they do not measure the same thing. A credit in one product is not a universal unit of work. More credits do not, on their own, prove more value.
+
+**On screen:** Start with coverage, then cost, then a decision
+
+Work through the app in that order. Check which source is loaded and which dates it covers. Find the largest driver. Then use the relevant detail page to decide what to investigate. This is a guide to reading the app, not an installer walkthrough, a live service demonstration, or a claim about current commercial prices.
+
+## 00:01:03 - Start here / Dates, filters and detail
+
+Source: `app/src/FilterBar.tsx`
+
+**On screen:** Each product has its own period
+
+The date range in the header describes the loaded dataset, not a single period applied to every page. Overview has From and To dates. Cowork has weekly periods. Studio has a tenant period. GitHub has monthly periods. Azure spend uses the loaded export, while reconciliation has its own billing-period selector. Always read the controls on the page you are using.
+
+**On screen:** Filters reset when you change product tabs
+
+Within a product, move between its views to keep investigating the selection. Changing the main tab clears the filters. Group by controls organise attributed people; they do not manufacture a missing identity join. Tables can be searched and sorted. Expand a group where offered to see its people or policies. Hover charts for additional measures.
+
+**On screen:** A dash is not proof of zero
+
+A missing source, an undefined ratio and no matching rows are different conditions. Read the notices and coverage before interpreting a dash or an empty chart. A low count can be a short export rather than low demand. When comparing two views, first confirm they use the same time window, population and measurement basis.
+
+## 00:02:12 - Start here / Rates and settings
+
+Source: `app/src/ui/SettingsSheet.tsx`
+
+**On screen:** Rates are assumptions, not a live price feed
+
+Rates in the header opens the commercial assumptions. Cowork has prepaid and pay-as-you-go prices plus a capacity pack balance. Studio has its own prepaid and pay-as-you-go prices. GitHub has seat prices, a credit rate, future included credits and an allowance change date. These settings are editable planning inputs, not verified contract rates.
+
+**On screen:** Changing a rate changes an estimate, not the source activity
+
+If you change a credit price, the same recorded activity can produce a different cost estimate. It does not mean usage changed. The GitHub allowance date affects forecast months ending on or after that date. Check these settings against your agreement before you use an estimate for a purchasing or budgeting decision.
+
+**On screen:** Settings apply immediately and are not saved
+
+The panel explains that changes take effect straight away and are not saved when you close the app. Reset to defaults restores the shipped assumptions. In this guide, all examples use synthetic data. Where we work through arithmetic, the example is explicitly fictional and is not being presented as a dashboard result.
+
+## 00:03:16 - Start here / Change data and source coverage
+
+Source: `app/src/ui/DataSourceDialog.tsx`
+
+**On screen:** The sample is a safe starting point
+
+Change data shows the loaded sources and lets you choose your own CSV exports. The app recognises sources from their column headers. You do not need all four products to begin. In this recording we stay with the built-in synthetic sample; we do not connect to a tenant, load customer files or simulate live telemetry.
+
+**On screen:** Load compatible exports, not just similarly named files
+
+Weekly credits, task categories, spending policies, Studio snapshots, GitHub billing usage and Azure exports each have different roles. Organisation data enriches grouping; it does not create consumption records. Check the source guide if a file is not recognised. Missing optional sources should remain missing, rather than being filled with invented usage.
+
+**On screen:** Your chosen files are calculated in the browser
+
+The app reads and calculates the selected files in your browser. The explainer link opens a separate public website only when you choose it; it does not upload those files. In your own analysis, first confirm loaded row counts and date coverage. Do not mix an old identity export with a new billing period without checking the join.
+
+## 00:04:21 - Overview / Overview
+
+Source: `app/src/metrics/combined.ts`
+
+**On screen:** Compare coverage and basis before comparing bars
+
+Overview places the four products on one selected date range. The cost bars rank them, but deliberately have no grand total. Cowork is a pay-as-you-go reference value before prepaid capacity. Studio prices tenant quantities at configured rates. GitHub uses the export net usage amount without seat subscriptions. Azure uses the Foundry Models export cost.
+
+**On screen:** Credits are product-specific; whole weeks stay whole
+
+The credits table does not add a universal credit total either. Read the cost basis and coverage beside each row. Cowork counts whole weekly records whose dates fall in the range. Studio user and agent snapshots have no dates and are excluded here. That is why an Overview amount can differ from its product tab.
+
+**On screen:** Follow the biggest driver, not a made-up combined bill
+
+Use Overview to choose where to investigate next, not to reconcile an invoice. Partial coverage is stated explicitly. No rows in selected dates is not confirmed zero. The Studio note also warns about credits without named-person attribution. Missing attribution is a reason to check coverage, not to allocate the gap to an arbitrary department.
+
+## 00:05:28 - Cowork & Work IQ / Consumption
+
+Source: `app/src/metrics/cowork.ts`
+
+**On screen:** Period usage and monthly allowance have different grains
+
+Cowork Consumption shows credits in the selected weekly window, the roster allowance and consuming users. The allowance is the sum of monthly person limits. If you choose eight weeks or all history, that denominator does not become an eight-week allowance. Read the period before concluding that someone has exceeded a like-for-like monthly budget.
+
+**On screen:** Use the table and weekly chart together
+
+The group table shows where credits are concentrated. Expand a group to inspect its people. The line chart shows weekly credits, with weekly active users and week-on-week change on hover. The headline labelled Weekly active users is a distinct count across the weekly records, not an average of weekly counts and not necessarily the selected-period consuming count.
+
+**On screen:** Ask what changed, not only who used most
+
+Select a service, spending policy or cohort to narrow the investigation. Compare the pattern with rollout dates and expected work. A rise shared across many people differs from one high-consuming person. Use cost and task detail next. High consumption alone is neither a success measure nor sufficient evidence that a person should lose access.
+
+## 00:06:36 - Cowork & Work IQ / Cost
+
+Source: `app/src/metrics/cowork.ts`
+
+**On screen:** Prepaid draws first; PAYG prices the rest
+
+Cowork Cost prices credits using the capacity pack balance you enter. Prepaid used is the smaller of usage and that balance. Anything beyond the balance is pay-as-you-go. Total cost adds those two priced quantities. The blended rate is that total divided by credits used. This is a usage cost model, not the purchase price of an entire pack.
+
+**On screen:** Fictional example: 10,000 credits, a 6,000-credit balance
+
+Here is fictional arithmetic, not a dashboard result or contract price. If usage is ten thousand credits, the balance is six thousand, prepaid is eight tenths of a cent and pay-as-you-go is one cent, the model gives forty-eight dollars prepaid plus forty dollars pay-as-you-go: eighty-eight dollars in total.
+
+**On screen:** Policy headroom is a separate control
+
+The weekly cost chart burns down the balance oldest week first. Policy allowance and headroom come from spending-policy plan limits, not the sum of person allowances. Missing policy data leaves that context unavailable. Use this view to test pricing assumptions. Do not sum independently priced group rows as a tenant allocation; use Chargeback for that job.
+
+## 00:07:44 - Cowork & Work IQ / Chargeback
+
+Source: `app/src/metrics/chargeback.ts`
+
+**On screen:** Allocate cost from spending-policy billing fields
+
+Chargeback allocates Cowork cost by cost centre or department using optional fields on spending-policy metadata. The table carries billing owner and charge code and expands to policies. These are policy billing assignments, not necessarily the same grouping as a person department. Not assigned keeps unmapped cost visible rather than silently dropping it.
+
+**On screen:** One tenant prepaid share is applied pro rata
+
+The tenant prepaid share is prepaid credits divided by tenant credits for the selected period and service. Every line receives that same share at the prepaid rate and the remainder at pay-as-you-go. Filtering the visible groups does not recalculate a preferential rate for those groups. With no filters, chargeback matches the tenant Cowork cost.
+
+**On screen:** Resolve unassigned cost before exporting
+
+For a fictional sixty percent prepaid share, a line with a thousand credits receives six hundred prepaid and four hundred pay-as-you-go credits. Check its owner and policy, resolve Not assigned, then use Download CSV for the allocation detail. Fresh Viva spending-policy exports do not include the added billing columns; restore them after every re-export.
+
+## 00:08:54 - Cowork & Work IQ / Tasks
+
+Source: `app/src/metrics/tasks.ts`
+
+**On screen:** Observed tasks; estimated expert-equivalent work
+
+Tasks adds a different lens: reported task counts, category mix and credit intensity. It uses its own task period, type, category and organisation filters. The stacked weekly chart shows task types. Credits per task divides attributed credits by reported tasks. Those tasks are observed export counts, not a measured count of successful outcomes.
+
+**On screen:** Hours depend on category assumptions and the scenario
+
+Expert-equivalent hours multiply task counts by provisional minutes per category, then divide by sixty. Conservative, Typical and Optimistic choose different minutes. Monetary value appears only after you enter an hourly value. A fictional twelve tasks at thirty minutes each gives six expert-equivalent hours; at fifty dollars an hour that is three hundred dollars, not proven savings.
+
+**On screen:** Check coverage before comparing cost and value
+
+Unknown categories remain in observed totals but may have no valuation. If any selected task row lacks credits, the aggregate credit and cost estimates are unavailable rather than pretending the missing credits are zero. Read the coverage notice and Basis. Task PAYG estimates do not allocate prepaid capacity or licences, and expert-equivalent work is not measured time saved.
+
+## 00:10:10 - Cowork & Work IQ / Optimization
+
+Source: `app/src/data/load.ts; app/src/metrics/cowork.ts`
+
+**On screen:** An action queue, not automatic permission changes
+
+Optimization summarises reclaim, downsize, hold, monitor and upgrade recommendations. Right-size net combines modeled savings and upgrade costs at the pay-as-you-go rate. Reclaimable and dormant allowance are potential capacity changes, not guaranteed cash back. Savings matter only when released credits avoid a purchase that you would otherwise make. Nothing here changes permissions automatically.
+
+**On screen:** Recommendations use a fixed recent baseline
+
+The action labels are built from the latest four weeks of credits and historical active-week persistence. Changing the displayed period can change the credit column without rebuilding those baseline labels. Recommended allowance adds fifteen percent headroom, rounds up to a two-hundred-and-fifty-credit step, and has a minimum of two hundred and fifty for positive use.
+
+**On screen:** Review context before reclaiming or upgrading
+
+Expand the queue and start with the largest net impact, but confirm leave, rollout timing and expected work with the owner. Persistent overuse means over the weekly equivalent of a monthly limit in at least sixty percent of active weeks. A temporary spike calls for a different action from sustained demand. Treat every recommendation as a review signal.
+
+## 00:11:22 - Cowork & Work IQ / Forecast
+
+Source: `app/src/metrics/cowork.ts`
+
+**On screen:** Separate the current run rate from growth
+
+Cowork Forecast shows a current cost basis and a twelve-month planning range. Its baseline is the selected period credits at today’s blended rate; it is not automatically normalised when you choose a longer period. For a monthly planning conversation, check the selected window first. The fitted trend uses the selected people and service across the available weekly history.
+
+**On screen:** Fit, backtest and confidence are different checks
+
+The weekly trend uses a straight-line fit, translates relative weekly change to monthly growth, and bounds the fitted monthly rate between minus seventy-five and plus one hundred percent. Confidence also uses fit quality and a held-out recent-week backtest. The app requires six weeks for its growth range; with shorter history it leads with the current-rate result.
+
+**On screen:** A chosen scenario is not a statistical guarantee
+
+The growth assumption can replace the fitted rate. Read the confidence and summary before treating a steep curve as a budget. A scenario range from flat to growth is not a confidence interval. The projection holds today’s blended rate rather than re-running future pack exhaustion month by month. Use it to compare planning cases, then validate the commercial implications separately.
+
+## 00:12:33 - Copilot Studio / Consumption
+
+Source: `app/src/metrics/studio.ts`
+
+**On screen:** Daily tenant totals and undated snapshots are separate
+
+Studio Consumption combines daily tenant quantities with user and agent export snapshots. The period selector affects tenant totals only. User and agent detail is undated. Selecting the last seven days does not turn the user table into a seven-day table. Read the snapshot note, especially when the tenant total does not equal the sum of named users.
+
+**On screen:** Find the driver without assuming full attribution
+
+The daily chart shows prepaid plus pay-as-you-go credits. Agent rankings in the user snapshot show the attributed portion, while model and feature breakdowns come from agent detail. Billing active users means distinct people in that snapshot. Average agents per user counts user-agent pairs. It is not a count of deployed agents in an inventory.
+
+**On screen:** Investigate concentration on the right source
+
+Use the agent and user rankings to find a concentration worth discussing with an owner. Check whether a model or feature explains it, then use Cost. If user or agent files are missing, their detail is unavailable; a tenant export cannot invent person attribution. Do not describe a snapshot ranking as recent behaviour unless its export period is independently known.
+
+## 00:13:44 - Copilot Studio / Cost
+
+Source: `app/src/metrics/studio.ts`
+
+**On screen:** Tenant billable cost uses daily export quantities
+
+Studio Cost prices tenant prepaid quantities at the configured prepaid rate and pay-as-you-go quantities at the configured PAYG rate. Effective rate is total modeled cost divided by consumed credits. PAYG share is a share of credits, not necessarily the same percentage of cost. The daily chart lets you inspect when the billing mix changes.
+
+**On screen:** Estimated value here is priced consumption, not business value
+
+The tables labelled Estimated value by person and by agent use user-snapshot billable credits at the PAYG rate. Despite the word value, they are cost estimates of consumption, not productivity value or measured return on investment. Model and feature costs similarly price billed agent-snapshot credits. They are not an allocation of the selected-period tenant bill.
+
+**On screen:** Change assumptions only with a documented reason
+
+If one agent dominates the cost estimate, inspect its billed quantity and model or feature mix, then confirm the appropriate rate. Keep daily tenant cost separate from snapshot attribution. A difference may reflect grain and coverage, not a billing defect. Use Optimization to prioritise review, and reconciliation only when period, currency and billing pool can actually be aligned.
+
+## 00:14:57 - Copilot Studio / Optimization
+
+Source: `app/src/metrics/studio.ts`
+
+**On screen:** Review billing exposure and entitlement coverage
+
+Studio Optimization highlights consumption without entitlement, unlicensed credit share, unused agents and concentration. The entitlement measure uses the latest date in the selected tenant scope, taking each environment’s entitlement once rather than adding repeated daily capacity. Unlicensed means no Microsoft 365 Copilot licence on user-snapshot rows; it does not prove access was unauthorised.
+
+**On screen:** Action labels follow explicit thresholds
+
+An agent with at least a quarter of snapshot consumption and at least half billed is flagged for review. At least three quarters billed is investigate. High volume with better coverage is monitor. Zero agent-snapshot consumption is unused. Absorbed is the non-billed share. These labels describe billing patterns, not answer quality or safety assessments.
+
+**On screen:** Check an owner and expected demand before acting
+
+Use the queue to select an agent, then look at its environment and heaviest users. Low use can mean a new or intentionally occasional agent. Days of prepaid capacity remaining uses current headroom and average draw, not a promise that capacity will last that long. Confirm entitlement configuration and future demand before retiring an agent or buying more capacity.
+
+## 00:16:11 - Copilot Studio / Forecast
+
+Source: `app/src/metrics/studio.ts`
+
+**On screen:** A calendar-day average drives the projection
+
+Studio Forecast starts with tenant consumption divided by the calendar span, not just days with records. It scales that daily average to a thirty-day planning month at today’s effective rate. The chart compares a flat case with applied growth. Group allocations use user-snapshot shares; agent allocations use agent-snapshot shares. Neither is a measured future departmental bill.
+
+**On screen:** A fit needs enough usable history
+
+The fitted model uses a log-linear trend of trailing seven-day averages. It needs at least twenty-eight calendar days and seven positive-consumption days. Missing dates in the fit are treated as zero. Fitted monthly growth is bounded between minus thirty and plus thirty percent. With insufficient fit history, the model projects the observed daily average flat.
+
+**On screen:** Read the basis as well as the confidence label
+
+The interface limits its growth presentation when there are fewer than fourteen days or too few observed dates. A longer calendar span can still have weak coverage. Read the summary and note rather than assuming a confidence label guarantees accuracy. Use an explicit scenario for a planned rollout, and explain that it is your assumption rather than a discovery in the data.
+
+## 00:17:23 - GitHub Copilot / Consumption
+
+Source: `app/src/metrics/ghcp.ts`
+
+**On screen:** Billed AI credits are not all Copilot activity
+
+GitHub Consumption is based on billed AI-credit usage in the export. Code completions and next-edit suggestions are not billed here, so they do not appear in these counts. Active developers means developers present in the selected usage records. A developer absent from this view may still be using capabilities that do not generate billed credits.
+
+**On screen:** Separate model choice from usage type
+
+The daily chart shows credit changes. Group rankings show attribution through the username mapping. Model bars show where credits go, with tiers classified in the data. Coding agent share and powerful model share are shares of credits, not shares of people or proof that a model was necessary. Use the filters to compare like-for-like work.
+
+**On screen:** Use concentration to start a conversation
+
+Read the Basis and Concentration panels before acting on the heaviest-developer list. A small group can account for a large fraction of billed credits without representing all product use. Check whether the workload is appropriate, then use Cost for its financial effect. Do not turn low billed-credit use into a general productivity judgement.
+
+## 00:18:29 - GitHub Copilot / Cost
+
+Source: `app/src/metrics/ghcp.ts`
+
+**On screen:** Monthly seats and selected-period usage are different
+
+GitHub Cost separates monthly seat cost from the selected-period overage export. Gross value is before the included allowance; allowance absorbed is the export discount amount; overage is its net amount. The seat number remains a monthly cost even if you select several months of usage. Do not read their combination as a multi-month invoice total.
+
+**On screen:** Export cost is different from a rate-based forecast
+
+Current gross, absorbed and net values come from the billing usage export. Changing the future credit rate does not rewrite those recorded amounts. Group and model tables identify cost concentration, while Chat versus coding agent separates usage types. The cost-per-developer card uses seats plus period overage over the licensed roster, not just active developers.
+
+**On screen:** Validate the billing window before discussing savings
+
+For a current-month review, select the latest month and confirm how much of that month the export contains. A partial month should not be mistaken for a full monthly run rate. Use the daily cost chart to understand allowance absorption and overage, and compare with your actual billing agreement before changing licences or making a budget commitment.
+
+## 00:19:36 - GitHub Copilot / Optimization
+
+Source: `app/src/metrics/ghcp.ts`
+
+**On screen:** No credit use does not mean no Copilot use
+
+GitHub Optimization flags seats with no billed credit records in the selection and shows their seat cost at list price. That is a review queue, not proof of inactivity across the whole product. Unbilled completions are outside this dataset. A narrow model or usage filter can also affect the apparent gap, so clear filters for a roster-wide review.
+
+**On screen:** Pool used compares the latest month with included capacity
+
+Pool used divides latest-month credits by today’s included pool. More than one hundred percent indicates credits beyond that pool. The top-ten-percent share and powerful-model share help prioritise a discussion. Developer rows and GitHub cost centres show different ways to locate demand; the seat plan table shows the corresponding roster and included monthly credits.
+
+**On screen:** Check the roster, identity mapping and work pattern
+
+Before reclaiming a seat, verify the roster is current, usernames map correctly and the person does not rely on unbilled features. Before downgrading a model, understand the task and quality requirements. These views support an informed review with owners. They do not measure code quality, useful output, or the causal effect of a model choice.
+
+## 00:20:45 - GitHub Copilot / Forecast
+
+Source: `app/src/metrics/ghcp.ts`
+
+**On screen:** Forecast seats plus overage, not gross consumption
+
+GitHub Forecast starts from the latest month of credits. It projects credit demand, subtracts the included pool, prices positive overage at the configured rate, and adds monthly seats. When a future month ends on or after the configured change date, the new per-seat allowance applies. The pool can change even with a flat demand scenario.
+
+**On screen:** A short history supports only a limited conclusion
+
+Observed monthly growth compares the first and last months across their elapsed month distance. The interface needs five months before presenting fitted growth as its planning range. With less history it emphasises the current-rate result. Partial first or latest months can distort the comparison, so check export completeness rather than relying only on the month count.
+
+**On screen:** A cost step may be a policy assumption, not new demand
+
+Use Pool by plan and the allowance change date to explain a step in the curve. Confirm that date and future allowance against your agreement; the defaults are not a statement of current policy. Compare flat and growth cases, and document any override. Neither case is a confidence interval or a guarantee of the next twelve months of cost.
+
+## 00:21:52 - Azure AI Foundry / Spend
+
+Source: `app/src/metrics/azure.ts`
+
+**On screen:** Whole-solution cost is broader than model tokens
+
+Azure Spend includes models, AI services and supporting costs such as storage, networking and compute from the solution export. Choose Actual or Amortized basis, a subscription, application, service and one currency. Different currencies must not be added as though they were the same money. The composition chart shows how the selected cost is distributed over time.
+
+**On screen:** Read the denominators behind the efficiency measures
+
+Model share divides model cost by selected whole-solution cost. Supporting cost is shown separately. Tagged allocation is the share of cost carrying a department tag, not proof that the tag is correct. Tokens, speech hours, document pages and images are different workload measures. Cost per million PAYG tokens uses PAYG token cost and PAYG tokens, not the entire Azure bill.
+
+**On screen:** Use resource detail to find accountable cost
+
+Sort the resource table, inspect the application and service, and look for untagged cost. This view uses the loaded solution export rather than the Overview date selector. Match its export period before comparing it with another product. Use Capacity and health for deployment context and Reconciliation for an aligned shared-pool comparison, not for summing unrelated support costs.
+
+## 00:23:10 - Azure AI Foundry / Capacity & health
+
+Source: `app/src/metrics/azure.ts`
+
+**On screen:** Capacity is a latest selected snapshot
+
+Capacity and health shows deployment inventory, provisioned throughput units, utilisation and request-health indicators. Capacity comes from the latest metric date and latest snapshot per deployment, not a sum of daily capacity. Requests and health values belong to the selected snapshot records and their exported measurement period. This is a stored export, not a live service monitor.
+
+**On screen:** Weighting prevents small deployments dominating the average
+
+PTU utilisation is weighted by provisioned capacity. Request-based error and throttle rates divide eligible error counts by requests. Latency is request weighted. A deployment below thirty percent PTU utilisation is a review signal. Do not average displayed percentages without accounting for those denominators, and do not confuse 429 throttles with 5xx server errors.
+
+**On screen:** Review service needs before cutting capacity
+
+Filter by subscription, application or SKU, then inspect the low-utilisation and latency rankings. Check peaks, response-time needs and expected demand before resizing. Low mean utilisation does not guarantee recoverable savings; provisioned capacity can exist to meet burst or latency requirements. A health issue also needs its measurement window and operational context before you attribute a cause.
+
+## 00:24:31 - Azure AI Foundry / Reconciliation
+
+Source: `app/src/metrics/azure.ts`
+
+**On screen:** Only aligned representations are comparable
+
+Reconciliation compares a product-derived usage estimate with Azure actuals for a shared billing pool. Choose a billing period, currency and pool. The app requires matching start and end dates, one pool, one valid currency, and both representations before calculating a difference. All periods or all pools can deliberately make the comparison unavailable rather than producing a misleading variance.
+
+**On screen:** Difference is actual minus estimate
+
+Positive difference means Azure actual is above the estimate; negative means below. Evidence is explicitly fictional sample evidence in this demo, not a verified explanation of a customer bill. Residual is difference minus evidence. Detail rows represent separate billing forms, so an individual row may not itself contain both sides needed for a comparable difference.
+
+**On screen:** Fictional arithmetic is not a discovered billing cause
+
+For a fictional estimate of one thousand dollars and actual of eleven hundred, the difference is one hundred. If fictional evidence is sixty, the unexplained residual is forty. Do not claim that arithmetic proves the cause. Supporting Azure solution costs are outside this shared pool. Investigate aligned source evidence before labelling any real amount explained.
+
+## 00:25:45 - Guide / Start here
+
+Source: `app/src/pages/Guide.tsx`
+
+**On screen:** Use the guide as the app’s reading companion
+
+Guide gathers the written explanation beside the data views. Start here offers product cards and a reading route. It also explains the app layout and how charts were reshaped from the Power BI report. Ranked bars may replace a donut or treemap; the important question remains the same: what is being counted and on which basis?
+
+**On screen:** Use the product that answers your question
+
+Cowork explains person credit allowances and policy allocation. Studio explains tenant consumption and snapshot attribution. GitHub separates billed credit demand from seats and included pools. Azure adds whole-solution spend and deployment context. You can start with one product, but you should not assume the other sources are present just because the navigation offers their pages.
+
+**On screen:** Keep the safe reading order
+
+Confirm source coverage, read the denominator, then decide what to investigate. The synthetic sample makes the interface useful for learning, not for estimating your organisation’s consumption. The explainer is a secondary link from the app header. Use the written Guide when you need to revisit a definition without replaying the full video.
+
+## 00:26:53 - Guide / How to read
+
+Source: `app/src/data/guide.json`
+
+**On screen:** Observed, attributed and estimated are different
+
+How to read explains the boundary between exported quantities, identity enrichment and modeled cost. A source may record credits without recording a person. A department breakdown depends on a valid join. A rate assumption can price activity but cannot prove value. Keep those distinctions visible when you share a screenshot or report a headline.
+
+**On screen:** A recommendation is a review signal
+
+Optimization labels are rules over the available records. Forecasts are planning cases. Expert-equivalent task work is an assumption-based estimate. None of these is a causal measurement of productivity, a guarantee of savings or an instruction to remove access. Read the caveats on the page before taking an administrative or purchasing action.
+
+**On screen:** Share the basis with the number
+
+When you communicate a result, state the product, dates, source completeness and rate basis. Say whether it is a daily tenant total, weekly person record, monthly billable quantity or undated snapshot. If those details cannot be established, report the limitation rather than turning a plausible-looking chart into a stronger claim than the data supports.
+
+## 00:28:01 - Guide / Products: Cowork & Work IQ
+
+Source: `app/src/data/guide.json`
+
+**On screen:** A source map for Cowork & Work IQ
+
+Use the Cowork product notes to review how weekly credits meet person limits, policies and the task export. Person allowance, policy plan allowance and prepaid capacity are different controls. The notes complement the Consumption, Cost, Chargeback, Tasks, Optimization and Forecast views; they are not another set of usage records.
+
+**On screen:** Keep this distinction in mind
+
+Check a four-week baseline when interpreting fixed optimization recommendations. Check selected task coverage separately from credit coverage. A cost allocation needs spending-policy billing fields, and a task value estimate needs explicit minute and hourly assumptions.
+
+**On screen:** Return to the data with a specific question
+
+Use Open Cowork & Work IQ to return to the product tab. Start with one question and the smallest useful selection. If the required export is missing, collect it through your approved process and reload the app. The guide explains interpretation; it does not connect to services or fill a missing source with fabricated results.
+
+## 00:29:03 - Guide / Products: Copilot Studio
+
+Source: `app/src/data/guide.json`
+
+**On screen:** A source map for Copilot Studio
+
+Use the Studio notes to revisit the distinction between daily tenant totals and undated user or agent snapshots. The tenant source establishes consumption over dates. User records support attribution. Agent records support billing-pattern, model and feature analysis. Those sources can cover different populations or reporting windows.
+
+**On screen:** Keep this distinction in mind
+
+A tenant date filter does not date a snapshot. A person cost estimate at PAYG is not an allocation of the selected-period tenant invoice. Where attribution is absent, keep the gap visible rather than forcing totals to reconcile by distributing it arbitrarily.
+
+**On screen:** Return to the data with a specific question
+
+Use Open Copilot Studio to return to the product tab. Start with one question and the smallest useful selection. If the required export is missing, collect it through your approved process and reload the app. The guide explains interpretation; it does not connect to services or fill a missing source with fabricated results.
+
+## 00:30:04 - Guide / Products: GitHub Copilot
+
+Source: `app/src/data/guide.json`
+
+**On screen:** A source map for GitHub Copilot
+
+Use the GitHub notes to connect billed AI credits, the seat roster, username mapping and included monthly pool. Gross, discount and net are export measures. Seat prices and future included-credit settings are planning assumptions. Unbilled completions are outside the billed-credit view.
+
+**On screen:** Keep this distinction in mind
+
+No billed credits is not no product use. Compare a monthly seat amount with a clearly stated usage period. Confirm future allowance dates before treating a forecast cost step as a genuine commercial change.
+
+**On screen:** Return to the data with a specific question
+
+Use Open GitHub Copilot to return to the product tab. Start with one question and the smallest useful selection. If the required export is missing, collect it through your approved process and reload the app. The guide explains interpretation; it does not connect to services or fill a missing source with fabricated results.
+
+## 00:30:58 - Guide / Products: Azure AI Foundry
+
+Source: `app/src/data/guide.json`
+
+**On screen:** A source map for Azure AI Foundry
+
+Use the Azure notes to distinguish model-only export costs from the whole solution, including supporting services. Health combines inventory snapshots with exported request metrics. Reconciliation compares representations only when scope is aligned. These are different views of the solution, not interchangeable totals.
+
+**On screen:** Keep this distinction in mind
+
+Keep currencies and cost bases separate. Do not add capacity snapshots over dates, infer guaranteed savings from low utilisation, or pass fictional reconciliation evidence off as a real billing explanation.
+
+**On screen:** Return to the data with a specific question
+
+Use Open Azure AI Foundry to return to the product tab. Start with one question and the smallest useful selection. If the required export is missing, collect it through your approved process and reload the app. The guide explains interpretation; it does not connect to services or fill a missing source with fabricated results.
+
+## 00:31:55 - Guide / Glossary
+
+Source: `app/src/pages/Guide.tsx`
+
+**On screen:** Search the term, then check its product context
+
+The searchable Glossary is the final Guide view. Search a term such as allowance, billed, utilisation or forecast when a label is unclear. The same familiar word can refer to a different source or denominator in another product. Use the definition together with the page’s help text and visible basis, not as permission to combine unlike units.
+
+**On screen:** Do not lose the caveat when sharing a number
+
+A screenshot of a KPI can hide its period selector and source note. If you share a result, include those details in the accompanying explanation. For a modeled estimate, include the assumption. For a missing source, state what is missing. For an undated snapshot, say that explicitly rather than calling it this week’s activity.
+
+**On screen:** From a definition to an accountable next step
+
+Use the glossary to make a review conversation precise: which credits, which period, which price, which owner and which decision? If the evidence is not sufficient, your next action is to improve the evidence. That is more useful than an apparently precise recommendation built on an unknown denominator.
+
+## 00:32:59 - Putting it together / A practical review routine
+
+Source: `app/src/routes.ts`
+
+**On screen:** Coverage first. Drivers second. Decisions third.
+
+Begin on Overview and confirm coverage. Choose the largest relevant driver, then use that product’s Consumption and Cost views. Review optimization signals with owners. Treat forecasts as scenarios and check their history. For Azure, inspect whole-solution spend, capacity and aligned reconciliation separately. That keeps the investigation connected without pretending all four products share one billing model.
+
+**On screen:** Keep snapshots, estimates and evidence distinct
+
+Remember the main caveats: weekly Cowork windows versus monthly limits, Studio snapshots versus daily totals, billed GitHub credits versus all product activity, and Azure snapshot capacity versus period health. Task work equivalent is estimated, not measured savings. Fictional reconciliation evidence is not a live explanation. A missing source stays a limitation, not an invented number.
+
+**On screen:** Use the app to ask a better question
+
+This recording used synthetic sample data and AI-generated narration. No customer data or live tenant telemetry was used. Your own next step is to confirm a source and an owner, test one explanation, and make the smallest justified decision. Consumption Central is most useful when every number arrives with its basis, not just a larger claim.

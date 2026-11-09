@@ -42,6 +42,9 @@ value, consumption and governance in one place. It includes Consumption Central 
 
 ## Videos
 
+**[Watch the app explainer](https://ai-datalab.github.io/#/watch/consumption-central-explainer)**:
+what each page shows, how to read it, and what to do next. Synthetic demo data and AI-generated narration.
+
 **Installer walkthrough** *(1m 10s)*
 
 AI-generated narration. Sign-in and deployment are simulated.

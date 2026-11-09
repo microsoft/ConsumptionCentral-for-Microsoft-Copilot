@@ -1,0 +1,30 @@
+00:00:00  Start here / A simple guide to Consumption Central
+00:01:03  Start here / Dates, filters and detail
+00:02:12  Start here / Rates and settings
+00:03:16  Start here / Change data and source coverage
+00:04:21  Overview / Overview
+00:05:28  Cowork & Work IQ / Consumption
+00:06:36  Cowork & Work IQ / Cost
+00:07:44  Cowork & Work IQ / Chargeback
+00:08:54  Cowork & Work IQ / Tasks
+00:10:10  Cowork & Work IQ / Optimization
+00:11:22  Cowork & Work IQ / Forecast
+00:12:33  Copilot Studio / Consumption
+00:13:44  Copilot Studio / Cost
+00:14:57  Copilot Studio / Optimization
+00:16:11  Copilot Studio / Forecast
+00:17:23  GitHub Copilot / Consumption
+00:18:29  GitHub Copilot / Cost
+00:19:36  GitHub Copilot / Optimization
+00:20:45  GitHub Copilot / Forecast
+00:21:52  Azure AI Foundry / Spend
+00:23:10  Azure AI Foundry / Capacity & health
+00:24:31  Azure AI Foundry / Reconciliation
+00:25:45  Guide / Start here
+00:26:53  Guide / How to read
+00:28:01  Guide / Products: Cowork & Work IQ
+00:29:03  Guide / Products: Copilot Studio
+00:30:04  Guide / Products: GitHub Copilot
+00:30:58  Guide / Products: Azure AI Foundry
+00:31:55  Guide / Glossary
+00:32:59  Putting it together / A practical review routine

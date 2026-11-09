@@ -1,0 +1,1525 @@
+WEBVTT
+
+1
+00:00:00.200 --> 00:00:04.080
+Consumption Central helps you understand Copilot credits and AI spend.
+
+2
+00:00:04.080 --> 00:00:12.615
+This is a practical guide to every current app view: what it shows, how to read it, and what action to take.
+
+3
+00:00:12.615 --> 00:00:16.106
+We use genuine app screens with synthetic sample data.
+
+4
+00:00:16.106 --> 00:00:19.210
+The people, agents, organisations and amounts are fictional.
+
+5
+00:00:19.210 --> 00:00:21.150
+The voice is AI generated.
+
+6
+00:00:21.867 --> 00:00:29.449
+The six main tabs are Overview, Cowork and Work IQ, Copilot Studio, GitHub Copilot, Azure AI Foundry, and Guide.
+
+7
+00:00:29.449 --> 00:00:34.237
+They answer related questions, but they do not measure the same thing.
+
+8
+00:00:34.237 --> 00:00:39.026
+A credit in one product is not a universal unit of work.
+
+9
+00:00:39.026 --> 00:00:43.017
+More credits do not, on their own, prove more value.
+
+10
+00:00:43.700 --> 00:00:46.188
+Work through the app in that order.
+
+11
+00:00:46.188 --> 00:00:49.743
+Check which source is loaded and which dates it covers.
+
+12
+00:00:49.743 --> 00:00:51.165
+Find the largest driver.
+
+13
+00:00:51.165 --> 00:00:55.075
+Then use the relevant detail page to decide what to investigate.
+
+14
+00:00:55.075 --> 00:01:03.250
+This is a guide to reading the app, not an installer walkthrough, a live service demonstration, or a claim about current commercial prices.
+
+15
+00:01:03.950 --> 00:01:11.225
+The date range in the header describes the loaded dataset, not a single period applied to every page.
+
+16
+00:01:11.225 --> 00:01:13.650
+Overview has From and To dates.
+
+17
+00:01:13.650 --> 00:01:15.267
+Cowork has weekly periods.
+
+18
+00:01:15.267 --> 00:01:17.288
+Studio has a tenant period.
+
+19
+00:01:17.288 --> 00:01:18.904
+GitHub has monthly periods.
+
+20
+00:01:18.904 --> 00:01:24.158
+Azure spend uses the loaded export, while reconciliation has its own billing-period selector.
+
+21
+00:01:24.158 --> 00:01:28.200
+Always read the controls on the page you are using.
+
+22
+00:01:28.867 --> 00:01:33.601
+Within a product, move between its views to keep investigating the selection.
+
+23
+00:01:33.601 --> 00:01:36.363
+Changing the main tab clears the filters.
+
+24
+00:01:36.363 --> 00:01:41.887
+Group by controls organise attributed people; they do not manufacture a missing identity join.
+
+25
+00:01:41.887 --> 00:01:44.254
+Tables can be searched and sorted.
+
+26
+00:01:44.254 --> 00:01:48.594
+Expand a group where offered to see its people or policies.
+
+27
+00:01:48.594 --> 00:01:50.567
+Hover charts for additional measures.
+
+28
+00:01:51.283 --> 00:01:56.267
+A missing source, an undefined ratio and no matching rows are different conditions.
+
+29
+00:01:56.267 --> 00:02:01.250
+Read the notices and coverage before interpreting a dash or an empty chart.
+
+30
+00:02:01.250 --> 00:02:05.850
+A low count can be a short export rather than low demand.
+
+31
+00:02:05.850 --> 00:02:11.983
+When comparing two views, first confirm they use the same time window, population and measurement basis.
+
+32
+00:02:12.700 --> 00:02:16.277
+Rates in the header opens the commercial assumptions.
+
+33
+00:02:16.277 --> 00:02:21.195
+Cowork has prepaid and pay-as-you-go prices plus a capacity pack balance.
+
+34
+00:02:21.195 --> 00:02:24.772
+Studio has its own prepaid and pay-as-you-go prices.
+
+35
+00:02:24.772 --> 00:02:31.479
+GitHub has seat prices, a credit rate, future included credits and an allowance change date.
+
+36
+00:02:31.479 --> 00:02:35.950
+These settings are editable planning inputs, not verified contract rates.
+
+37
+00:02:36.617 --> 00:02:42.401
+If you change a credit price, the same recorded activity can produce a different cost estimate.
+
+38
+00:02:42.401 --> 00:02:44.571
+It does not mean usage changed.
+
+39
+00:02:44.571 --> 00:02:49.271
+The GitHub allowance date affects forecast months ending on or after that date.
+
+40
+00:02:49.271 --> 00:02:55.417
+Check these settings against your agreement before you use an estimate for a purchasing or budgeting decision.
+
+41
+00:02:56.117 --> 00:03:02.832
+The panel explains that changes take effect straight away and are not saved when you close the app.
+
+42
+00:03:02.832 --> 00:03:05.444
+Reset to defaults restores the shipped assumptions.
+
+43
+00:03:05.444 --> 00:03:08.428
+In this guide, all examples use synthetic data.
+
+44
+00:03:08.428 --> 00:03:15.517
+Where we work through arithmetic, the example is explicitly fictional and is not being presented as a dashboard result.
+
+45
+00:03:16.200 --> 00:03:21.405
+Change data shows the loaded sources and lets you choose your own CSV exports.
+
+46
+00:03:21.405 --> 00:03:24.380
+The app recognises sources from their column headers.
+
+47
+00:03:24.380 --> 00:03:27.726
+You do not need all four products to begin.
+
+48
+00:03:27.726 --> 00:03:36.650
+In this recording we stay with the built-in synthetic sample; we do not connect to a tenant, load customer files or simulate live telemetry.
+
+49
+00:03:37.367 --> 00:03:45.308
+Weekly credits, task categories, spending policies, Studio snapshots, GitHub billing usage and Azure exports each have different roles.
+
+50
+00:03:45.308 --> 00:03:49.720
+Organisation data enriches grouping; it does not create consumption records.
+
+51
+00:03:49.720 --> 00:03:54.131
+Check the source guide if a file is not recognised.
+
+52
+00:03:54.131 --> 00:03:59.867
+Missing optional sources should remain missing, rather than being filled with invented usage.
+
+53
+00:04:00.533 --> 00:04:04.459
+The app reads and calculates the selected files in your browser.
+
+54
+00:04:04.459 --> 00:04:11.240
+The explainer link opens a separate public website only when you choose it; it does not upload those files.
+
+55
+00:04:11.240 --> 00:04:15.523
+In your own analysis, first confirm loaded row counts and date coverage.
+
+56
+00:04:15.523 --> 00:04:21.233
+Do not mix an old identity export with a new billing period without checking the join.
+
+57
+00:04:21.950 --> 00:04:26.367
+Overview places the four products on one selected date range.
+
+58
+00:04:26.367 --> 00:04:31.225
+The cost bars rank them, but deliberately have no grand total.
+
+59
+00:04:31.225 --> 00:04:35.200
+Cowork is a pay-as-you-go reference value before prepaid capacity.
+
+60
+00:04:35.200 --> 00:04:38.292
+Studio prices tenant quantities at configured rates.
+
+61
+00:04:38.292 --> 00:04:42.708
+GitHub uses the export net usage amount without seat subscriptions.
+
+62
+00:04:42.708 --> 00:04:45.800
+Azure uses the Foundry Models export cost.
+
+63
+00:04:46.450 --> 00:04:50.390
+The credits table does not add a universal credit total either.
+
+64
+00:04:50.390 --> 00:04:53.614
+Read the cost basis and coverage beside each row.
+
+65
+00:04:53.614 --> 00:04:57.554
+Cowork counts whole weekly records whose dates fall in the range.
+
+66
+00:04:57.554 --> 00:05:01.852
+Studio user and agent snapshots have no dates and are excluded here.
+
+67
+00:05:01.852 --> 00:05:06.150
+That is why an Overview amount can differ from its product tab.
+
+68
+00:05:06.867 --> 00:05:12.067
+Use Overview to choose where to investigate next, not to reconcile an invoice.
+
+69
+00:05:12.067 --> 00:05:14.067
+Partial coverage is stated explicitly.
+
+70
+00:05:14.067 --> 00:05:17.667
+No rows in selected dates is not confirmed zero.
+
+71
+00:05:17.667 --> 00:05:21.667
+The Studio note also warns about credits without named-person attribution.
+
+72
+00:05:21.667 --> 00:05:28.467
+Missing attribution is a reason to check coverage, not to allocate the gap to an arbitrary department.
+
+73
+00:05:29.117 --> 00:05:35.145
+Cowork Consumption shows credits in the selected weekly window, the roster allowance and consuming users.
+
+74
+00:05:35.145 --> 00:05:38.762
+The allowance is the sum of monthly person limits.
+
+75
+00:05:38.762 --> 00:05:45.192
+If you choose eight weeks or all history, that denominator does not become an eight-week allowance.
+
+76
+00:05:45.192 --> 00:05:50.417
+Read the period before concluding that someone has exceeded a like-for-like monthly budget.
+
+77
+00:05:51.117 --> 00:05:54.232
+The group table shows where credits are concentrated.
+
+78
+00:05:54.232 --> 00:05:56.959
+Expand a group to inspect its people.
+
+79
+00:05:56.959 --> 00:06:02.801
+The line chart shows weekly credits, with weekly active users and week-on-week change on hover.
+
+80
+00:06:02.801 --> 00:06:13.317
+The headline labelled Weekly active users is a distinct count across the weekly records, not an average of weekly counts and not necessarily the selected-period consuming count.
+
+81
+00:06:14.033 --> 00:06:18.484
+Select a service, spending policy or cohort to narrow the investigation.
+
+82
+00:06:18.484 --> 00:06:22.126
+Compare the pattern with rollout dates and expected work.
+
+83
+00:06:22.126 --> 00:06:26.577
+A rise shared across many people differs from one high-consuming person.
+
+84
+00:06:26.577 --> 00:06:29.005
+Use cost and task detail next.
+
+85
+00:06:29.005 --> 00:06:35.883
+High consumption alone is neither a success measure nor sufficient evidence that a person should lose access.
+
+86
+00:06:36.533 --> 00:06:40.914
+Cowork Cost prices credits using the capacity pack balance you enter.
+
+87
+00:06:40.914 --> 00:06:44.897
+Prepaid used is the smaller of usage and that balance.
+
+88
+00:06:44.897 --> 00:06:47.287
+Anything beyond the balance is pay-as-you-go.
+
+89
+00:06:47.287 --> 00:06:50.075
+Total cost adds those two priced quantities.
+
+90
+00:06:50.075 --> 00:06:54.057
+The blended rate is that total divided by credits used.
+
+91
+00:06:54.057 --> 00:06:59.633
+This is a usage cost model, not the purchase price of an entire pack.
+
+92
+00:07:00.283 --> 00:07:04.672
+Here is fictional arithmetic, not a dashboard result or contract price.
+
+93
+00:07:04.672 --> 00:07:19.433
+If usage is ten thousand credits, the balance is six thousand, prepaid is eight tenths of a cent and pay-as-you-go is one cent, the model gives forty-eight dollars prepaid plus forty dollars pay-as-you-go: eighty-eight dollars in total.
+
+94
+00:07:20.117 --> 00:07:24.762
+The weekly cost chart burns down the balance oldest week first.
+
+95
+00:07:24.762 --> 00:07:31.097
+Policy allowance and headroom come from spending-policy plan limits, not the sum of person allowances.
+
+96
+00:07:31.097 --> 00:07:34.053
+Missing policy data leaves that context unavailable.
+
+97
+00:07:34.053 --> 00:07:37.010
+Use this view to test pricing assumptions.
+
+98
+00:07:37.010 --> 00:07:43.767
+Do not sum independently priced group rows as a tenant allocation; use Chargeback for that job.
+
+99
+00:07:44.450 --> 00:07:51.013
+Chargeback allocates Cowork cost by cost centre or department using optional fields on spending-policy metadata.
+
+100
+00:07:51.013 --> 00:07:56.263
+The table carries billing owner and charge code and expands to policies.
+
+101
+00:07:56.263 --> 00:08:02.388
+These are policy billing assignments, not necessarily the same grouping as a person department.
+
+102
+00:08:02.388 --> 00:08:07.200
+Not assigned keeps unmapped cost visible rather than silently dropping it.
+
+103
+00:08:07.867 --> 00:08:14.682
+The tenant prepaid share is prepaid credits divided by tenant credits for the selected period and service.
+
+104
+00:08:14.682 --> 00:08:20.696
+Every line receives that same share at the prepaid rate and the remainder at pay-as-you-go.
+
+105
+00:08:20.696 --> 00:08:25.908
+Filtering the visible groups does not recalculate a preferential rate for those groups.
+
+106
+00:08:25.908 --> 00:08:29.517
+With no filters, chargeback matches the tenant Cowork cost.
+
+107
+00:08:30.200 --> 00:08:39.713
+For a fictional sixty percent prepaid share, a line with a thousand credits receives six hundred prepaid and four hundred pay-as-you-go credits.
+
+108
+00:08:39.713 --> 00:08:46.631
+Check its owner and policy, resolve Not assigned, then use Download CSV for the allocation detail.
+
+109
+00:08:46.631 --> 00:08:53.550
+Fresh Viva spending-policy exports do not include the added billing columns; restore them after every re-export.
+
+110
+00:08:54.200 --> 00:09:00.185
+Tasks adds a different lens: reported task counts, category mix and credit intensity.
+
+111
+00:09:00.185 --> 00:09:05.249
+It uses its own task period, type, category and organisation filters.
+
+112
+00:09:05.249 --> 00:09:08.472
+The stacked weekly chart shows task types.
+
+113
+00:09:08.472 --> 00:09:12.615
+Credits per task divides attributed credits by reported tasks.
+
+114
+00:09:12.615 --> 00:09:18.600
+Those tasks are observed export counts, not a measured count of successful outcomes.
+
+115
+00:09:19.283 --> 00:09:25.371
+Expert-equivalent hours multiply task counts by provisional minutes per category, then divide by sixty.
+
+116
+00:09:25.371 --> 00:09:28.415
+Conservative, Typical and Optimistic choose different minutes.
+
+117
+00:09:28.415 --> 00:09:32.763
+Monetary value appears only after you enter an hourly value.
+
+118
+00:09:32.763 --> 00:09:43.633
+A fictional twelve tasks at thirty minutes each gives six expert-equivalent hours; at fifty dollars an hour that is three hundred dollars, not proven savings.
+
+119
+00:09:44.283 --> 00:09:49.063
+Unknown categories remain in observed totals but may have no valuation.
+
+120
+00:09:49.063 --> 00:09:59.056
+If any selected task row lacks credits, the aggregate credit and cost estimates are unavailable rather than pretending the missing credits are zero.
+
+121
+00:09:59.056 --> 00:10:01.663
+Read the coverage notice and Basis.
+
+122
+00:10:01.663 --> 00:10:09.483
+Task PAYG estimates do not allocate prepaid capacity or licences, and expert-equivalent work is not measured time saved.
+
+123
+00:10:10.200 --> 00:10:14.847
+Optimization summarises reclaim, downsize, hold, monitor and upgrade recommendations.
+
+124
+00:10:14.847 --> 00:10:21.043
+Right-size net combines modeled savings and upgrade costs at the pay-as-you-go rate.
+
+125
+00:10:21.043 --> 00:10:27.239
+Reclaimable and dormant allowance are potential capacity changes, not guaranteed cash back.
+
+126
+00:10:27.239 --> 00:10:34.468
+Savings matter only when released credits avoid a purchase that you would otherwise make.
+
+127
+00:10:34.468 --> 00:10:37.050
+Nothing here changes permissions automatically.
+
+128
+00:10:37.700 --> 00:10:43.922
+The action labels are built from the latest four weeks of credits and historical active-week persistence.
+
+129
+00:10:43.922 --> 00:10:49.367
+Changing the displayed period can change the credit column without rebuilding those baseline labels.
+
+130
+00:10:49.367 --> 00:10:58.700
+Recommended allowance adds fifteen percent headroom, rounds up to a two-hundred-and-fifty-credit step, and has a minimum of two hundred and fifty for positive use.
+
+131
+00:10:59.367 --> 00:11:07.549
+Expand the queue and start with the largest net impact, but confirm leave, rollout timing and expected work with the owner.
+
+132
+00:11:07.549 --> 00:11:14.953
+Persistent overuse means over the weekly equivalent of a monthly limit in at least sixty percent of active weeks.
+
+133
+00:11:14.953 --> 00:11:19.239
+A temporary spike calls for a different action from sustained demand.
+
+134
+00:11:19.239 --> 00:11:21.967
+Treat every recommendation as a review signal.
+
+135
+00:11:22.617 --> 00:11:27.303
+Cowork Forecast shows a current cost basis and a twelve-month planning range.
+
+136
+00:11:27.303 --> 00:11:35.894
+Its baseline is the selected period credits at today’s blended rate; it is not automatically normalised when you choose a longer period.
+
+137
+00:11:35.894 --> 00:11:39.799
+For a monthly planning conversation, check the selected window first.
+
+138
+00:11:39.799 --> 00:11:45.267
+The fitted trend uses the selected people and service across the available weekly history.
+
+139
+00:11:45.950 --> 00:11:57.375
+The weekly trend uses a straight-line fit, translates relative weekly change to monthly growth, and bounds the fitted monthly rate between minus seventy-five and plus one hundred percent.
+
+140
+00:11:57.375 --> 00:12:01.455
+Confidence also uses fit quality and a held-out recent-week backtest.
+
+141
+00:12:01.455 --> 00:12:08.800
+The app requires six weeks for its growth range; with shorter history it leads with the current-rate result.
+
+142
+00:12:09.450 --> 00:12:12.523
+The growth assumption can replace the fitted rate.
+
+143
+00:12:12.523 --> 00:12:17.518
+Read the confidence and summary before treating a steep curve as a budget.
+
+144
+00:12:17.518 --> 00:12:22.128
+A scenario range from flat to growth is not a confidence interval.
+
+145
+00:12:22.128 --> 00:12:27.890
+The projection holds today’s blended rate rather than re-running future pack exhaustion month by month.
+
+146
+00:12:27.890 --> 00:12:32.500
+Use it to compare planning cases, then validate the commercial implications separately.
+
+147
+00:12:33.200 --> 00:12:38.042
+Studio Consumption combines daily tenant quantities with user and agent export snapshots.
+
+148
+00:12:38.042 --> 00:12:40.867
+The period selector affects tenant totals only.
+
+149
+00:12:40.867 --> 00:12:43.288
+User and agent detail is undated.
+
+150
+00:12:43.288 --> 00:12:49.340
+Selecting the last seven days does not turn the user table into a seven-day table.
+
+151
+00:12:49.340 --> 00:12:56.200
+Read the snapshot note, especially when the tenant total does not equal the sum of named users.
+
+152
+00:12:56.867 --> 00:13:00.274
+The daily chart shows prepaid plus pay-as-you-go credits.
+
+153
+00:13:00.274 --> 00:13:08.367
+Agent rankings in the user snapshot show the attributed portion, while model and feature breakdowns come from agent detail.
+
+154
+00:13:08.367 --> 00:13:12.200
+Billing active users means distinct people in that snapshot.
+
+155
+00:13:12.200 --> 00:13:15.181
+Average agents per user counts user-agent pairs.
+
+156
+00:13:15.181 --> 00:13:19.867
+It is not a count of deployed agents in an inventory.
+
+157
+00:13:20.533 --> 00:13:26.458
+Use the agent and user rankings to find a concentration worth discussing with an owner.
+
+158
+00:13:26.458 --> 00:13:30.803
+Check whether a model or feature explains it, then use Cost.
+
+159
+00:13:30.803 --> 00:13:37.913
+If user or agent files are missing, their detail is unavailable; a tenant export cannot invent person attribution.
+
+160
+00:13:37.913 --> 00:13:44.233
+Do not describe a snapshot ranking as recent behaviour unless its export period is independently known.
+
+161
+00:13:44.950 --> 00:13:53.148
+Studio Cost prices tenant prepaid quantities at the configured prepaid rate and pay-as-you-go quantities at the configured PAYG rate.
+
+162
+00:13:53.148 --> 00:13:57.463
+Effective rate is total modeled cost divided by consumed credits.
+
+163
+00:13:57.463 --> 00:14:03.504
+PAYG share is a share of credits, not necessarily the same percentage of cost.
+
+164
+00:14:03.504 --> 00:14:08.250
+The daily chart lets you inspect when the billing mix changes.
+
+165
+00:14:08.950 --> 00:14:16.772
+The tables labelled Estimated value by person and by agent use user-snapshot billable credits at the PAYG rate.
+
+166
+00:14:16.772 --> 00:14:24.594
+Despite the word value, they are cost estimates of consumption, not productivity value or measured return on investment.
+
+167
+00:14:24.594 --> 00:14:28.505
+Model and feature costs similarly price billed agent-snapshot credits.
+
+168
+00:14:28.505 --> 00:14:32.850
+They are not an allocation of the selected-period tenant bill.
+
+169
+00:14:33.533 --> 00:14:42.114
+If one agent dominates the cost estimate, inspect its billed quantity and model or feature mix, then confirm the appropriate rate.
+
+170
+00:14:42.114 --> 00:14:45.383
+Keep daily tenant cost separate from snapshot attribution.
+
+171
+00:14:45.383 --> 00:14:49.878
+A difference may reflect grain and coverage, not a billing defect.
+
+172
+00:14:49.878 --> 00:14:57.233
+Use Optimization to prioritise review, and reconciliation only when period, currency and billing pool can actually be aligned.
+
+173
+00:14:57.950 --> 00:15:04.376
+Studio Optimization highlights consumption without entitlement, unlicensed credit share, unused agents and concentration.
+
+174
+00:15:04.376 --> 00:15:15.746
+The entitlement measure uses the latest date in the selected tenant scope, taking each environment’s entitlement once rather than adding repeated daily capacity.
+
+175
+00:15:15.746 --> 00:15:24.150
+Unlicensed means no Microsoft 365 Copilot licence on user-snapshot rows; it does not prove access was unauthorised.
+
+176
+00:15:24.867 --> 00:15:32.467
+An agent with at least a quarter of snapshot consumption and at least half billed is flagged for review.
+
+177
+00:15:32.467 --> 00:15:35.267
+At least three quarters billed is investigate.
+
+178
+00:15:35.267 --> 00:15:38.067
+High volume with better coverage is monitor.
+
+179
+00:15:38.067 --> 00:15:40.067
+Zero agent-snapshot consumption is unused.
+
+180
+00:15:40.067 --> 00:15:42.067
+Absorbed is the non-billed share.
+
+181
+00:15:42.067 --> 00:15:46.467
+These labels describe billing patterns, not answer quality or safety assessments.
+
+182
+00:15:47.117 --> 00:15:53.129
+Use the queue to select an agent, then look at its environment and heaviest users.
+
+183
+00:15:53.129 --> 00:15:57.138
+Low use can mean a new or intentionally occasional agent.
+
+184
+00:15:57.138 --> 00:16:05.155
+Days of prepaid capacity remaining uses current headroom and average draw, not a promise that capacity will last that long.
+
+185
+00:16:05.155 --> 00:16:10.767
+Confirm entitlement configuration and future demand before retiring an agent or buying more capacity.
+
+186
+00:16:11.450 --> 00:16:18.579
+Studio Forecast starts with tenant consumption divided by the calendar span, not just days with records.
+
+187
+00:16:18.579 --> 00:16:24.816
+It scales that daily average to a thirty-day planning month at today’s effective rate.
+
+188
+00:16:24.816 --> 00:16:28.826
+The chart compares a flat case with applied growth.
+
+189
+00:16:28.826 --> 00:16:33.281
+Group allocations use user-snapshot shares; agent allocations use agent-snapshot shares.
+
+190
+00:16:33.281 --> 00:16:36.400
+Neither is a measured future departmental bill.
+
+191
+00:16:37.117 --> 00:16:41.557
+The fitted model uses a log-linear trend of trailing seven-day averages.
+
+192
+00:16:41.557 --> 00:16:45.997
+It needs at least twenty-eight calendar days and seven positive-consumption days.
+
+193
+00:16:45.997 --> 00:16:49.629
+Missing dates in the fit are treated as zero.
+
+194
+00:16:49.629 --> 00:16:54.473
+Fitted monthly growth is bounded between minus thirty and plus thirty percent.
+
+195
+00:16:54.473 --> 00:16:59.317
+With insufficient fit history, the model projects the observed daily average flat.
+
+196
+00:17:00.033 --> 00:17:06.696
+The interface limits its growth presentation when there are fewer than fourteen days or too few observed dates.
+
+197
+00:17:06.696 --> 00:17:10.028
+A longer calendar span can still have weak coverage.
+
+198
+00:17:10.028 --> 00:17:14.840
+Read the summary and note rather than assuming a confidence label guarantees accuracy.
+
+199
+00:17:14.840 --> 00:17:22.983
+Use an explicit scenario for a planned rollout, and explain that it is your assumption rather than a discovery in the data.
+
+200
+00:17:23.700 --> 00:17:27.990
+GitHub Consumption is based on billed AI-credit usage in the export.
+
+201
+00:17:27.990 --> 00:17:34.620
+Code completions and next-edit suggestions are not billed here, so they do not appear in these counts.
+
+202
+00:17:34.620 --> 00:17:38.520
+Active developers means developers present in the selected usage records.
+
+203
+00:17:38.520 --> 00:17:45.150
+A developer absent from this view may still be using capabilities that do not generate billed credits.
+
+204
+00:17:45.867 --> 00:17:48.261
+The daily chart shows credit changes.
+
+205
+00:17:48.261 --> 00:17:51.454
+Group rankings show attribution through the username mapping.
+
+206
+00:17:51.454 --> 00:17:56.243
+Model bars show where credits go, with tiers classified in the data.
+
+207
+00:17:56.243 --> 00:18:05.023
+Coding agent share and powerful model share are shares of credits, not shares of people or proof that a model was necessary.
+
+208
+00:18:05.023 --> 00:18:07.817
+Use the filters to compare like-for-like work.
+
+209
+00:18:08.533 --> 00:18:13.062
+Read the Basis and Concentration panels before acting on the heaviest-developer list.
+
+210
+00:18:13.062 --> 00:18:19.477
+A small group can account for a large fraction of billed credits without representing all product use.
+
+211
+00:18:19.477 --> 00:18:24.382
+Check whether the workload is appropriate, then use Cost for its financial effect.
+
+212
+00:18:24.382 --> 00:18:28.533
+Do not turn low billed-credit use into a general productivity judgement.
+
+213
+00:18:29.200 --> 00:18:33.560
+GitHub Cost separates monthly seat cost from the selected-period overage export.
+
+214
+00:18:33.560 --> 00:18:41.091
+Gross value is before the included allowance; allowance absorbed is the export discount amount; overage is its net amount.
+
+215
+00:18:41.091 --> 00:18:47.036
+The seat number remains a monthly cost even if you select several months of usage.
+
+216
+00:18:47.036 --> 00:18:51.000
+Do not read their combination as a multi-month invoice total.
+
+217
+00:18:51.700 --> 00:18:57.000
+Current gross, absorbed and net values come from the billing usage export.
+
+218
+00:18:57.000 --> 00:19:01.858
+Changing the future credit rate does not rewrite those recorded amounts.
+
+219
+00:19:01.858 --> 00:19:08.483
+Group and model tables identify cost concentration, while Chat versus coding agent separates usage types.
+
+220
+00:19:08.483 --> 00:19:15.550
+The cost-per-developer card uses seats plus period overage over the licensed roster, not just active developers.
+
+221
+00:19:16.200 --> 00:19:22.547
+For a current-month review, select the latest month and confirm how much of that month the export contains.
+
+222
+00:19:22.547 --> 00:19:27.132
+A partial month should not be mistaken for a full monthly run rate.
+
+223
+00:19:27.132 --> 00:19:36.300
+Use the daily cost chart to understand allowance absorption and overage, and compare with your actual billing agreement before changing licences or making a budget commitment.
+
+224
+00:19:36.950 --> 00:19:44.381
+GitHub Optimization flags seats with no billed credit records in the selection and shows their seat cost at list price.
+
+225
+00:19:44.381 --> 00:19:49.211
+That is a review queue, not proof of inactivity across the whole product.
+
+226
+00:19:49.211 --> 00:19:51.441
+Unbilled completions are outside this dataset.
+
+227
+00:19:51.441 --> 00:19:58.500
+A narrow model or usage filter can also affect the apparent gap, so clear filters for a roster-wide review.
+
+228
+00:19:59.200 --> 00:20:03.046
+Pool used divides latest-month credits by today’s included pool.
+
+229
+00:20:03.046 --> 00:20:07.320
+More than one hundred percent indicates credits beyond that pool.
+
+230
+00:20:07.320 --> 00:20:11.593
+The top-ten-percent share and powerful-model share help prioritise a discussion.
+
+231
+00:20:11.593 --> 00:20:21.850
+Developer rows and GitHub cost centres show different ways to locate demand; the seat plan table shows the corresponding roster and included monthly credits.
+
+232
+00:20:22.533 --> 00:20:30.914
+Before reclaiming a seat, verify the roster is current, usernames map correctly and the person does not rely on unbilled features.
+
+233
+00:20:30.914 --> 00:20:34.905
+Before downgrading a model, understand the task and quality requirements.
+
+234
+00:20:34.905 --> 00:20:38.098
+These views support an informed review with owners.
+
+235
+00:20:38.098 --> 00:20:44.483
+They do not measure code quality, useful output, or the causal effect of a model choice.
+
+236
+00:20:45.200 --> 00:20:48.726
+GitHub Forecast starts from the latest month of credits.
+
+237
+00:20:48.726 --> 00:20:56.171
+It projects credit demand, subtracts the included pool, prices positive overage at the configured rate, and adds monthly seats.
+
+238
+00:20:56.171 --> 00:21:02.832
+When a future month ends on or after the configured change date, the new per-seat allowance applies.
+
+239
+00:21:02.832 --> 00:21:06.750
+The pool can change even with a flat demand scenario.
+
+240
+00:21:07.450 --> 00:21:13.300
+Observed monthly growth compares the first and last months across their elapsed month distance.
+
+241
+00:21:13.300 --> 00:21:18.732
+The interface needs five months before presenting fitted growth as its planning range.
+
+242
+00:21:18.732 --> 00:21:22.075
+With less history it emphasises the current-rate result.
+
+243
+00:21:22.075 --> 00:21:30.850
+Partial first or latest months can distort the comparison, so check export completeness rather than relying only on the month count.
+
+244
+00:21:31.533 --> 00:21:37.038
+Use Pool by plan and the allowance change date to explain a step in the curve.
+
+245
+00:21:37.038 --> 00:21:43.232
+Confirm that date and future allowance against your agreement; the defaults are not a statement of current policy.
+
+246
+00:21:43.232 --> 00:21:46.328
+Compare flat and growth cases, and document any override.
+
+247
+00:21:46.328 --> 00:21:51.833
+Neither case is a confidence interval or a guarantee of the next twelve months of cost.
+
+248
+00:21:52.533 --> 00:22:00.625
+Azure Spend includes models, AI services and supporting costs such as storage, networking and compute from the solution export.
+
+249
+00:22:00.625 --> 00:22:05.736
+Choose Actual or Amortized basis, a subscription, application, service and one currency.
+
+250
+00:22:05.736 --> 00:22:11.273
+Different currencies must not be added as though they were the same money.
+
+251
+00:22:11.273 --> 00:22:16.383
+The composition chart shows how the selected cost is distributed over time.
+
+252
+00:22:17.033 --> 00:22:21.106
+Model share divides model cost by selected whole-solution cost.
+
+253
+00:22:21.106 --> 00:22:23.368
+Supporting cost is shown separately.
+
+254
+00:22:23.368 --> 00:22:31.513
+Tagged allocation is the share of cost carrying a department tag, not proof that the tag is correct.
+
+255
+00:22:31.513 --> 00:22:36.491
+Tokens, speech hours, document pages and images are different workload measures.
+
+256
+00:22:36.491 --> 00:22:44.183
+Cost per million PAYG tokens uses PAYG token cost and PAYG tokens, not the entire Azure bill.
+
+257
+00:22:44.867 --> 00:22:51.056
+Sort the resource table, inspect the application and service, and look for untagged cost.
+
+258
+00:22:51.056 --> 00:22:56.804
+This view uses the loaded solution export rather than the Overview date selector.
+
+259
+00:22:56.804 --> 00:23:01.225
+Match its export period before comparing it with another product.
+
+260
+00:23:01.225 --> 00:23:10.067
+Use Capacity and health for deployment context and Reconciliation for an aligned shared-pool comparison, not for summing unrelated support costs.
+
+261
+00:23:10.783 --> 00:23:16.657
+Capacity and health shows deployment inventory, provisioned throughput units, utilisation and request-health indicators.
+
+262
+00:23:16.657 --> 00:23:24.789
+Capacity comes from the latest metric date and latest snapshot per deployment, not a sum of daily capacity.
+
+263
+00:23:24.789 --> 00:23:31.565
+Requests and health values belong to the selected snapshot records and their exported measurement period.
+
+264
+00:23:31.565 --> 00:23:36.083
+This is a stored export, not a live service monitor.
+
+265
+00:23:36.783 --> 00:23:40.231
+PTU utilisation is weighted by provisioned capacity.
+
+266
+00:23:40.231 --> 00:23:45.647
+Request-based error and throttle rates divide eligible error counts by requests.
+
+267
+00:23:45.647 --> 00:23:47.617
+Latency is request weighted.
+
+268
+00:23:47.617 --> 00:23:53.034
+A deployment below thirty percent PTU utilisation is a review signal.
+
+269
+00:23:53.034 --> 00:24:02.883
+Do not average displayed percentages without accounting for those denominators, and do not confuse 429 throttles with 5xx server errors.
+
+270
+00:24:03.533 --> 00:24:09.906
+Filter by subscription, application or SKU, then inspect the low-utilisation and latency rankings.
+
+271
+00:24:09.906 --> 00:24:14.317
+Check peaks, response-time needs and expected demand before resizing.
+
+272
+00:24:14.317 --> 00:24:23.140
+Low mean utilisation does not guarantee recoverable savings; provisioned capacity can exist to meet burst or latency requirements.
+
+273
+00:24:23.140 --> 00:24:30.983
+A health issue also needs its measurement window and operational context before you attribute a cause.
+
+274
+00:24:31.700 --> 00:24:37.686
+Reconciliation compares a product-derived usage estimate with Azure actuals for a shared billing pool.
+
+275
+00:24:37.686 --> 00:24:40.679
+Choose a billing period, currency and pool.
+
+276
+00:24:40.679 --> 00:24:49.231
+The app requires matching start and end dates, one pool, one valid currency, and both representations before calculating a difference.
+
+277
+00:24:49.231 --> 00:24:56.500
+All periods or all pools can deliberately make the comparison unavailable rather than producing a misleading variance.
+
+278
+00:24:57.200 --> 00:25:02.753
+Positive difference means Azure actual is above the estimate; negative means below.
+
+279
+00:25:02.753 --> 00:25:10.619
+Evidence is explicitly fictional sample evidence in this demo, not a verified explanation of a customer bill.
+
+280
+00:25:10.619 --> 00:25:12.933
+Residual is difference minus evidence.
+
+281
+00:25:12.933 --> 00:25:22.650
+Detail rows represent separate billing forms, so an individual row may not itself contain both sides needed for a comparable difference.
+
+282
+00:25:23.367 --> 00:25:30.567
+For a fictional estimate of one thousand dollars and actual of eleven hundred, the difference is one hundred.
+
+283
+00:25:30.567 --> 00:25:34.567
+If fictional evidence is sixty, the unexplained residual is forty.
+
+284
+00:25:34.567 --> 00:25:37.767
+Do not claim that arithmetic proves the cause.
+
+285
+00:25:37.767 --> 00:25:41.367
+Supporting Azure solution costs are outside this shared pool.
+
+286
+00:25:41.367 --> 00:25:45.367
+Investigate aligned source evidence before labelling any real amount explained.
+
+287
+00:25:46.033 --> 00:25:49.304
+Guide gathers the written explanation beside the data views.
+
+288
+00:25:49.304 --> 00:25:52.574
+Start here offers product cards and a reading route.
+
+289
+00:25:52.574 --> 00:25:58.389
+It also explains the app layout and how charts were reshaped from the Power BI report.
+
+290
+00:25:58.389 --> 00:26:06.383
+Ranked bars may replace a donut or treemap; the important question remains the same: what is being counted and on which basis?
+
+291
+00:26:07.033 --> 00:26:10.539
+Cowork explains person credit allowances and policy allocation.
+
+292
+00:26:10.539 --> 00:26:13.606
+Studio explains tenant consumption and snapshot attribution.
+
+293
+00:26:13.606 --> 00:26:17.988
+GitHub separates billed credit demand from seats and included pools.
+
+294
+00:26:17.988 --> 00:26:21.055
+Azure adds whole-solution spend and deployment context.
+
+295
+00:26:21.055 --> 00:26:31.133
+You can start with one product, but you should not assume the other sources are present just because the navigation offers their pages.
+
+296
+00:26:31.783 --> 00:26:36.300
+Confirm source coverage, read the denominator, then decide what to investigate.
+
+297
+00:26:36.300 --> 00:26:42.458
+The synthetic sample makes the interface useful for learning, not for estimating your organisation’s consumption.
+
+298
+00:26:42.458 --> 00:26:46.564
+The explainer is a secondary link from the app header.
+
+299
+00:26:46.564 --> 00:26:53.133
+Use the written Guide when you need to revisit a definition without replaying the full video.
+
+300
+00:26:53.783 --> 00:26:59.578
+How to read explains the boundary between exported quantities, identity enrichment and modeled cost.
+
+301
+00:26:59.578 --> 00:27:03.303
+A source may record credits without recording a person.
+
+302
+00:27:03.303 --> 00:27:06.614
+A department breakdown depends on a valid join.
+
+303
+00:27:06.614 --> 00:27:10.753
+A rate assumption can price activity but cannot prove value.
+
+304
+00:27:10.753 --> 00:27:16.133
+Keep those distinctions visible when you share a screenshot or report a headline.
+
+305
+00:27:16.783 --> 00:27:20.187
+Optimization labels are rules over the available records.
+
+306
+00:27:20.187 --> 00:27:21.889
+Forecasts are planning cases.
+
+307
+00:27:21.889 --> 00:27:24.868
+Expert-equivalent task work is an assumption-based estimate.
+
+308
+00:27:24.868 --> 00:27:32.952
+None of these is a causal measurement of productivity, a guarantee of savings or an instruction to remove access.
+
+309
+00:27:32.952 --> 00:27:38.483
+Read the caveats on the page before taking an administrative or purchasing action.
+
+310
+00:27:39.200 --> 00:27:44.917
+When you communicate a result, state the product, dates, source completeness and rate basis.
+
+311
+00:27:44.917 --> 00:27:51.858
+Say whether it is a daily tenant total, weekly person record, monthly billable quantity or undated snapshot.
+
+312
+00:27:51.858 --> 00:28:01.250
+If those details cannot be established, report the limitation rather than turning a plausible-looking chart into a stronger claim than the data supports.
+
+313
+00:28:01.950 --> 00:28:09.977
+Use the Cowork product notes to review how weekly credits meet person limits, policies and the task export.
+
+314
+00:28:09.977 --> 00:28:14.882
+Person allowance, policy plan allowance and prepaid capacity are different controls.
+
+315
+00:28:14.882 --> 00:28:23.800
+The notes complement the Consumption, Cost, Chargeback, Tasks, Optimization and Forecast views; they are not another set of usage records.
+
+316
+00:28:24.450 --> 00:28:28.937
+Check a four-week baseline when interpreting fixed optimization recommendations.
+
+317
+00:28:28.937 --> 00:28:32.926
+Check selected task coverage separately from credit coverage.
+
+318
+00:28:32.926 --> 00:28:41.900
+A cost allocation needs spending-policy billing fields, and a task value estimate needs explicit minute and hourly assumptions.
+
+319
+00:28:42.617 --> 00:28:46.969
+Use Open Cowork & Work IQ to return to the product tab.
+
+320
+00:28:46.969 --> 00:28:50.234
+Start with one question and the smallest useful selection.
+
+321
+00:28:50.234 --> 00:28:56.038
+If the required export is missing, collect it through your approved process and reload the app.
+
+322
+00:28:56.038 --> 00:29:02.567
+The guide explains interpretation; it does not connect to services or fill a missing source with fabricated results.
+
+323
+00:29:03.283 --> 00:29:11.559
+Use the Studio notes to revisit the distinction between daily tenant totals and undated user or agent snapshots.
+
+324
+00:29:11.559 --> 00:29:14.778
+The tenant source establishes consumption over dates.
+
+325
+00:29:14.778 --> 00:29:16.617
+User records support attribution.
+
+326
+00:29:16.617 --> 00:29:20.295
+Agent records support billing-pattern, model and feature analysis.
+
+327
+00:29:20.295 --> 00:29:24.433
+Those sources can cover different populations or reporting windows.
+
+328
+00:29:25.117 --> 00:29:28.920
+A tenant date filter does not date a snapshot.
+
+329
+00:29:28.920 --> 00:29:35.260
+A person cost estimate at PAYG is not an allocation of the selected-period tenant invoice.
+
+330
+00:29:35.260 --> 00:29:42.867
+Where attribution is absent, keep the gap visible rather than forcing totals to reconcile by distributing it arbitrarily.
+
+331
+00:29:43.533 --> 00:29:47.345
+Use Open Copilot Studio to return to the product tab.
+
+332
+00:29:47.345 --> 00:29:50.775
+Start with one question and the smallest useful selection.
+
+333
+00:29:50.775 --> 00:29:56.873
+If the required export is missing, collect it through your approved process and reload the app.
+
+334
+00:29:56.873 --> 00:30:03.733
+The guide explains interpretation; it does not connect to services or fill a missing source with fabricated results.
+
+335
+00:30:04.450 --> 00:30:12.879
+Use the GitHub notes to connect billed AI credits, the seat roster, username mapping and included monthly pool.
+
+336
+00:30:12.879 --> 00:30:16.157
+Gross, discount and net are export measures.
+
+337
+00:30:16.157 --> 00:30:20.372
+Seat prices and future included-credit settings are planning assumptions.
+
+338
+00:30:20.372 --> 00:30:23.650
+Unbilled completions are outside the billed-credit view.
+
+339
+00:30:24.367 --> 00:30:27.602
+No billed credits is not no product use.
+
+340
+00:30:27.602 --> 00:30:32.050
+Compare a monthly seat amount with a clearly stated usage period.
+
+341
+00:30:32.050 --> 00:30:38.117
+Confirm future allowance dates before treating a forecast cost step as a genuine commercial change.
+
+342
+00:30:38.783 --> 00:30:42.481
+Use Open GitHub Copilot to return to the product tab.
+
+343
+00:30:42.481 --> 00:30:45.810
+Start with one question and the smallest useful selection.
+
+344
+00:30:45.810 --> 00:30:51.727
+If the required export is missing, collect it through your approved process and reload the app.
+
+345
+00:30:51.727 --> 00:30:58.383
+The guide explains interpretation; it does not connect to services or fill a missing source with fabricated results.
+
+346
+00:30:59.033 --> 00:31:06.938
+Use the Azure notes to distinguish model-only export costs from the whole solution, including supporting services.
+
+347
+00:31:06.938 --> 00:31:10.890
+Health combines inventory snapshots with exported request metrics.
+
+348
+00:31:10.890 --> 00:31:14.843
+Reconciliation compares representations only when scope is aligned.
+
+349
+00:31:14.843 --> 00:31:19.783
+These are different views of the solution, not interchangeable totals.
+
+350
+00:31:20.450 --> 00:31:23.140
+Keep currencies and cost bases separate.
+
+351
+00:31:23.140 --> 00:31:33.900
+Do not add capacity snapshots over dates, infer guaranteed savings from low utilisation, or pass fictional reconciliation evidence off as a real billing explanation.
+
+352
+00:31:34.617 --> 00:31:38.742
+Use Open Azure AI Foundry to return to the product tab.
+
+353
+00:31:38.742 --> 00:31:42.117
+Start with one question and the smallest useful selection.
+
+354
+00:31:42.117 --> 00:31:48.117
+If the required export is missing, collect it through your approved process and reload the app.
+
+355
+00:31:48.117 --> 00:31:54.867
+The guide explains interpretation; it does not connect to services or fill a missing source with fabricated results.
+
+356
+00:31:55.533 --> 00:31:58.621
+The searchable Glossary is the final Guide view.
+
+357
+00:31:58.621 --> 00:32:04.411
+Search a term such as allowance, billed, utilisation or forecast when a label is unclear.
+
+358
+00:32:04.411 --> 00:32:10.200
+The same familiar word can refer to a different source or denominator in another product.
+
+359
+00:32:10.200 --> 00:32:17.533
+Use the definition together with the page’s help text and visible basis, not as permission to combine unlike units.
+
+360
+00:32:18.200 --> 00:32:23.400
+A screenshot of a KPI can hide its period selector and source note.
+
+361
+00:32:23.400 --> 00:32:28.200
+If you share a result, include those details in the accompanying explanation.
+
+362
+00:32:28.200 --> 00:32:31.000
+For a modeled estimate, include the assumption.
+
+363
+00:32:31.000 --> 00:32:34.200
+For a missing source, state what is missing.
+
+364
+00:32:34.200 --> 00:32:39.800
+For an undated snapshot, say that explicitly rather than calling it this week’s activity.
+
+365
+00:32:40.450 --> 00:32:48.262
+Use the glossary to make a review conversation precise: which credits, which period, which price, which owner and which decision?
+
+366
+00:32:48.262 --> 00:32:53.731
+If the evidence is not sufficient, your next action is to improve the evidence.
+
+367
+00:32:53.731 --> 00:32:59.200
+That is more useful than an apparently precise recommendation built on an unknown denominator.
+
+368
+00:32:59.867 --> 00:33:02.840
+Begin on Overview and confirm coverage.
+
+369
+00:33:02.840 --> 00:33:09.282
+Choose the largest relevant driver, then use that product’s Consumption and Cost views.
+
+370
+00:33:09.282 --> 00:33:11.760
+Review optimization signals with owners.
+
+371
+00:33:11.760 --> 00:33:15.724
+Treat forecasts as scenarios and check their history.
+
+372
+00:33:15.724 --> 00:33:20.679
+For Azure, inspect whole-solution spend, capacity and aligned reconciliation separately.
+
+373
+00:33:20.679 --> 00:33:27.617
+That keeps the investigation connected without pretending all four products share one billing model.
+
+374
+00:33:28.283 --> 00:33:42.467
+Remember the main caveats: weekly Cowork windows versus monthly limits, Studio snapshots versus daily totals, billed GitHub credits versus all product activity, and Azure snapshot capacity versus period health.
+
+375
+00:33:42.467 --> 00:33:46.380
+Task work equivalent is estimated, not measured savings.
+
+376
+00:33:46.380 --> 00:33:50.292
+Fictional reconciliation evidence is not a live explanation.
+
+377
+00:33:50.292 --> 00:33:55.183
+A missing source stays a limitation, not an invented number.
+
+378
+00:33:55.867 --> 00:33:59.531
+This recording used synthetic sample data and AI-generated narration.
+
+379
+00:33:59.531 --> 00:34:03.195
+No customer data or live tenant telemetry was used.
+
+380
+00:34:03.195 --> 00:34:11.745
+Your own next step is to confirm a source and an owner, test one explanation, and make the smallest justified decision.
+
+381
+00:34:11.745 --> 00:34:18.667
+Consumption Central is most useful when every number arrives with its basis, not just a larger claim.
