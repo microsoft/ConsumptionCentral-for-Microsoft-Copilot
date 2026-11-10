@@ -155,11 +155,12 @@ export function Select(props: {
   onChange: (v: string) => void
   options: { value: string; label: string }[]
   allLabel?: string
+  help?: string
 }) {
   const id = useId()
   return (
     <label className={`field ${props.value ? 'field-set' : ''}`} htmlFor={id}>
-      <span>{props.label}</span>
+      <span>{props.label}<InfoTip text={props.help} label={props.label} /></span>
       <select id={id} value={props.value} onChange={(e) => props.onChange(e.target.value)}>
         {props.allLabel !== undefined && <option value="">{props.allLabel}</option>}
         {props.options.map((o) => (
@@ -190,11 +191,12 @@ export function NumberField(props: {
   max?: number
   step?: number
   placeholder?: string
+  help?: string
 }) {
   const id = useId()
   return (
     <label className={`field ${props.value !== '' ? 'field-set' : ''}`} htmlFor={id}>
-      <span>{props.label}</span>
+      <span>{props.label}<InfoTip text={props.help} label={props.label} /></span>
       <input
         id={id}
         type="number"

@@ -344,6 +344,12 @@ renamed file still works.
 `Non-billed credit`, `Channel`, `Knowledge Sources`, `Tool Used`, `LLM Model`, `Scenario Name`,
 `Environment Id`, `Environment Name`
 
+`Product` is exposed as a filter using the export's own values. For example, Microsoft's capacity
+documentation names Microsoft 365 Copilot Chat, and sample exports can contain GitHub Copilot.
+These are examples, not an exhaustive list or a universal definition of "harness". The non-billed
+credit column does not explain why a row was non-billed. Admin policy scopes and precedence are
+described in [How to read this dashboard](INTERPRETING.md#recommendations-policies-and-billing-evidence).
+
 **Per user** — user × agent totals. **No date column.**
 
 `User Id`, `User Email`, `Agent Id`, `Agent Name`, `Billable credit used`, `Credits used`,
@@ -422,6 +428,13 @@ link to your primary account email. The link is valid for **24 hours**.
 `date`, `product`, `sku`, `model`, `quantity`, `unit_type`, `applied_cost_per_quantity`,
 `gross_amount`, `discount_amount`, `net_amount`, `username`, `organization`, `repository`,
 `cost_center_name` ([billing-reports][s3b])
+
+The app uses this report for per-user, model and billed-amount detail. Viva Insights also has a
+reference dashboard with GitHub credit/adoption and model-use insights, but its Consumption
+Dashboard export cannot export GitHub metrics. The Viva dashboard has separate role/privacy
+requirements and its figures are reference-only. See Microsoft's [Viva export
+limitations](https://learn.microsoft.com/en-us/viva/insights/org-team-insights/export-ai-cost-metrics)
+and [dashboard notes](https://learn.microsoft.com/en-us/viva/insights/org-team-insights/ai-cost-dashboard).
 
 > ⚠️ Real exports also carry `total_monthly_quota`, `aic_quantity` and `aic_gross_amount`, which are
 > **not** in the published reference. They are likely newer additions. Consumption Central reads them where
@@ -610,7 +623,12 @@ range. Export as CSV. Or schedule it: **Cost Management** → **Exports** → da
 resources to teams. Tag your Foundry resources and the Foundry page can break spend down by department.
 Leave it empty and everything else still works.
 
-Model name and token direction are **parsed from `Meter`**, so you do not need to supply them.
+Model name and token direction are **parsed from `Meter`**, so you do not need to supply them. When
+a meter has no recognizable token-direction marker, the model is shown as `Not identified`; the
+original meter text remains visible in its own column rather than being presented as a model.
+The app's Spend view shows model/meter and service costs from this raw export, scoped by the selected
+service and currency. Subscription and application filters apply to the separate Azure solution
+spend source, which does not include model names; they do not scope the raw meter table.
 
 <details>
 <summary>How the meter name is parsed into <code>Model</code> and <code>TokenDirection</code></summary>
@@ -636,7 +654,8 @@ Two rules matter if you are extending this:
   input is priced separately from fresh input, so the cache marker is tested first.
 
 `Model` is whatever precedes the first direction word — `5.4 cd inp Gl 1M Tokens` → `5.4`. A meter
-with no direction word keeps its full name as the model, which is what you want for non-token meters.
+with no recognized direction word is shown as `Not identified`; its full original value remains in
+the Meter column.
 
 Hitting a meter spelling that lands in `Other`? Please
 [open an issue](https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/issues) with the

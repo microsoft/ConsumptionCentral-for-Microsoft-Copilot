@@ -71,6 +71,23 @@ export function AzureSpend() {
           initialSort={{ key: 'cost', desc: true }}
         />
       </Panel>
+      <Panel
+        title="Model and AI service spend"
+        note="Model and service are read from the raw Azure AI spend export: ServiceName and Meter. This table follows the selected service and currency; subscription and application filters apply only to the separate Azure solution spend source."
+      >
+        <DataTable
+          label="Model and AI service spend"
+          search={(r) => `${r.service} ${r.model} ${r.meter}`}
+          columns={[
+            { key: 'service', label: 'AI service', value: (r) => r.service },
+            { key: 'model', label: 'Model / meter label', value: (r) => r.model },
+            { key: 'meter', label: 'Meter', value: (r) => r.meter },
+            { key: 'cost', label: 'Raw export cost', value: (r) => r.cost, render: (r) => money(r.currency)(r.cost), align: 'right', bar: C },
+          ]}
+          rows={m.meterDetails.map((d) => ({ id: d.id, data: d }))}
+          initialSort={{ key: 'cost', desc: true }}
+        />
+      </Panel>
     </>
   )
 }

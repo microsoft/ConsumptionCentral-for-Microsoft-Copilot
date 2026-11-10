@@ -20,9 +20,9 @@ export function CoworkTasks() {
       <KpiRow>
         <Kpi tone="cowork" label="Tasks completed" value={int(t.tasks)} sub={`${m.spanWeeks} weeks of task data`} help="Cowork tasks reported in the selected weeks." />
         <Kpi label="Credits used by tasks" value={int(N(t.credits))} sub={t.coverage !== null && t.coverage < 1 ? `${pct(t.coverage)} of tasks have credits` : undefined} help="Credits attributed to the selected tasks. Blank if any task row has no credits." />
-        <Kpi label="Credits per task" value={dec1(N(t.creditsPerTask))} sub={`${usd4(N(t.paygPerTask))} at PAYG`} help="Credits divided by tasks, and the same at the PAYG rate." />
-        <Kpi label="Expert-equivalent hours" value={int(N(t.hours))} sub={`${m.scenario} estimate`} help="Tasks multiplied by the expert minutes for each category under the chosen scenario." />
-        <Kpi label="Expert-equivalent value" value={usd(N(t.monetary))} sub={m.rate === null ? 'Set USD/hour to value work' : `at $${m.rate}/hour`} help="Expert-equivalent hours at the hourly rate you set." />
+        <Kpi label="Credits per task" value={dec1(N(t.creditsPerTask))} sub={`${usd4(N(t.paygPerTask))} at PAYG`} help="Credits divided by reported tasks. Credits are a usage unit, not dollars; the PAYG amount is shown separately." />
+        <Kpi label="Expert-equivalent hours" value={int(N(t.hours))} sub={`${m.scenario} estimate`} help="Mapped task counts multiplied by the expert minutes per task for each category under the chosen scenario. Unmapped categories are excluded." />
+        <Kpi label="Expert-equivalent value" value={usd(N(t.monetary))} sub={m.rate === null ? 'Set expert USD/hour to value work' : `at $${m.rate}/hour`} help="Estimated mapped hours multiplied by the explicitly selected expert hourly value. This is not a measured saving." />
       </KpiRow>
       <Note tone={ok ? undefined : 'warn'} title={ok ? 'How to read this' : 'Check the task data'}>
         {m.status}
@@ -54,7 +54,7 @@ export function CoworkTasks() {
             { key: 'category', label: 'Category', value: (r) => r.category },
             { key: 'tasks', label: 'Tasks', value: (r) => r.tasks, fmt: int, align: 'right', bar: C },
             { key: 'share', label: 'Share', value: (r) => N(r.share), fmt: pct, align: 'right' },
-            { key: 'cpt', label: 'Credits / task', value: (r) => N(r.creditsPerTask), fmt: dec1, align: 'right' },
+            { key: 'cpt', label: 'Credits / task', value: (r) => N(r.creditsPerTask), fmt: dec1, align: 'right', help: 'Credits, not currency. PAYG / task is the separate dollar estimate.' },
             { key: 'ppt', label: 'PAYG / task', value: (r) => N(r.paygPerTask), fmt: dec2, align: 'right' },
             { key: 'minutes', label: 'Expert min / task', value: (r) => N(r.minutes), fmt: int, align: 'right' },
             { key: 'hours', label: 'Expert hours', value: (r) => N(r.hours), fmt: dec1, align: 'right' },
@@ -71,6 +71,7 @@ export function CoworkTasks() {
           ))}
         </ul>
         <p className="section-note">{TASK_FOOTNOTE}</p>
+        {m.unmappedCategories.length > 0 && <p className="section-note">Unmapped categories: {m.unmappedCategories.join(', ')}. No expert-equivalent hours or value are assigned to these categories.</p>}
       </Panel>
     </>
   )

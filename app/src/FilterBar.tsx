@@ -21,7 +21,7 @@ function CoworkFilters({ view }: { view: string }) {
   return (
     <>
       <Select label="Period" value={filters.period || defaultPeriod} onChange={(v) => setFilter('period', v)} options={periods} />
-      <Select label="Service" value={filters.service ?? ''} onChange={(v) => setFilter('service', v)} options={opts(services)} allLabel="All services" />
+      <Select label="Service" value={filters.service ?? ''} onChange={(v) => setFilter('service', v)} options={opts(services)} allLabel="All services" help="Values are the ServiceName labels in the supplied export (for example Cowork or Work IQ API); the filter does not rename or merge them." />
       <Select label="Spending policy" value={filters.policy ?? ''} onChange={(v) => setFilter('policy', v)} options={opts(policies)} allLabel="All policies" />
       <GroupByFields />
       <Select label="Usage cohort" value={filters.cohort ?? ''} onChange={(v) => setFilter('cohort', v)} options={opts(cohorts)} allLabel="All cohorts" />
@@ -53,7 +53,7 @@ function TaskFilters() {
       <Select label="Category" value={filters.category ?? ''} onChange={(v) => setFilter('category', v)} options={opts(categories)} allLabel="All categories" />
       <Select label="Organisation" value={filters.org ?? ''} onChange={(v) => setFilter('org', v)} options={opts(orgs)} allLabel="All" />
       <Select label="Scenario" value={filters.scenario || 'Typical'} onChange={(v) => setFilter('scenario', v)} options={opts(TASK_SCENARIOS)} />
-      <NumberField label="Hourly value (USD)" value={filters.hourly ?? ''} min={0} max={1000} step={5} placeholder="None" onChange={(v) => setFilter('hourly', v === '' ? '' : String(Math.min(1000, Math.max(0, Number(v) || 0))))} />
+      <NumberField label="Expert hourly value (USD)" value={filters.hourly ?? ''} min={0} max={1000} step={5} placeholder="None" help="Multiplies estimated hours for mapped task categories only. It is a scenario input, not a measured salary or saving." onChange={(v) => setFilter('hourly', v === '' ? '' : String(Math.min(1000, Math.max(0, Number(v) || 0))))} />
     </>
   )
 }
@@ -67,7 +67,7 @@ function StudioFilters({ view }: { view: string }) {
       <GroupByFields />
       <Select label="Environment" value={filters.env ?? ''} onChange={(v) => setFilter('env', v)} options={opts(o.envs)} allLabel="All" />
       <Select label="Agent" value={filters.agent ?? ''} onChange={(v) => setFilter('agent', v)} options={opts(o.agents)} allLabel="All agents" />
-      <Select label="Product" value={filters.product ?? ''} onChange={(v) => setFilter('product', v)} options={opts(o.products)} allLabel="All" />
+      <Select label="Product" value={filters.product ?? ''} onChange={(v) => setFilter('product', v)} options={opts(o.products)} allLabel="All" help="Values come directly from the Product column in the per-agent export. Examples include Microsoft 365 Copilot Chat and GitHub Copilot; the list varies by export and is not exhaustive. Product is not assumed to be a universal harness label. This filter applies to agent detail, not tenant totals or the per-user snapshot." />
       {view === 'optimization' && (
         <Select label="Action" value={filters.agentAction ?? ''} onChange={(v) => setFilter('agentAction', v)} options={opts(AGENT_ACTIONS)} allLabel="All actions" />
       )}

@@ -201,8 +201,11 @@ export function StudioOptimization() {
         <Kpi label="Top 10% of users" value={pct(N(m.top10))} sub="share of credits" />
       </KpiRow>
       <Note title="Headline">{m.headline}</Note>
+      <Note title="Limits and user detail">
+        Admins can configure identity-based policies and resource-based policies for agents or environments. A resource policy takes precedence where both cover the same agent. This report does not load policy settings or enforcement state. The per-user snapshot reports consumption, not user-specific limits, so the app does not make user-limit recommendations.
+      </Note>
       <div className="grid grid-1-2">
-        <Panel title="Agents by recommended action" note="Agents in each action, with the credits they consumed.">
+        <Panel title="Agents by recommended action" note="Triage signals from consumption and billed share; these are not the configured agent limits.">
           <BarList
             label="Agents by recommended action"
             color={C}
@@ -218,7 +221,7 @@ export function StudioOptimization() {
               { key: 'agent', label: 'Agent', value: (r) => r.agent },
               { key: 'action', label: 'Action', value: (r) => r.action, render: (r) => <span className="wrap-cell full">{r.action}</span>, width: '26%' },
               { key: 'consumed', label: 'Credits', value: (r) => r.consumed, fmt: int, align: 'right', bar: C },
-              { key: 'absorbed', label: 'Absorbed', value: (r) => N(r.absorbed), fmt: pct, align: 'right', help: 'Share of credits covered by entitlement (non-billed).' },
+              { key: 'absorbed', label: 'Non-billed share', value: (r) => N(r.absorbed), fmt: pct, align: 'right', help: 'Non-billed credits divided by billed plus non-billed credits in the export. The source does not identify why a row was non-billed.' },
               { key: 'billed', label: 'Billed ratio', value: (r) => N(r.billedRatio), fmt: pct, align: 'right' },
               { key: 'cost', label: 'Cost', value: (r) => r.cost, fmt: usd2, align: 'right' },
             ]}
@@ -229,7 +232,7 @@ export function StudioOptimization() {
         </Panel>
       </div>
       <div className="grid grid-2">
-        <Panel title="Heaviest Studio users">
+        <Panel title="Heaviest Studio users" note="Consumption snapshot only; no user-specific limit is included in this export.">
           <DataTable
             label="Heaviest Studio users"
             childNoun="people"

@@ -98,6 +98,7 @@ export function tasksModel(ds: Dataset, f: Filters, s: Settings) {
       (!f.org || t.org === f.org),
   )
   const total = summarise(rows, minutesOf, rate, s)
+  const unmappedCategories = [...new Set(rows.filter((r) => minutesOf(r.category.trim().toLowerCase()) === null).map((r) => r.category))].sort()
 
   const categories: CategoryRow[] = [...groupRows(rows, (r) => r.category).entries()]
     .map(([category, rs]) => {
@@ -128,13 +129,18 @@ export function tasksModel(ds: Dataset, f: Filters, s: Settings) {
   if (!ds.tasksLoaded) status = 'Task categories not supplied'
   else if (!ds.tasks.length) status = 'Task export contains no rows'
   else if (!rows.length) status = 'No tasks match these filters'
-  else
+  else {
+    const unmapped =
+      unmappedCategories.length > 0
+        ? ` No effort assumption is mapped for: ${unmappedCategories.slice(0, 5).join(', ')}${unmappedCategories.length > 5 ? `, and ${unmappedCategories.length - 5} more` : ''}.`
+        : ''
     status =
       `Value assumptions cover ${pct(total.valuation ?? 0)} of reported tasks. ` +
       (total.credits === null
         ? `Credits are incomplete${total.tasks > 0 ? ` (${pct(total.coverage ?? 0)} task coverage)` : ''}; cost estimates are unavailable. `
         : '') +
-      'Expert-equivalent work is estimated, not measured time saved.'
+      `Expert-equivalent hours and the selected hourly value apply only to mapped categories.${unmapped} This is an estimate, not measured time saved.`
+  }
 
   const basis = [
     `${scenario} estimates`,
@@ -149,6 +155,7 @@ export function tasksModel(ds: Dataset, f: Filters, s: Settings) {
     rate,
     total,
     categories,
+    unmappedCategories,
     types,
     weekly,
     status,
