@@ -1,0 +1,37 @@
+[
+  {
+    "time": 0,
+    "label": "One reading order",
+    "duration": 25.25
+  },
+  {
+    "time": 25.25,
+    "label": "Compare the right things",
+    "duration": 24.5
+  },
+  {
+    "time": 49.75,
+    "label": "Follow Cowork demand",
+    "duration": 26.917
+  },
+  {
+    "time": 76.667,
+    "label": "Separate totals from snapshots",
+    "duration": 24.917
+  },
+  {
+    "time": 101.583,
+    "label": "Look beyond model tokens",
+    "duration": 28.75
+  },
+  {
+    "time": 130.333,
+    "label": "Distinguish usage value from billing",
+    "duration": 23.0
+  },
+  {
+    "time": 153.333,
+    "label": "Use forecasts as scenarios",
+    "duration": 22.5
+  }
+]
