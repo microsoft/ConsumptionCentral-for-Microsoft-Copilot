@@ -383,7 +383,7 @@ function readStudioUsers(p: Parsed | undefined): StudioUserRow[] {
 
 export function modelTier(model: string): GhUsageRow['tier'] {
   const m = model.toLowerCase()
-  if (['opus', 'codex', 'gpt-5.5', 'sol', 'pro'].some((s) => m.includes(s))) return '3. Powerful'
+  if (['opus', 'codex', 'gpt-5.5', 'sol', 'pro', 'astra'].some((s) => m.includes(s))) return '3. Powerful'
   if (['mini', 'nano', 'haiku', 'flash', 'luna'].some((s) => m.includes(s))) return '1. Lightweight'
   return '2. Versatile'
 }
