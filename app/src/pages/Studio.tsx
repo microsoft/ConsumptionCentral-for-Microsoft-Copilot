@@ -129,9 +129,9 @@ export function StudioCost() {
         </KpiRow>
       </NotSuppliedIf>
       <div className="grid grid-2">
-        <Panel title="Estimated value by person" note="User snapshot billable credits at the PAYG rate.">
+        <Panel title="Estimated cost by person" note="User snapshot billable credits at the PAYG rate.">
           <DataTable
-            label="Estimated value by person"
+            label="Estimated cost by person"
             childNoun="people"
             search={(r) => r.label}
             columns={[
@@ -158,9 +158,9 @@ export function StudioCost() {
         </Panel>
       </div>
       <div className="grid grid-2">
-        <Panel title="Estimated value by agent">
+        <Panel title="Estimated cost by agent">
           <DataTable
-            label="Estimated value by agent"
+            label="Estimated cost by agent"
             search={(r) => r.agent}
             columns={[
               { key: 'agent', label: 'Agent', value: (r) => r.agent },
