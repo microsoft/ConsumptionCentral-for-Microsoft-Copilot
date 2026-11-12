@@ -616,6 +616,8 @@ installer shows the steps: in the workspace, open the model's settings, then
 **Data source credentials** > **Edit credentials**. Choose **OAuth2** and privacy level
 **Organizational**, and tick **Skip test connection**: the folder has no files until the first
 load writes them, so the test fails until then. Then **Sign in**. Do the same for each source.
+The SharePoint connector uses the site's saved address directly; the folder address is used only
+to select files after connecting, so no Power Query edits are needed for scheduled refresh.
 Sign Viva Insights in the same way, as someone who can open the
 query. Then choose **I've signed it in**. **Later** leaves
 **Sign Consumption Central in to SharePoint** on the Done page. Until it's done, the report has

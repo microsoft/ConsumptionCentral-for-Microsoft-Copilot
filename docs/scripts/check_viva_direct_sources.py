@@ -179,6 +179,8 @@ def form_problems(model):
         text = spec.joined(named(published, spec.SOURCE_FILES)["expression"])
         if READERS[form.name] not in code(text):
             problems.append(f"{form.name}: does not list the folder with {READERS[form.name]}")
+        if not re.search(rf"\b{re.escape(READERS[form.name])}\s*\(\s*{spec.SITE_URL}\s*,", code(text)):
+            problems.append(f"{form.name}: does not pass {spec.SITE_URL} directly to {READERS[form.name]} for scheduled refresh")
         for name in (spec.DATA_FOLDER, spec.SITE_URL):
             if not references(text, name):
                 problems.append(f"{form.name}: does not read {name}")

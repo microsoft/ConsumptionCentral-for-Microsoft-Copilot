@@ -630,10 +630,17 @@ class Check(unittest.TestCase):
              ["the SharePoint forms resolve the folder's address differently"]),
             ("CRLF", lambda a, b: a.write_bytes(a.read_bytes().replace(b"\n", b"\r\n")), plain_lf),
             ("BOM", lambda a, b: a.write_bytes(codecs.BOM_UTF8 + a.read_bytes()), plain_lf),
-            ("local listing", lambda a, b: rewrite(a, b"Listing = SharePoint.Files(Site, [ApiVersion = 15]),",
+            ("computed SharePoint.Files site",
+             lambda a, b: rewrite(a, b"SharePoint.Files(SharePointSiteUrl,", b"SharePoint.Files(Site,"),
+             [f"{first}: does not pass {F.SITE_URL} directly to SharePoint.Files for scheduled refresh"]),
+            ("computed SharePoint.Contents site",
+             lambda a, b: rewrite(b, b"SharePoint.Contents(SharePointSiteUrl,", b"SharePoint.Contents(Site,"),
+             [f"{second}: does not pass {F.SITE_URL} directly to SharePoint.Contents for scheduled refresh"]),
+            ("local listing", lambda a, b: rewrite(a, b"Listing = SharePoint.Files(SharePointSiteUrl, [ApiVersion = 15]),",
                                                    b"Listing = Folder.Files(Given),"),
              [f"{first}: still reads local files once swapped in: {({F.SOURCE_FILES: ['Folder.Files']})}",
-              f"{first}: does not list the folder with SharePoint.Files"]),
+              f"{first}: does not list the folder with SharePoint.Files",
+              f"{first}: does not pass {F.SITE_URL} directly to SharePoint.Files for scheduled refresh"]),
         )
         self.assertEqual(second, "SourceFiles.SharePoint.Contents.m")
         for label, change, expected in cases:
@@ -692,7 +699,7 @@ FINAL_PIN = 'if Given = "" then null else if Problem <> null then error Problem 
 STEPS_PIN = 'Steps = List.Select(Text.Split(Text.Middle(FolderPlain, Text.Length(SiteKey)), "/"), each _ <> ""),'
 FILES_FORM_PINS = (
     'FolderDepth = Segments(FolderKey),',
-    'Listing = SharePoint.Files(Site, [ApiVersion = 15]),',
+    'Listing = SharePoint.Files(SharePointSiteUrl, [ApiVersion = 15]),',
     'Inside = Table.SelectRows(Listing, each Text.StartsWith(Key([#"Folder Path"]), FolderKey)),',
     'Files = Table.AddColumn(Kept, "Depth", each Segments(Key([#"Folder Path"])) - FolderDepth, Int64.Type)',
 )
