@@ -67,6 +67,10 @@ so nothing reads a local file and a report published to the Power BI service can
 | **`SharePointSiteUrl`** | The site, such as `https://contoso.sharepoint.com/sites/ConsumptionCentral`. No library, folder or page. |
 | **`DataFolder`** | The folder, such as `https://contoso.sharepoint.com/sites/ConsumptionCentral/Shared Documents/Consumption Central` |
 
+`SharePointSiteUrl` is passed directly to the SharePoint connector so the Power BI service can
+recognise a fixed source for scheduled refresh. Keep it as the site's address; folder matching
+happens after the connector lists the site.
+
 `DataFolder` also takes the address bar while you're viewing the folder, encoded or not, or a path
 inside the site such as `Shared Documents/Consumption Central`. `/` and `\` both work, and a trailing
 slash makes no difference. It refuses a local or network path, and a sharing link
