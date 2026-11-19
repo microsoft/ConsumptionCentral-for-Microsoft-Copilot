@@ -45,6 +45,14 @@ value, consumption and governance in one place. It includes Consumption Central 
 **[Watch the app explainer](https://ai-datalab.github.io/#/watch/consumption-central-explainer)**:
 what each page shows, how to read it, and what to do next. Synthetic demo data and AI-generated narration.
 
+<details>
+<summary>Power BI report explainer</summary>
+
+[Watch the page-by-page Power BI report walkthrough](https://ai-datalab.github.io/#/watch/consumption-central-explainer).
+Synthetic demo data and AI-generated narration.
+
+</details>
+
 **Installer walkthrough** *(1m 10s)*
 
 AI-generated narration. Sign-in and deployment are simulated.

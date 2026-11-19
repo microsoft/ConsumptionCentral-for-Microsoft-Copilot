@@ -1,0 +1,22 @@
+Demo data. AI-generated narration. Caption timing is approximate.
+
+One reading order
+This is Consumption Central in Power BI, using demo data. Start here explains the reading order: set a period, choose a grouping, then follow the largest source of consumption. Product pages separate what was used, what it costs, opportunities to optimise, and what may happen next. This report informs decisions; limits and policies are enforced in the relevant admin tools.
+
+Compare the right things
+Overall Combined is the cross-product starting point. Read the basis and coverage columns alongside each number. Cowork, Studio and GitHub credits are different units, and Azure uses export cost. The common date window aligns dated sources, but coverage can still differ. The report deliberately avoids a misleading grand total. This is not a consolidated invoice.
+
+Follow Cowork demand
+Cowork Consumption shows credit demand, limits and trends. Use the service selector to distinguish Cowork from Work IQ, and the period and grouping controls to narrow the question. The weekly line helps reveal concentration or changing demand. Used-versus-limit figures are context, not an instruction to raise every limit. Investigate who needs support and whether the workload is appropriate.
+
+Separate totals from snapshots
+Studio Cost separates prepaid and pay-as-you-go amounts and shows the rate in use. The important note is at the bottom: date controls affect tenant totals, while user and agent detail is an undated export snapshot. Snapshot values are rate estimates, not an allocation of the selected-period bill. Do not reconcile those two views as if they shared the same time basis.
+
+Look beyond model tokens
+Azure Spend and Consumption adds the whole-solution view. Model cost sits alongside AI services and supporting infrastructure, while tokens, speech, documents and images describe different workloads. Check the cost basis, currency, subscription and application filters before comparison. The service breakdown helps explain where cost originates. A token count alone cannot describe the cost of the complete solution.
+
+Distinguish usage value from billing
+GitHub Cost separates monthly seats, billed pay-as-you-go and consumption absorbed by the allowance. Usage value is not the same as the amount billed. Read the billing period before comparing a multi-month usage amount with a monthly seat figure. The model and usage-type breakdowns help distinguish chat and inline work from coding-agent jobs.
+
+Use forecasts as scenarios
+Forecast pages turn the observed trend and growth assumption into a scenario. Check the history, period, rates and confidence statement before using it for planning. It is not a guaranteed bill or a promised saving. Finish by choosing one question to investigate, then use How to Read This and the glossary to confirm the measure before taking action.

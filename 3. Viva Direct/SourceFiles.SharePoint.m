@@ -68,7 +68,7 @@ let
         else null,
     // End of shared resolve steps.
     FolderDepth = Segments(FolderKey),
-    Listing = SharePoint.Files(Site, [ApiVersion = 15]),
+    Listing = SharePoint.Files(SharePointSiteUrl, [ApiVersion = 15]),
     Inside = Table.SelectRows(Listing, each Text.StartsWith(Key([#"Folder Path"]), FolderKey)),
     Kept = Table.SelectColumns(Inside, {"Content", "Name", "Extension", "Date modified", "Folder Path"}),
     Files = Table.AddColumn(Kept, "Depth", each Segments(Key([#"Folder Path"])) - FolderDepth, Int64.Type)

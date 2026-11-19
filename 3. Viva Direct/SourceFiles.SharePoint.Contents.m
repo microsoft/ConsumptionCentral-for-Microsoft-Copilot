@@ -91,7 +91,7 @@ let
                 (folder) => @Walk(folder[Content], depth + 1, path & folder[Name] & "/"))
         in
             Table.Combine({Shaped} & Below),
-    Files = Walk(List.Accumulate(Steps, SharePoint.Contents(Site, [ApiVersion = 15]), Open), 0, FolderPlain)
+    Files = Walk(List.Accumulate(Steps, SharePoint.Contents(SharePointSiteUrl, [ApiVersion = 15]), Open), 0, FolderPlain)
 in
     // An address problem fails here, with its own message, before any listing.
     if Given = "" then null else if Problem <> null then error Problem else Files

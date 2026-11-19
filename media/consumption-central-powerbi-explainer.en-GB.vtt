@@ -1,0 +1,221 @@
+WEBVTT
+
+NOTE Approximate sentence/phrase timings within each matching narration segment.
+
+1
+00:00:00.200 --> 00:00:03.938 line:76% position:50% size:90%
+This is Consumption Central in Power BI,
+using demo data.
+
+2
+00:00:03.938 --> 00:00:09.382 line:76% position:50% size:90%
+Start here explains the reading order: set
+a period, choose a grouping, then follow
+
+3
+00:00:09.382 --> 00:00:11.611 line:76% position:50% size:90%
+the largest source of consumption.
+
+4
+00:00:11.611 --> 00:00:17.055 line:76% position:50% size:90%
+Product pages separate what was used, what
+it costs, opportunities to optimise, and
+
+5
+00:00:17.055 --> 00:00:18.432 line:76% position:50% size:90%
+what may happen next.
+
+6
+00:00:18.432 --> 00:00:23.613 line:76% position:50% size:90%
+This report informs decisions; limits and
+policies are enforced in the relevant
+
+7
+00:00:23.613 --> 00:00:24.400 line:76% position:50% size:90%
+admin tools.
+
+8
+00:00:25.450 --> 00:00:28.929 line:76% position:50% size:90%
+Overall Combined is the cross-product
+starting point.
+
+9
+00:00:28.929 --> 00:00:32.736 line:76% position:50% size:90%
+Read the basis and coverage columns
+alongside each number.
+
+10
+00:00:32.736 --> 00:00:37.725 line:76% position:50% size:90%
+Cowork, Studio and GitHub credits are
+different units, and Azure uses export
+
+11
+00:00:37.725 --> 00:00:38.053 line:76% position:50% size:90%
+cost.
+
+12
+00:00:38.053 --> 00:00:42.977 line:76% position:50% size:90%
+The common date window aligns dated
+sources, but coverage can still differ.
+
+13
+00:00:42.977 --> 00:00:46.653 line:76% position:50% size:90%
+The report deliberately avoids a
+misleading grand total.
+
+14
+00:00:46.653 --> 00:00:48.950 line:76% position:50% size:90%
+This is not a consolidated invoice.
+
+15
+00:00:49.950 --> 00:00:53.812 line:76% position:50% size:90%
+Cowork Consumption shows credit demand,
+limits and trends.
+
+16
+00:00:53.812 --> 00:00:59.072 line:76% position:50% size:90%
+Use the service selector to distinguish
+Cowork from Work IQ, and the period and
+
+17
+00:00:59.072 --> 00:01:01.801 line:76% position:50% size:90%
+grouping controls to narrow the question.
+
+18
+00:01:01.801 --> 00:01:05.929 line:76% position:50% size:90%
+The weekly line helps reveal concentration
+or changing demand.
+
+19
+00:01:05.929 --> 00:01:11.189 line:76% position:50% size:90%
+Used-versus-limit figures are context, not
+an instruction to raise every limit.
+
+20
+00:01:11.189 --> 00:01:15.850 line:76% position:50% size:90%
+Investigate who needs support and whether
+the workload is appropriate.
+
+21
+00:01:16.867 --> 00:01:21.725 line:76% position:50% size:90%
+Studio Cost separates prepaid and
+pay-as-you-go amounts and shows the rate
+
+22
+00:01:21.725 --> 00:01:22.185 line:76% position:50% size:90%
+in use.
+
+23
+00:01:22.185 --> 00:01:27.635 line:76% position:50% size:90%
+The important note is at the bottom: date
+controls affect tenant totals, while user
+
+24
+00:01:27.635 --> 00:01:30.721 line:76% position:50% size:90%
+and agent detail is an undated export
+snapshot.
+
+25
+00:01:30.721 --> 00:01:36.105 line:76% position:50% size:90%
+Snapshot values are rate estimates, not an
+allocation of the selected-period bill.
+
+26
+00:01:36.105 --> 00:01:40.767 line:76% position:50% size:90%
+Do not reconcile those two views as if
+they shared the same time basis.
+
+27
+00:01:41.783 --> 00:01:45.632 line:76% position:50% size:90%
+Azure Spend and Consumption adds the
+whole-solution view.
+
+28
+00:01:45.632 --> 00:01:51.168 line:76% position:50% size:90%
+Model cost sits alongside AI services and
+supporting infrastructure, while tokens,
+
+29
+00:01:51.168 --> 00:01:55.084 line:76% position:50% size:90%
+speech, documents and images describe
+different workloads.
+
+30
+00:01:55.084 --> 00:01:59.676 line:76% position:50% size:90%
+Check the cost basis, currency,
+subscription and application filters
+
+31
+00:01:59.676 --> 00:02:00.891 line:76% position:50% size:90%
+before comparison.
+
+32
+00:02:00.891 --> 00:02:04.807 line:76% position:50% size:90%
+The service breakdown helps explain where
+cost originates.
+
+33
+00:02:04.807 --> 00:02:09.533 line:76% position:50% size:90%
+A token count alone cannot describe the
+cost of the complete solution.
+
+34
+00:02:10.533 --> 00:02:15.274 line:76% position:50% size:90%
+GitHub Cost separates monthly seats,
+billed pay-as-you-go and consumption
+
+35
+00:02:15.274 --> 00:02:16.962 line:76% position:50% size:90%
+absorbed by the allowance.
+
+36
+00:02:16.962 --> 00:02:20.145 line:76% position:50% size:90%
+Usage value is not the same as the amount
+billed.
+
+37
+00:02:20.145 --> 00:02:25.470 line:76% position:50% size:90%
+Read the billing period before comparing a
+multi-month usage amount with a monthly
+
+38
+00:02:25.470 --> 00:02:26.249 line:76% position:50% size:90%
+seat figure.
+
+39
+00:02:26.249 --> 00:02:31.314 line:76% position:50% size:90%
+The model and usage-type breakdowns help
+distinguish chat and inline work from
+
+40
+00:02:31.314 --> 00:02:32.483 line:76% position:50% size:90%
+coding-agent jobs.
+
+41
+00:02:33.533 --> 00:02:38.318 line:76% position:50% size:90%
+Forecast pages turn the observed trend and
+growth assumption into a scenario.
+
+42
+00:02:38.318 --> 00:02:43.103 line:76% position:50% size:90%
+Check the history, period, rates and
+confidence statement before using it for
+
+43
+00:02:43.103 --> 00:02:43.662 line:76% position:50% size:90%
+planning.
+
+44
+00:02:43.662 --> 00:02:46.707 line:76% position:50% size:90%
+It is not a guaranteed bill or a promised
+saving.
+
+45
+00:02:46.707 --> 00:02:51.491 line:76% position:50% size:90%
+Finish by choosing one question to
+investigate, then use How to Read This and
+
+46
+00:02:51.491 --> 00:02:55.033 line:76% position:50% size:90%
+the glossary to confirm the measure before
+taking action.
