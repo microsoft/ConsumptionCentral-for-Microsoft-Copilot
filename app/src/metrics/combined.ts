@@ -1,7 +1,6 @@
 import type { Dataset } from '../data/types'
 import type { Filters, Settings } from '../data/store'
-import { dateLabel, int, pct0 } from '../ui/format'
-import { div } from './stats'
+import { dateLabel } from '../ui/format'
 
 export const REPORTING_CAVEAT =
   'This page uses the date filter for every product, so a total can differ from the product tab, which shows its own period. Cowork counts whole weeks dated in the range. Studio user and agent snapshots have no dates and are left out.'
@@ -97,15 +96,10 @@ export function combinedModel(ds: Dataset, f: Filters, s: Settings) {
     },
   ]
 
-  // Studio attribution gap (the report's hidden Combined Caveat), shown here because it is useful.
-  const tenant = ds.studioTenant.reduce((a, t) => a + t.prepaid + t.payg, 0)
-  const attributed = ds.studioUsers.reduce((a, u) => a + u.credits, 0)
-  const gap = tenant - attributed
-  const studioCaveat = !tenant
-    ? 'No Copilot Studio data loaded, so these figures cover the other products only.'
-    : gap > 0
-      ? `Studio counts only credits attributed to a named user. Its agent and environment exports carry no person, so about ${int(gap)} credits (${pct0(div(gap, tenant) ?? 0)} of Studio usage) sit outside the per-person and per-department views.`
-      : 'Studio counts only credits attributed to a named user. All Studio credits in this export carry a person, so nothing is missing here.'
+  // Mirrors the report's Combined Caveat. The tenant/user gap isn't a reconciliation, so it isn't reported as missing usage.
+  const studioCaveat = !ds.studioTenant.length
+    ? 'No Copilot Studio tenant data loaded, so these figures cover the other products only.'
+    : 'Studio tenant and user totals may differ in coverage, dates and billing definitions. Their difference does not identify unattributed usage or establish completeness. Person and department views depend on the user data supplied.'
 
   return {
     lo,
