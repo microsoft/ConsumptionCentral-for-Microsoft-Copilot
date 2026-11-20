@@ -33,6 +33,8 @@ TEMPLATES = (
     ROOT / "archive" / "4. Power Automate + Dataverse"
     / "Consumption Central - Power Automate + Dataverse.pbit",
 )
+# The archived template keeps the older optimisation wording.
+FEEDBACK_TEMPLATES = TEMPLATES[:3]
 
 
 def schema(z):
@@ -65,7 +67,7 @@ def main():
             if "SecurityBindings" not in z.namelist():
                 problems.append(f"{template.name}: SecurityBindings was dropped")
             try:
-                changes = outstanding(z, feedback=template == TEMPLATES[0])
+                changes = outstanding(z, feedback=template in FEEDBACK_TEMPLATES)
             except (KeyError, spec.PatchError) as error:
                 problems.append(f"{template.name}: {error}")
                 continue

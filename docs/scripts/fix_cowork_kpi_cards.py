@@ -22,12 +22,12 @@ What it changes, and why:
    Weeks stays as the safety net.
 3. The Optimisation KPI row now has four reconciling cards, each with a seat
    count. The feedback variant labels them as modeled limit changes at the PAYG
-   rate, not savings. The default retains the older template labels until
-   those templates are updated.
+   rate, not savings. The default retains the older labels used by the
+   archived template.
 
 Every edit is idempotent. Running it twice changes nothing the second time.
-Use --feedback for templates with the reviewed limit-change wording; the
-default retains the existing contract for templates not yet updated.
+Use --feedback for the active templates (Local CSV, Fabric, Viva Direct); the
+default retains the older contract for the archived template.
 """
 import copy
 import json
