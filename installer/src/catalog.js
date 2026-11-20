@@ -213,7 +213,7 @@ export const onceNotebooks = (/** @type {NotebookInfo[]} */ catalog, /** @type {
  * - Org data from Entra: Ingest_Org_Graph reads users through Graph.
  * @param {DataSourceModes} ds
  */
-export const appWanted = (ds) => ds.studioCredits === 'api' || ds.azureAi === 'api' || ds.orgData === 'api';
+export const appWanted = (ds) => ['api', 'reports'].includes(ds.studioCredits) || ds.azureAi === 'api' || ds.orgData === 'api';
 
 /**
  * Whether the install needs the app registration at all: for the sources above, or for the semantic
@@ -236,4 +236,4 @@ export const secretWanted = (ds) => appWanted(ds) || ds.github === 'api';
  * @param {DataSourceModes} ds
  * @returns {string[]}
  */
-export const permissionsFor = (ds) => (ds.studioCredits === 'api' || ds.orgData === 'api' ? [USER_READ_ALL] : []);
+export const permissionsFor = (ds) => (['api', 'reports'].includes(ds.studioCredits) || ds.orgData === 'api' ? [USER_READ_ALL] : []);

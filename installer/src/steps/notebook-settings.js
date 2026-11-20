@@ -6,6 +6,7 @@
  */
 import { createHash } from 'node:crypto';
 import { secretMode } from '../config.js';
+import { githubApiUrl } from '../clients/github.js';
 import { statusConfigJson } from '../loads.js';
 import { INLINE_SECRET_NOTE, MARKER, pyString } from '../transform/notebook.js';
 import { routedSources, routerSignaturesJson, SHAREPOINT_SUBDIR, UPLOAD_DIR, UPLOAD_LOG_TABLE } from '../uploads.js';
@@ -33,7 +34,7 @@ export const PAYG_FIND = 'PAYG_SUBSCRIPTION_IDS = []';
  * @param {InstallConfig} config
  * @param {NotebookInfo} nb
  */
-export const credentialsFor = (config, nb) => nb.credentials && (nb.key !== 'studioConsumption' || config.dataSources.studioCredits === 'api');
+export const credentialsFor = (config, nb) => nb.credentials && (nb.key !== 'studioConsumption' || ['api', 'reports'].includes(config.dataSources.studioCredits));
 
 /**
  * Notebooks that hold or read the app's client secret.
@@ -164,10 +165,11 @@ export function notebookSettings(ctx, nb, opts = {}) {
       break;
     case 'studioConsumption':
       // The licensing-API flow saves StudioApi*.csv beside the exports; the notebook reads them only when told to.
-      if (config.dataSources.studioCredits === 'api') expressions.READ_API_FILES = 'True';
+      if (['api', 'reports'].includes(config.dataSources.studioCredits)) expressions.READ_API_FILES = 'True';
+      if (config.dataSources.studioCredits === 'reports') expressions.READ_REPORT_API_FILES = 'True';
       break;
     case 'githubApi':
-      values = { ENTERPRISE: /** @type {string} */ (config.github?.enterprise) };
+      values = { ENTERPRISE: /** @type {string} */ (config.github?.enterprise), API: githubApiUrl(config.github?.host) };
       secrets.TOKEN = githubTokenSecret(ctx, opts);
       break;
     case 'commercialTerms': {

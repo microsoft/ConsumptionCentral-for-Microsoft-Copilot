@@ -88,7 +88,7 @@ Then the same four questions per product:
 |---|---|
 | **Consumption** | Who is using it, and how much? |
 | **Cost** | What does that convert to in money? |
-| **Optimization** | Where is money being wasted? |
+| **Optimization** | Which consumption or policy signals merit review? |
 | **Forecast** | Where does this land if nothing changes? |
 
 **Azure AI Foundry has a single page — 9. Foundry: Spend & Efficiency** — rather than four. There's
@@ -159,6 +159,38 @@ That last clause matters: someone consuming credits with **no** limit set counts
 Under. It's usually a policy gap rather than a spending problem. The `Users Over Limit` count leaves
 those people out: it counts only people who have a limit and went over it, so it can be lower than
 the Over Limit bucket.
+
+### Recommendations, policies and billing evidence
+
+Cowork spending policies set usage limits; they do not reserve credits or allocate unused credits
+for reassignment. The app's no-use labels distinguish the complete weekly records supplied in the
+export from the latest four-week snapshot. Neither proves lifetime non-use, and the app does not
+reassign capacity. Its dollar figures price modeled limit changes at the PAYG rate; they are not
+cash savings unless a reduction avoids a future purchase. [Microsoft's policy documentation](https://learn.microsoft.com/en-us/copilot/implement/usage-based-billing-manage-copilot-credits)
+describes limits, not reservations.
+
+Copilot Studio admins can use identity-based policies for people and resource-based policies for
+agents or environments. A resource policy takes precedence where both cover an agent. Per-agent
+policies can have monthly limits, alerts and an automatic hard stop; enforcement may be delayed,
+and agent flows have separate enforcement. The per-user export contains consumption, not the
+user's configured policy or enforcement state, so this app can show user consumption but cannot
+make a grounded user-limit recommendation. Likewise, the per-agent export's non-billed credit
+amount does not state why those credits were non-billed; the app reports the share without
+attributing it to entitlement. See [Microsoft's capacity and policy
+documentation](https://learn.microsoft.com/en-us/power-platform/admin/manage-copilot-studio-copilot-credits-capacity)
+and [resource-based policy documentation](https://learn.microsoft.com/en-us/copilot/implement/usage-based-billing-manage-copilot-studio-costs).
+
+For GitHub Copilot, the app uses GitHub's AI usage billing report for per-user, model and billed
+amount detail. Viva Insights' preview dashboard also presents GitHub credit/adoption and model-use
+insights, but those metrics are not included in its Consumption Dashboard export. The Viva dashboard
+has separate access/privacy requirements and its figures are reference-only. See [GitHub billing
+reports](https://docs.github.com/en/billing/reference/billing-reports),
+[Viva's export limitations](https://learn.microsoft.com/en-us/viva/insights/org-team-insights/export-ai-cost-metrics)
+and [Viva's dashboard notes](https://learn.microsoft.com/en-us/viva/insights/org-team-insights/ai-cost-dashboard).
+
+The Studio **Product** filter reflects the per-agent export's Product field, not a standardized
+harness classification. Microsoft documents products such as Microsoft 365 Copilot Chat, and sample
+exports may also contain GitHub Copilot; these are examples, not an exhaustive value list.
 
 ### Forecast
 

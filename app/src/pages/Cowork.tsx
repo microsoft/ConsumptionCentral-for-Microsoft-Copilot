@@ -175,19 +175,19 @@ export function CoworkOptimization() {
     { key: 'used', label: 'Credits', value: (r) => r.used, fmt: int, align: 'right' },
     { key: 'allowance', label: 'Allowance', value: (r) => r.allowance, fmt: int, align: 'right' },
     { key: 'pct', label: 'Used', value: (r) => N(div(r.used, r.allowance)), fmt: pct0, align: 'right' },
-    { key: 'net', label: 'Net $/mo', value: (r) => r.net, fmt: usd2, align: 'right' },
+    { key: 'net', label: 'Estimated impact $/mo', value: (r) => r.net, fmt: usd2, align: 'right' },
   ]
   return (
     <>
       <KpiRow>
-        <Kpi tone="cowork" label="Right-size net" value={usd2(o.net)} sub="a month, if every action is taken" help="Savings from reclaiming and downsizing, less the cost of upgrades, at the PAYG rate." />
-        <Kpi label="Reclaimable" value={usd2(o.reclaim)} sub="a month" help="Unused allowance above each person's recommended limit, at the PAYG rate." />
-        <Kpi label="Dormant seats" value={usd2(o.dormant)} sub="a month" help="Allowance held by people who used no credits." />
-        <Kpi label="Seats to upgrade" value={int(o.upgrade)} help="People over their limit in at least 60% of active weeks." />
-        <Kpi label="Seats to downsize" value={int(o.downsize)} help="Active people whose recommended limit is below their current limit." />
-        <Kpi tone={o.inactive > 0 ? 'warn' : 'neutral'} label="Licensed but inactive" value={int(o.inactive)} help="Licensed people with no credits used." />
+        <Kpi tone="cowork" label="Estimated monthly impact" value={usd2(o.net)} sub="at PAYG, if every action is taken" help="Illustrative value of modeled allowance changes at the PAYG rate, not cash savings. Spending policies set limits, not reserved credits; a reduction saves money only if it avoids a future purchase." />
+        <Kpi label="Potential allowance reduction" value={usd2(o.reclaim)} sub="a month at PAYG" help="Current allowance above the usage-based recommended limit, priced at PAYG. Spending policies set limits, not reserved credits; this is not capacity actually released or reassigned." />
+        <Kpi label="Allowance with no current use" value={usd2(o.dormant)} sub="a month at PAYG" help="Allowance held by people with no credits in the current four-week snapshot." />
+        <Kpi label="Seats to upgrade" value={int(o.upgrade)} help="People whose usage exceeded the weekly pro-rated limit in at least 60% of their active weeks in the supplied export." />
+        <Kpi label="Seats to downsize" value={int(o.downsize)} help="Active people whose current-period usage is below the usage-based recommended limit." />
+        <Kpi tone={o.inactive > 0 ? 'warn' : 'neutral'} label="Licensed users with no current use" value={int(o.inactive)} help="Licensed people with no credits in the current four-week snapshot; this does not establish that they never used the service." />
       </KpiRow>
-      <Panel title="Financial impact by action">
+      <Panel title="Estimated limit impact by action" note="Dollar figures price modeled allowance changes at the PAYG rate; they are not savings or prepaid capacity.">
           <DataTable
             label="Financial impact by action"
             columns={[
@@ -195,16 +195,28 @@ export function CoworkOptimization() {
               { key: 'users', label: 'Users', value: (r) => r.users, fmt: int, align: 'right' },
               { key: 'allowance', label: 'Allowance', value: (r) => r.allowance, fmt: int, align: 'right' },
               { key: 'used', label: 'Credits', value: (r) => r.used, fmt: int, align: 'right' },
-              { key: 'net', label: 'Net $/mo', value: (r) => r.net, fmt: usd2, align: 'right' },
+              { key: 'net', label: 'Estimated impact $/mo', value: (r) => r.net, fmt: usd2, align: 'right' },
             ]}
             rows={o.byAction.map((a) => ({ id: a.action, data: a }))}
             initialSort={{ key: 'action' }}
           />
       </Panel>
-      <Panel title="Action queue" note="Expand a group to see who to act on first.">
+      <Panel title="Action queue" note="Expand a group to see recommendations based only on the supplied weekly records. No action is taken.">
         <DataTable label="Action queue" childNoun="people" search={(r) => r.label} columns={queueCols} rows={queue} initialSort={{ key: 'net', desc: true }} />
       </Panel>
-      <Note>{SAVING_NOTE}</Note>
+      <Note title="Action definitions">
+        <ul className="notes">
+          <li><strong>Set a limit:</strong> credits were used, but no limit is recorded.</li>
+          <li><strong>Review — no use in supplied history:</strong> the export has no weekly credit rows for the person; this does not prove they never used the service.</li>
+          <li><strong>Review — no use in current 4 weeks:</strong> no credits in the current snapshot; earlier rows may exist in the supplied export.</li>
+          <li><strong>Downsize — under 25% used:</strong> current four-week credits are below 25% of the recorded monthly limit.</li>
+          <li><strong>Hold — spiky, not structural:</strong> weekly credits exceeded the pro-rated limit in more than 0% but fewer than 30% of weeks represented in the export.</li>
+          <li><strong>Monitor — near limit:</strong> current four-week credits are at least 85% of the limit, without meeting the persistent-upgrade threshold.</li>
+          <li><strong>Upgrade — persistently over:</strong> weekly credits exceeded the pro-rated limit in at least 60% of weeks represented in the export.</li>
+          <li><strong>Correctly sized:</strong> none of the rules above applied; this is not proof of an optimal limit.</li>
+        </ul>
+        <p>{SAVING_NOTE} Weekly records in the export are the only history used, and the estimate does not identify or perform a transfer to another person.</p>
+      </Note>
     </>
   )
 }

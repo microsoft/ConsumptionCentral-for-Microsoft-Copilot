@@ -33,6 +33,8 @@ TEMPLATES = (
     ROOT / "archive" / "4. Power Automate + Dataverse"
     / "Consumption Central - Power Automate + Dataverse.pbit",
 )
+# The archived template keeps the older optimisation wording.
+FEEDBACK_TEMPLATES = TEMPLATES[:3]
 
 
 def schema(z):
@@ -44,11 +46,11 @@ def visual(z, page, name):
     return json.loads(z.read(f"Report/definition/pages/{page}/visuals/{name}/visual.json"))
 
 
-def outstanding(z):
+def outstanding(z, feedback=False):
     """Every change the fix script would still make to this template."""
-    changes = spec.patch_model(schema(z))
+    changes = spec.patch_model(schema(z), feedback)
     changes += spec.patch_exec_card(visual(z, spec.EXEC_PAGE, spec.EXEC_CARD))
-    changes += spec.patch_opt_card(visual(z, spec.OPT_PAGE, spec.OPT_CARD))
+    changes += spec.patch_opt_card(visual(z, spec.OPT_PAGE, spec.OPT_CARD), feedback)
     for slicer in spec.PERIOD_SLICERS:
         changes += spec.patch_period_slicer(visual(z, *slicer), "/".join(slicer))
     return changes
@@ -65,7 +67,7 @@ def main():
             if "SecurityBindings" not in z.namelist():
                 problems.append(f"{template.name}: SecurityBindings was dropped")
             try:
-                changes = outstanding(z)
+                changes = outstanding(z, feedback=template in FEEDBACK_TEMPLATES)
             except (KeyError, spec.PatchError) as error:
                 problems.append(f"{template.name}: {error}")
                 continue

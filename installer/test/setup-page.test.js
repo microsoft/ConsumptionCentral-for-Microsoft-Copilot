@@ -17,6 +17,7 @@ class Element {
     this.events = {};
     this.value = '';
     this.selected = false;
+    this.hidden = false;
     this.textContent = '';
     /** @type {Record<string, string>} */
     this.dataset = {};
@@ -43,6 +44,7 @@ class Element {
   }
   replaceWith() {}
   remove() {}
+  get childNodes() { return this.children; }
   /** @returns {string} */
   get text() { return this.textContent + this.children.map((child) => child.text).join(''); }
 }
@@ -64,6 +66,23 @@ function page() {
 
 /** @param {Element} root @returns {Element[]} */
 function all(root) { return [root, ...root.children.flatMap(all)]; }
+
+test('data sources page allows optional Studio exports with the preview flow', () => {
+  const context = page();
+  const root = runInContext(`renderSources({
+    id: 8, staged: [], cards: [{
+      id: 'studioCredits', label: 'Copilot Studio credits', mode: 'reports',
+      uploadable: true, uploadModes: ['api', 'reports', 'csv'],
+      modes: [{ value: 'reports', label: 'Preview' }, { value: 'skip', label: 'Skip' }]
+    }]
+  }).body`, context);
+  const picker = all(root).find((el) => el.tag === 'div' && el.children.some((child) => child.tag === 'h3' && child.text.startsWith('Exports to upload')));
+  assert.ok(picker);
+  assert.equal(picker.hidden, false);
+  const skip = all(root).find((el) => el.tag === 'input' && el.value === 'skip');
+  skip?.events.change();
+  assert.equal(picker.hidden, true);
+});
 
 test('settings page renders every category as a direct action and shows edits and earlier attempts', () => {
   const context = page();

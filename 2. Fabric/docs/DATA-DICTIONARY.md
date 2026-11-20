@@ -113,21 +113,21 @@ See [Spending policy billing columns](../../docs/DATA-SOURCES.md#spending-policy
 
 ## `studio_tenant_daily`
 
-Copilot Studio consumption. One row per environment × billing plan × capacity type × day. **The only
-Studio table with a real date**, and so the only one Consumption Central plots over time.
+Copilot Studio consumption. One row per environment × billing plan × capacity type × day. This is
+the dated Studio table Consumption Central plots over time.
 
 | Column | Type | Notes |
 |---|---|---|
-| `billing_plan_id` | string | All-zero GUID where no plan applies |
-| `billing_plan_name` | string | Often blank |
+| `billing_plan_id` | string | Export plan ID; the legacy API uses an all-zero GUID. Preview report rows use the reported entitlement or billing policy ID, when present. |
+| `billing_plan_name` | string | Often blank; preview rows use `Power Platform reports API` |
 | `environment_id` | string | |
 | `environment_name` | string | |
 | `capacity_type` | string | e.g. `MCSMessages` |
-| `source_file` | string | Which export the row came from — matters when several environments are exported separately |
+| `source_file` | string | Export lineage, or `ppac-api` / `ppac-api-users` for API-derived rows |
 | `entitled_quantity` | double | Prepaid entitlement |
-| `prepaid_consumed` | double | Drawn from prepaid capacity |
-| `payg_consumed` | double | Billed pay-as-you-go |
-| `usage_date` | date | Parsed from PPAC's `M/d/yyyy H:mm` |
+| `prepaid_consumed` | double | Prepaid consumption; estimated for the legacy API |
+| `payg_consumed` | double | Pay-as-you-go consumption; estimated for the legacy API |
+| `usage_date` | date | Parsed from the export's usage date or the preview billing report's billed date |
 
 **Key:** `usage_date`, `environment_id`, `billing_plan_id`, `capacity_type`. Each run writes the days
 its exports cover in one Delta commit: an export row replaces the stored row with its key, other rows
@@ -141,24 +141,37 @@ on those days stay, and where two files share a key the newer file wins.
 > covers the same day and environment, or the same month for agents and users. Each run replaces the
 > API rows for the days and months its files cover, in one Delta commit per table: a failed write
 > leaves the table as it was, and days and months the files don't cover keep their rows. The
-> `'ppac-api-users'` rows are rebuilt on every run.
+> `'ppac-api-users'` rows are rebuilt on every run. Their funding split is estimated from billed
+> credits; non-billed credits are not assigned to either funding category because their reason and
+> funding are not reported. They remain in the user consumption tables.
+>
+> **Usage reports preview (separate opt-in).** A completed report pair replaces API rows in its
+> date window, preserving manual export precedence and older history. The billing report supplies
+> prepaid and PAYG amounts rather than the legacy flow's estimated split. The feature report
+> retains `product`, `resource_type` and `scenario_name` in versioned `studio_report_agent_daily`
+> rows; the report-facing monthly agent table is rebuilt from the prevailing preview and legacy
+> daily rows. It retains product but does not expose resource type. Preview rows can be for other
+> products and resources, not only Studio agents; the existing report labels them as agents. The
+> billing report has no product dimension, so its totals cannot be isolated to Studio. Preview
+> reports do not supply user rows. The route and connector have not been tenant-validated.
 
 ---
 
 ## `studio_agent`
 
-Per-agent consumption. **The export carries no date** — it is a month-to-date aggregate — so the
-ingester labels each export with a `snapshot_month` and keys on it.
+Per-agent consumption. Preview reports can also contain other resource types; their resource IDs
+and names populate the existing agent fields. **The export carries no date** — it is a month-to-date
+aggregate — so the ingester labels each export with a `snapshot_month` and keys on it.
 
 | Column | Type | Notes |
 |---|---|---|
 | `snapshot_month` | date | Added by the ingester: the first of the month, in UTC, that the export's file arrived in `Files/landing/studio/`, or its `backfill/<YYYY-MM>/` folder's month. A file with no modification time counts as the month of the run. |
-| `agent_name` | string | |
-| `agent_id` | string | |
+| `agent_name` | string | Preview: reported resource name, not necessarily an agent |
+| `agent_id` | string | Preview: reported resource ID, not necessarily an agent |
 | `product` | string | e.g. `Copilot Studio` |
 | `billable_feature` | string | From `AI Feature/Billable Feature` |
 | `billed_credit` | double | Chargeable |
-| `non_billed_credit` | double | Absorbed by entitlement |
+| `non_billed_credit` | double | Not billed; the source does not identify the reason |
 | `channel` | string | e.g. `M365 Copilot` |
 | `knowledge_sources` | string | |
 | `tool_used` | string | |
@@ -166,18 +179,15 @@ ingester labels each export with a `snapshot_month` and keys on it.
 | `scenario_name` | string | |
 | `environment_id` | string | |
 | `environment_name` | string | |
-| `source_file` | string | Which export this came from — lineage, useful when several environments export separately |
+| `source_file` | string | Export lineage, or `ppac-api` for API-derived monthly rows |
 
-**Key:** `snapshot_month`, `agent_id`, `billable_feature`, `channel`, `environment_id`. Written as the
-tenant table is, by month: an export row replaces the stored row with its key, and the licensing API
-rows for its months go.
+**Export key:** `snapshot_month`, `agent_id`, `billable_feature`, `channel`, `environment_id`.
+The export replaces API rows for its whole month, including preview days later than the export.
+API-derived monthly rows also retain product and scenario when aggregating preview data.
 
-An agent appears once per feature per channel per environment, so all of those belong in the key.
-
-> **`agent_name` and `environment_name` are frequently blank.** Power Automate flows have no agent
-> name in PPAC — in the sample dataset 419 of 448 rows are blank. `agent_id` is always populated, so
-> nothing is lost, but the agent and environment slicers list only named agents. Those rows still
-> count in every total.
+> **Names or IDs can be blank.** The preview report's descriptive fields and IDs can be absent;
+> the ingester retains those rows without inventing identities. Slicers can only show values the
+> source provides.
 
 > **Read these as cumulative, not incremental.** Two snapshots in the same month show growth to date,
 > not new consumption. Consumption Central therefore treats them as period totals and never plots them on a
@@ -209,9 +219,10 @@ Per-user consumption. Same no-date caveat as `studio_agent`.
 
 **Key:** `snapshot_month`, `user_id`, `agent_id`, written as `studio_agent` is.
 
-> **This will not add up to the tenant total, and that is correct.** Agent and environment
-> consumption carries no user, so the per-user total is always smaller. Consumption Central computes the gap
-> and states it on the page rather than hiding it.
+> **This need not match the tenant total.** User reports can omit consumption with no associated
+> user, and total user credits can include non-billed credits. Tenant funding and user figures use
+> different classifications, sources and dates, so their difference is not a measure of unassigned
+> usage.
 
 ---
 

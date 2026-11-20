@@ -14,7 +14,7 @@ import { commandLine } from '../launch.js';
 import { ADMIN_PACK_FILE, ENV, INSTALLER_TITLE, PRODUCT_NAME } from '../product.js';
 import { appName, isPax, requiredPermissions, retiredPermissions } from '../target.js';
 import { c, listJoin } from '../ui.js';
-import { askGithubToken, githubContentType, githubSecretName, GITHUB_TOKEN_SCOPES, TOKENS_URL } from './github.js';
+import { askGithubToken, githubContentType, githubSecretName, GITHUB_TOKEN_SCOPES, tokensUrl } from './github.js';
 import { APP_NAME } from './plan.js';
 import { pnpGrantCommand, siteGrantCommands, SITE_ADMIN } from './pax/site.js';
 import { addTrackedSecret, adoptAttempts, promoteSecret, settleFailedSecret } from './secrets.js';
@@ -442,7 +442,7 @@ export async function secretHandoff(ctx, o = {}) {
     ui.note('The installer never sees the token, so it can\'t check it or tell you before it expires.');
   }
   if (o.rotate && secret) ui.note('Once a run has succeeded with the new secret, delete the old one from the app\'s Certificates & secrets page.');
-  if (o.rotate && token) ui.note(`Once GitHub data has loaded with the new token, revoke the old one at ${TOKENS_URL}.`);
+  if (o.rotate && token) ui.note(`Once GitHub data has loaded with the new token, revoke the old one at ${tokensUrl(config.github?.host)}.`);
 
   if (secret && !ui.yes && !app.existing && app.objectId) {
     const email = (await ui.input('Vault admin\'s email, to make them an owner of the app so they can create its secret (leave blank to skip)', { default: h.adminEmail ?? '' })).trim();

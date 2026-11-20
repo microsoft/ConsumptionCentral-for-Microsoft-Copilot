@@ -216,8 +216,8 @@ function buildRoster(metrics: MetricRow[], map: Parsed | undefined, policies: Po
 function seatAction(p: { weeksActive: number; used: number; limit: number; persistence: number | null }): string {
   const util = p.limit ? p.used / p.limit : null
   const pers = p.persistence
-  if (p.weeksActive === 0) return '1. Reclaim - never used'
-  if (p.used === 0) return '2. Review - no usage in billing period'
+  if (p.weeksActive === 0) return '1. Review - no use in supplied history'
+  if (p.used === 0) return '2. Review - no use in current 4 weeks'
   if (p.limit === 0) return '0. Set a limit - none recorded'
   if (util !== null && util < 0.25) return '3. Downsize - under 25% used'
   if (pers !== null && pers > 0 && pers < 0.3) return '4. Hold - spiky, not structural'
@@ -447,7 +447,20 @@ function readAzureDaily(p: Parsed | undefined): AzureDailyRow[] {
   const date = datesOf(p.rows, getter(h, 'UsageDate', 'Date'))
   const svc = getter(h, 'ServiceName')
   const cost = getter(h, 'Cost', 'CostInBillingCurrency')
-  return p.rows.map((r) => ({ date: date(r), service: svc(r), cost: num(cost(r)) })).filter((r) => r.date)
+  const meter = getter(h, 'Meter', 'MeterName')
+  const currency = getter(h, 'Currency')
+  return p.rows.map((r) => {
+    const meterName = meter(r)
+    const direction = /(?:input|inpt|output|outpt|cach|\binp\b|\bopt\b|\boutp\b|\bcchd\b|\bcd\b)/i.exec(meterName)
+    return {
+      date: date(r),
+      service: svc(r),
+      meter: meterName,
+      model: direction ? meterName.slice(0, direction.index).trim() || 'Not identified' : 'Not identified',
+      cost: num(cost(r)),
+      currency: currency(r).toUpperCase(),
+    }
+  }).filter((r) => r.date)
 }
 
 function readAzureSolution(p: Parsed | undefined): AzureSolutionRow[] {

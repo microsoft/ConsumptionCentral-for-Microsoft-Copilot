@@ -24,6 +24,7 @@ import prepare_validation
 import prepare_offline_export
 import report
 import sync_notebook
+from check_cowork_template_contract import neutral_hourly_default
 from fix_pbit_defaults import (layout_for, reference_schema, reference_defaults, patch_bodies, patch_query_bodies,
                                patch_result_types)
 from pbit_to_pbip import Failure as ConversionFailure
@@ -449,6 +450,20 @@ class ConverterTests(unittest.TestCase):
 
 
 class TaskReportTests(unittest.TestCase):
+    def test_hourly_default_accepts_only_no_rate_or_explicit_blank(self):
+        hourly = report.slicer("hourly", 0, model.HOURLY, "Hourly Value", "Rate")["visual"]
+        self.assertTrue(neutral_hourly_default(hourly))
+        hourly = report.slicer("hourly", 0, model.HOURLY, "Hourly Value", "Rate", 25)["visual"]
+        self.assertFalse(neutral_hourly_default(hourly))
+        body = hourly["objects"]["general"][0]["properties"]["filter"]["filter"]
+        values = body["Where"][0]["Condition"]["In"]["Values"]
+        values[0][0]["Literal"]["Value"] = "0L"
+        self.assertFalse(neutral_hourly_default(hourly))
+        values[0][0]["Literal"]["Value"] = "null"
+        self.assertTrue(neutral_hourly_default(hourly))
+        body["From"][0]["Entity"] = "Cowork Task Scenario"
+        self.assertFalse(neutral_hourly_default(hourly))
+
     def test_task_page_moves_after_cost_without_reordering_existing_pages(self):
         template = ROOT / "1. Local CSV" / "Consumption Central - Local CSV.pbit"
         with tempfile.TemporaryDirectory() as directory, zipfile.ZipFile(template) as archive:
@@ -493,7 +508,16 @@ class TaskReportTests(unittest.TestCase):
                 self.assertEqual(header["textSize"], report.literal(9))
                 text = header["text"]["expr"]["Literal"]["Value"]
                 self.assertEqual(text, text.upper())
-            kpis = next(v for v in visuals if v["name"] == "task_kpis")["visual"]["objects"]
+            kpi_visual = next(v for v in visuals if v["name"] == "task_kpis")["visual"]
+            projections = kpi_visual["query"]["queryState"]["Data"]["projections"]
+            self.assertIn(
+                report.metric("Cowork Task Monetary Equivalent", "Est. equivalent (USD)"),
+                projections,
+            )
+            kpis = kpi_visual["objects"]
+            layout = kpis["layout"][0]["properties"]
+            self.assertEqual(layout["columnCount"], report.integer(len(projections)))
+            self.assertEqual(layout["maxTiles"], report.integer(len(projections)))
             self.assertEqual(kpis["value"][0]["properties"]["fontSize"], report.literal(11))
             self.assertEqual(kpis["label"][0]["properties"]["position"], report.literal("belowValue"))
             self.assertEqual(kpis["accentBar"][0]["properties"]["show"], report.literal(False))

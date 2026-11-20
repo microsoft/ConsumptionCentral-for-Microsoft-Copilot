@@ -225,6 +225,7 @@ def apply(report):
         metric("Cowork Task Credits", "Task credits"),
         metric("Cowork Credits per Task", "Credits per task"),
         metric("Cowork Expert-equivalent Hours", "Est. expert-equivalent hours"),
+        metric("Cowork Task Monetary Equivalent", "Est. equivalent (USD)"),
     ]))
     visuals.append(card("task_status", (LEFT, ROW, CONTENT_WIDTH, 30),
                          [metric("Cowork Task Status Message")], font=9, labels=False, align="left"))

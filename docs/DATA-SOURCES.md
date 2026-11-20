@@ -21,7 +21,7 @@ The single question most people arrive with. Answered once, here:
 | [Cowork / Work IQ](#1-cowork--work-iq-credits--viva-insights-consumption-dashboard) | Certified Power Query connector — direct on Power BI, Dataflow Gen2 on Fabric | **No** |
 | [GitHub Copilot](#3-github-copilot-ai-credits) | REST API | **No** |
 | [Entra org attributes](#5-org-attributes--microsoft-entra-optional) | Graph PowerShell on a schedule, or the [`Ingest_Org_Graph`](../2.%20Fabric/notebooks/Ingest_Org_Graph.ipynb) Fabric notebook | **No** |
-| [Copilot Studio](#2-copilot-studio-credits) | None — PPAC is download-only | **Yes** |
+| [Copilot Studio](#2-copilot-studio-credits) | Fabric only: the installer's [licensing API flow](../installer/README.md#copilot-studio-credits-flow) (about six months on first run, then the last ten days, with per-user rows), or the opt-in [usage reports preview](../installer/README.md#copilot-studio-usage-reports-preview) (delegated admin; previous 14 days; no per-user rows) | **Partly** — Local CSV and Viva Direct always need the PPAC export; on Fabric it is still needed for history before the flow's window and, if only the preview runs, for per-user detail |
 | [Azure AI Foundry](#4-azure-ai-foundry) | Cost Management Query API + Azure Monitor; scheduled Python collector or Fabric notebook, which also records Copilot pay-as-you-go | **No** |
 
 For manually downloaded exports, a [Power Automate flow](../2.%20Fabric/flows/) can land
@@ -305,6 +305,20 @@ treat `ServiceName` as an open list — Consumption Central groups by whatever v
 > replaces the days and months those files cover, one Delta commit per table, so a failed write leaves
 > its table as it was, and older days keep their rows.
 >
+> **Preview usage reports (opt in).** The installer's
+> [reports API preview](../installer/README.md#copilot-studio-usage-reports-preview) adds daily
+> `FeatureDetailsPerResource` and `BillingDetailsPerEnvironment` reports alongside the existing
+> flow. The first provides product, scenario and billed/non-billed credits by agent or other
+> resource; the existing report labels those resources as agents and can include other products.
+> Product and resource type are retained in the preview detail table, but resource type is not
+> displayed by the existing report. The second provides prepaid and PAYG consumption by environment,
+> but has no product field to isolate Studio. Those classifications are different, can use different
+> dates and need not reconcile. Non-billed credits do not reveal the reason they
+> were not billed. The reports have no per-user rows; the old flow and optional per-user CSV
+> remain. Manual exports win on their covered scope. This public-preview route requires a
+> delegated Global, Power Platform or Dynamics 365 administrator, is unavailable in sovereign
+> clouds, and has not been validated with a real report download or Fabric tenant.
+>
 > **The per-user grain has no documented API.** The installer's flow also reads credits per user from
 > a licensing API route that isn't documented (`/licensing/entitlements/MCSMessages/users`) and saves
 > them as `StudioApiUserDaily_*.csv`. That's best effort: when the route fails, the flow skips it.
@@ -343,6 +357,12 @@ renamed file still works.
 `Agent Name`, `Agent Id`, `Product`, `AI Feature/Billable Feature`, `Billed credit`,
 `Non-billed credit`, `Channel`, `Knowledge Sources`, `Tool Used`, `LLM Model`, `Scenario Name`,
 `Environment Id`, `Environment Name`
+
+`Product` is exposed as a filter using the export's own values. For example, Microsoft's capacity
+documentation names Microsoft 365 Copilot Chat, and sample exports can contain GitHub Copilot.
+These are examples, not an exhaustive list or a universal definition of "harness". The non-billed
+credit column does not explain why a row was non-billed. Admin policy scopes and precedence are
+described in [How to read this dashboard](INTERPRETING.md#recommendations-policies-and-billing-evidence).
 
 **Per user** — user × agent totals. **No date column.**
 
@@ -422,6 +442,13 @@ link to your primary account email. The link is valid for **24 hours**.
 `date`, `product`, `sku`, `model`, `quantity`, `unit_type`, `applied_cost_per_quantity`,
 `gross_amount`, `discount_amount`, `net_amount`, `username`, `organization`, `repository`,
 `cost_center_name` ([billing-reports][s3b])
+
+The app uses this report for per-user, model and billed-amount detail. Viva Insights also has a
+reference dashboard with GitHub credit/adoption and model-use insights, but its Consumption
+Dashboard export cannot export GitHub metrics. The Viva dashboard has separate role/privacy
+requirements and its figures are reference-only. See Microsoft's [Viva export
+limitations](https://learn.microsoft.com/en-us/viva/insights/org-team-insights/export-ai-cost-metrics)
+and [dashboard notes](https://learn.microsoft.com/en-us/viva/insights/org-team-insights/ai-cost-dashboard).
 
 > ⚠️ Real exports also carry `total_monthly_quota`, `aic_quantity` and `aic_gross_amount`, which are
 > **not** in the published reference. They are likely newer additions. Consumption Central reads them where
@@ -610,7 +637,12 @@ range. Export as CSV. Or schedule it: **Cost Management** → **Exports** → da
 resources to teams. Tag your Foundry resources and the Foundry page can break spend down by department.
 Leave it empty and everything else still works.
 
-Model name and token direction are **parsed from `Meter`**, so you do not need to supply them.
+Model name and token direction are **parsed from `Meter`**, so you do not need to supply them. When
+a meter has no recognizable token-direction marker, the model is shown as `Not identified`; the
+original meter text remains visible in its own column rather than being presented as a model.
+The app's Spend view shows model/meter and service costs from this raw export, scoped by the selected
+service and currency. Subscription and application filters apply to the separate Azure solution
+spend source, which does not include model names; they do not scope the raw meter table.
 
 <details>
 <summary>How the meter name is parsed into <code>Model</code> and <code>TokenDirection</code></summary>
@@ -636,7 +668,8 @@ Two rules matter if you are extending this:
   input is priced separately from fresh input, so the cache marker is tested first.
 
 `Model` is whatever precedes the first direction word — `5.4 cd inp Gl 1M Tokens` → `5.4`. A meter
-with no direction word keeps its full name as the model, which is what you want for non-token meters.
+with no recognized direction word is shown as `Not identified`; its full original value remains in
+the Meter column.
 
 Hitting a meter spelling that lands in `Other`? Please
 [open an issue](https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/issues) with the

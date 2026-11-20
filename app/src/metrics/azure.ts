@@ -13,8 +13,8 @@ export function spendOptions(ds: Dataset) {
   return {
     subscriptions: [...new Set(s.map((r) => r.subscription))].filter(Boolean).sort(),
     applications: [...new Set(s.map((r) => r.application))].filter(Boolean).sort(),
-    services: [...new Set(s.map((r) => r.service))].filter(Boolean).sort(),
-    currencies: [...new Set(s.map((r) => r.currency))].filter(Boolean).sort(),
+    services: [...new Set(s.map((r) => r.service).concat(ds.azureDaily.map((r) => r.service)))].filter(Boolean).sort(),
+    currencies: [...new Set(s.map((r) => r.currency).concat(ds.azureDaily.map((r) => r.currency)))].filter(Boolean).sort(),
   }
 }
 
@@ -29,6 +29,7 @@ export function spendModel(ds: Dataset, f: Filters) {
       (!f.azService || r.service === f.azService) &&
       (!currency || r.currency === currency),
   )
+  const meterRows = ds.azureDaily.filter((r) => (!f.azService || r.service === f.azService) && (!currency || r.currency === currency))
   const ok = currencyOk(currency) && new Set(rows.map((r) => r.currency)).size <= 1
   const cost = (rs: AzureSolutionRow[]) => (ok ? rs.reduce((a, r) => a + (basis === 'Amortized' ? r.amortized : r.actual), 0) : null)
   const cat = (rs: AzureSolutionRow[], c: string) => cost(rs.filter((r) => r.category === c))
@@ -44,6 +45,16 @@ export function spendModel(ds: Dataset, f: Filters) {
     .sort((a, b) => b.cost - a.cost)
   const resources = [...groupRows(rows, (r) => [r.resource, r.application, r.service, r.department].join('|')).entries()]
     .map(([k, rs]) => ({ id: k, resource: rs[0].resource, application: rs[0].application, service: rs[0].service, department: rs[0].department || '(Untagged)', cost: cost(rs) ?? 0 }))
+    .sort((a, b) => b.cost - a.cost)
+  const meterDetails = [...groupRows(meterRows, (r) => [r.service, r.model, r.meter, r.currency].join('|')).entries()]
+    .map(([id, rs]) => ({
+      id,
+      service: rs[0].service,
+      model: rs[0].model,
+      meter: rs[0].meter,
+      currency: rs[0].currency,
+      cost: rs.reduce((a, r) => a + r.cost, 0),
+    }))
     .sort((a, b) => b.cost - a.cost)
 
   return {
@@ -65,6 +76,7 @@ export function spendModel(ds: Dataset, f: Filters) {
     composition,
     byService,
     resources,
+    meterDetails,
     options: opts,
   }
 }

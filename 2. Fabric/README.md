@@ -75,6 +75,16 @@ saves those files, and the installer turns `READ_API_FILES` on when it sets the 
 replaces the days and months the files cover, one Delta commit per table, so a failed write leaves
 its table as it was, and older days keep their rows.
 
+The installer also offers an **opt-in** [Copilot Studio usage reports preview](../installer/README.md#copilot-studio-usage-reports-preview).
+It keeps that existing flow and optional CSVs as fallbacks. The preview's report pair supplies
+resource product/scenario and the reported prepaid/PAYG split, but no per-user data. Rows can
+represent other products or resources, not just Studio agents; the existing report labels them
+as agents. Product and resource type are retained in the preview detail table, but resource type
+is not displayed by the existing report. The billing report has no product field, so its totals
+cannot be isolated to Studio. In a notebook configured by hand, `READ_REPORT_API_FILES` is off
+by default; enable it only after setting up the separate preview flow. Its connector/download and
+Fabric execution have not been validated in a tenant.
+
 There is also an `Ingest_Studio_Consumption` notebook in that folder which reads
 the Power Platform licensing API instead of the export. **A scheduled Fabric
 refresh cannot authenticate to that API at all** — the permission it needs

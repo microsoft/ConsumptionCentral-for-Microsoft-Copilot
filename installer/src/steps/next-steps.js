@@ -14,7 +14,7 @@ import { myGroupsUrl, PRO_VIEWERS, shareReportPending, shareReportSteps, VIEWER_
 import { COWORK_DATAFLOW_NAME, coworkSignInSteps, DATAFLOW_GUIDE } from './consumption.js';
 import { coworkDataflowOn } from './fabric.js';
 import { connectionSteps, FLOW_NAMES, flowsWanted } from './flows.js';
-import { GITHUB_TOKEN_SCOPES, NEW_TOKEN_URL, TOKEN_WARN_DAYS, TOKENS_URL } from './github.js';
+import { GITHUB_TOKEN_SCOPES, newTokenUrl, TOKEN_WARN_DAYS, tokensUrl } from './github.js';
 import { modelSettingsUrl } from './model.js';
 import { SEED_DAYS, userInfoMode } from './pax/local.js';
 import { credentialSteps, desktopSteps } from './pax/publish.js';
@@ -315,12 +315,12 @@ function githubTokenStep(config, now) {
       ? "Ingest_GitHub_API reads Copilot billing with it, and GitHub data stops loading until it's replaced."
       : `It expires ${gh.tokenExpires.slice(0, 10)}, and Ingest_GitHub_API reads Copilot billing with it.`,
     who: 'You, with a token made by an owner or billing manager of the enterprise',
-    link: NEW_TOKEN_URL,
+    link: newTokenUrl(gh.host),
     linkText: 'Create a classic token',
     steps: [
       `Create a classic token with scope ${GITHUB_TOKEN_SCOPES}.`,
       `Run "${commandLine('github-token')}" and paste it.`,
-      `Revoke the old one at ${TOKENS_URL}.`,
+      `Revoke the old one at ${tokensUrl(gh.host)}.`,
     ],
     ...(expired ? { activity: GITHUB_ACTIVITY } : {}),
   };

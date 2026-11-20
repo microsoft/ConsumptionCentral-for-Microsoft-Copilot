@@ -26,7 +26,7 @@ export const UPLOAD_FOLDERS = [UPLOAD_DIR, STUDIO_DIR, VIVA_DIR, COWORK_TASKS_DI
 /** Largest file the installer uploads. Bigger exports go through OneLake File Explorer or the Lakehouse. */
 export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
-/** @typedef {'api' | 'csv' | 'skip'} SourceMode */
+/** @typedef {'api' | 'reports' | 'csv' | 'skip'} SourceMode */
 /** @typedef {'coworkCredits' | 'coworkTasks' | 'studioCredits' | 'github' | 'azureAi' | 'orgData' | 'commercialTerms'} DataSourceId */
 /** @typedef {Record<DataSourceId, SourceMode>} DataSourceModes */
 
@@ -101,17 +101,18 @@ export const DATA_SOURCES = [
     id: 'studioCredits',
     label: 'Copilot Studio credits',
     description: 'Copilot Studio credits by day, environment, agent and user.',
-    modes: ['api', 'csv', 'skip'],
+    modes: ['api', 'reports', 'csv', 'skip'],
     defaultMode: 'csv',
     page: '5–8. Studio',
     group: USAGE_GROUP,
-    modeLabels: { api: 'Connected (Power Automate flow)', csv: 'Upload CSV only' },
+    modeLabels: { api: 'Connected (Power Automate flow)', reports: 'Connected (reports API preview)', csv: 'Upload CSV only' },
     hints: {
       api: 'A daily Power Automate flow reads the Power Platform licensing API. Whoever signs in to the flow needs Power Automate Premium, and signs in to its connections once. Exports are optional, and they win for the months they cover.',
+      reports: 'Opt in to the preview reports API alongside the existing flow as fallback. It needs a delegated Global, Power Platform or Dynamics 365 administrator; downloaded reports and connector handling have not yet been validated in a tenant.',
       csv: 'Upload the exports each month. No flow.',
     },
     export: {
-      where: 'Power Platform admin center > Licensing > Products > Copilot Studio. Download the Summary, Environments and Agents exports (EntitlementConsumption*_MCSMessages*.csv).',
+      where: 'Power Platform admin center > Licensing > Products > Copilot Studio. Download the Summary/Environments, Agents and optional Users exports (EntitlementConsumption*_MCSMessages*.csv).',
       url: 'https://admin.powerplatform.microsoft.com/',
       files: 'Up to three CSVs a month. A new file replaces the last one of the same kind.',
     },
@@ -183,7 +184,7 @@ export const DATA_SOURCES = [
 ];
 
 export const DATA_SOURCE_IDS = /** @type {DataSourceId[]} */ (DATA_SOURCES.map((s) => s.id));
-export const MODE_LABELS = /** @type {Record<SourceMode, string>} */ ({ api: 'Connected (API)', csv: 'Upload CSV', skip: 'Skip' });
+export const MODE_LABELS = /** @type {Record<SourceMode, string>} */ ({ api: 'Connected (API)', reports: 'Connected (preview)', csv: 'Upload CSV', skip: 'Skip' });
 
 /** @param {DataSourceId} id */
 export const dataSource = (id) => /** @type {DataSourceInfo} */ (DATA_SOURCES.find((s) => s.id === id));

@@ -117,6 +117,32 @@ test('notebooks: with the secret in the notebooks, only those without it are has
   assert.deepEqual(graph.calls, [], 'no new secret is made');
 });
 
+test('notebooks: preview opt-in and opt-out update Studio with a user-supplied inline secret', async () => {
+  const fabric = fakeFabric();
+  const ui = fakeUi({ answers: ['user-secret', 'user-secret', 'user-secret'] });
+  const { ctx, config } = fakeCtx({ fabric: fabric.api, ui: ui.ui });
+  config.app.existing = true;
+  config.keyVault = { secretName: 'consumption-central-client-secret', mode: 'notebook' };
+  config.dataSources.studioCredits = 'api';
+  await ensureNotebooks(ctx);
+  const studio = fabric.items.find((i) => i.displayName === 'Ingest_Studio');
+  assert.match(studio?.content, /READ_REPORT_API_FILES = False/);
+  assert.doesNotMatch(JSON.stringify(config), /user-secret/);
+
+  fabric.calls.length = 0;
+  config.dataSources.studioCredits = 'reports';
+  await ensureNotebooks(ctx, { rotate: true });
+  assert.ok(fabric.calls.includes('updateNotebook Ingest_Studio'));
+  assert.match(studio?.content, /READ_REPORT_API_FILES = True/);
+
+  fabric.calls.length = 0;
+  config.dataSources.studioCredits = 'api';
+  await ensureNotebooks(ctx, { rotate: true });
+  assert.ok(fabric.calls.includes('updateNotebook Ingest_Studio'));
+  assert.match(studio?.content, /READ_REPORT_API_FILES = False/);
+  assert.doesNotMatch(JSON.stringify(config), /user-secret/);
+});
+
 test('notebooks: a deleted one is deployed again; one with the same name that is not ours is left alone', async () => {
   const fabric = fakeFabric();
   const mine = fakeUi();

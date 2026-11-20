@@ -79,6 +79,7 @@ test('cli: --data takes source=mode pairs, repeated or comma-separated, in any c
     commercialTerms: 'api',
   });
   assert.deepEqual(cli('--data', 'github=csv', '--data', 'github=skip').dataSources, { github: 'skip' }, 'the last one wins');
+  assert.deepEqual(cli('--data', 'studioCredits=reports').dataSources, { studioCredits: 'reports' });
   assert.deepEqual(cli('preview', '--data', 'azureAi=api', '--csv', 'usage.csv').dataSources, { azureAi: 'api' });
   assert.deepEqual(cli('preview', '--csv', 'usage.csv').csvFiles, ['usage.csv']);
 });
@@ -89,7 +90,7 @@ test('cli: --data refuses sources it does not have and modes a source cannot tak
   assert.throws(() => cli('--data', 'commercialTerms=csv'), { message: '--data: commercialTerms can be api or skip, not "csv".' });
   assert.throws(() => cli('--data', 'coworkTasks=api'), { message: '--data: coworkTasks can be csv or skip, not "api".' });
   assert.throws(() => cli('--data', 'github=flow'), { message: '--data: github can be api or csv or skip or token, not "flow".' });
-  assert.throws(() => cli('--data', 'studioCredits'), { message: '--data: studioCredits can be api or csv or skip or flow, not "".' });
+  assert.throws(() => cli('--data', 'studioCredits'), { message: '--data: studioCredits can be api or reports or csv or skip or flow, not "".' });
   assert.throws(() => cli('upload', '--data', 'github=csv'), { message: '--data, --csv go with install. To add exports later, use upload.' });
   assert.throws(() => cli('--ui', '--data', 'github=api'), { message: 'With --ui, choose data sources and exports on the Data sources page.' });
 });
@@ -102,6 +103,8 @@ test('applyDataFlags: --data changes only the sources it names', () => {
   assert.deepEqual(config.dataSources, { ...before, github: 'api', commercialTerms: 'api' });
   applyDataFlags(config, cli());
   assert.deepEqual(config.dataSources, { ...before, github: 'api', commercialTerms: 'api' });
+  applyDataFlags(config, cli('--studio-flow', '--data', 'studioCredits=reports'));
+  assert.equal(config.dataSources.studioCredits, 'reports', 'the preview still includes the existing Studio flow');
 });
 
 test('applyDataFlags: another GitHub enterprise needs a new token; the same one in other capitals keeps it', () => {
@@ -119,6 +122,32 @@ test('applyDataFlags: another GitHub enterprise needs a new token; the same one 
 
   applyDataFlags(config, cli('--github-enterprise', 'contoso-labs'));
   assert.deepEqual(config.github, { enterprise: 'contoso-labs', secretName: 'consumption-central-github-pat-2', tokenInNotebook: true });
+});
+
+test('cli: GitHub host is opt-in, validated, saved and changing it invalidates the token', () => {
+  assert.equal(cli().githubHost, undefined);
+  assert.equal(cli('preview', '--github-host', ' https://Example.ghe.com/ ').githubHost, 'https://example.ghe.com');
+  assert.throws(() => cli('update', '--github-host', 'https://example.ghe.com'), /go with install/);
+  assert.throws(() => cli('--ui', '--github-host', 'https://example.ghe.com'), /choose data sources/);
+  assert.throws(() => cli('--github-host', 'https://unrelated.example'), /Use https/);
+  assert.throws(() => cli('--target', 'pax', '--github-host', 'https://example.ghe.com'), /Fabric/);
+  const config = emptyConfig();
+  const token = { tokenSetAt: '2026-05-01', tokenExpires: '2026-08-01' };
+  config.github = { enterprise: 'example', ...token };
+  applyDataFlags(config, cli('--github-host', 'https://github.com/'));
+  assert.equal(config.github.tokenSetAt, token.tokenSetAt, 'an explicit default leaves the existing GitHub.com token alone');
+  applyDataFlags(config, cli('--github-host', 'https://example.ghe.com/'));
+  assert.equal(config.github.enterprise, 'example');
+  assert.equal(config.github.host, 'https://example.ghe.com');
+  assert.equal(config.github.tokenSetAt, undefined);
+  assert.equal(config.github.tokenExpires, undefined);
+  Object.assign(config.github, token);
+  applyDataFlags(config, cli('--github-host', 'https://EXAMPLE.ghe.com'));
+  assert.equal(config.github.tokenSetAt, token.tokenSetAt);
+  applyDataFlags(config, cli());
+  assert.equal(config.github.host, 'https://example.ghe.com', 'no flag leaves the saved choice alone');
+  applyDataFlags(config, cli('--github-host', 'https://github.com'));
+  assert.equal(config.github.tokenSetAt, undefined, 'switching back asks for a GitHub.com token');
 });
 
 test('applyDataFlags: another billing scope is read again after setup; the same one keeps its last run', () => {

@@ -92,7 +92,11 @@ export interface GhUser {
 export interface AzureDailyRow {
   date: string
   service: string
+  meter: string
+  /** Prefix before the token direction in a token meter; blank when the meter does not identify a model. */
+  model: string
   cost: number
+  currency: string
 }
 
 export interface AzureSolutionRow {

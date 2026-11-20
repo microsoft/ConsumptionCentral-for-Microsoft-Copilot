@@ -46,6 +46,7 @@ export function GitHubConsumption() {
         <Kpi label="Active developers" value={int(m.devs)} />
         <Kpi label="Credits per developer" value={dec1(N(m.perDev))} />
         <Kpi label="Coding agent share" value={pct(N(m.coding))} sub="of credits" />
+        <Kpi label="Top 10% share" value={pct(N(m.top10))} sub="of credits" help="Share of credits used by the heaviest 10% of developers in the selected data." />
         <Kpi label="Powerful model share" value={pct(N(m.powerful))} sub="of credits" />
       </KpiRow>
       <div className="grid grid-2-1">
@@ -167,8 +168,6 @@ export function GitHubOptimization() {
       <KpiRow>
         <Kpi tone="github" label="Seats with no credit use" value={int(m.idleSeats)} sub={`of ${int(m.licensed)} licensed`} />
         <Kpi tone={N(m.idleSeatCost) > 0 ? 'warn' : 'neutral'} label="Their seat cost" value={usd(m.idleSeatCost)} sub="a month, at list price" />
-        <Kpi label="Top 10% share" value={pct(N(m.top10))} sub="of credits" />
-        <Kpi label="Powerful model share" value={pct(N(m.powerful))} sub="of credits" />
         <Kpi tone={N(m.poolUsed) > 1 ? 'warn' : 'neutral'} label="Pool used" value={pct(N(m.poolUsed))} sub={`latest month vs ${int(m.pool)} included`} help="Over 100% means the latest month's credits ran past the included pool and were billed as overage." />
       </KpiRow>
       <Panel title="Developers by consumption" note="Expand a group to see its developers.">

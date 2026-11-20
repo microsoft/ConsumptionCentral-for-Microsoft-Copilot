@@ -36,7 +36,7 @@ function sourcesSummary(config) {
   return [
     ds.azureAi === 'api' ? `Azure AI: ${cc.azureSubscriptionName ?? cc.azureSubscriptionId ?? 'choose a subscription'}` : undefined,
     ds.coworkCredits === 'api' ? `Cowork: ${cc.vivaQuery ? `Viva Insights query ${cc.vivaQuery}` : 'choose the Viva Insights query'}` : undefined,
-    ds.github === 'api' ? `GitHub: ${config.github?.enterprise ?? 'choose the enterprise'}` : undefined,
+    ds.github === 'api' ? `GitHub: ${config.github?.enterprise ?? 'choose the enterprise'}${config.github?.host ? ` on ${config.github.host}` : ''}` : undefined,
     ds.commercialTerms === 'api' ? `Credit rate: ${config.commercialTerms?.scopeName ?? config.commercialTerms?.scope ?? 'choose a billing scope'}` : undefined,
     config.semanticModel.enabled === false ? undefined : `Prices: ${describePrices(config.prices)}`,
   ]

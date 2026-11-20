@@ -7,10 +7,10 @@ Consumption Central reads five sources, and they do not automate equally:
 | **Viva consumption** | Certified Power Query connector — a [Dataflow Gen2](../README.md#viva-dataflow) on Fabric, or a direct connection on [3. Viva Direct](../../3.%20Viva%20Direct/) | **No** |
 | **GitHub Copilot** | REST API, via [`Ingest_GitHub_API.ipynb`](../notebooks/Ingest_GitHub_API.ipynb) | **No** |
 | **Entra org** | Graph PowerShell on a schedule | **No** |
-| **Copilot Studio** | None — PPAC is download-only | Yes |
+| **Copilot Studio** | The installer's [licensing API flow](../../installer/README.md#copilot-studio-credits-flow), or the opt-in [usage reports preview](../../installer/README.md#copilot-studio-usage-reports-preview) (delegated admin; previous 14 days; no per-user rows) | Partly — the PPAC export for backfill, and for per-user detail if only the preview runs |
 | **Azure AI Foundry** | Cost Management Query + Azure Monitor, via [`Ingest_Azure_AI.ipynb`](../notebooks/Ingest_Azure_AI.ipynb) | **No** |
 
-Of these routes, **Copilot Studio** still needs someone to press export. Azure AI does not.
+Of these routes, **Copilot Studio** is only partly automated: the installer's flows pull daily credits, but backfill and some per-user detail still need the PPAC export. Azure AI does not.
 
 **The flows on this page are for manually landed exports.** They watch a mailbox or a SharePoint library and write
 straight to OneLake, so the ingester picks the file up on its next run. That does not remove the
@@ -103,13 +103,14 @@ A flow can only react to a file that shows up. How each source gets there:
 | Source | Reality |
 |---|---|
 | **Viva consumption** | **No flow needed** — a [Dataflow Gen2](../README.md#viva-dataflow) writes query results straight to the Lakehouse on a schedule. Use a flow only if you are deliberately working from downloaded CSVs. |
-| **Copilot Studio** | Manual download — PPAC is download-only. Mail it to the watched mailbox or drop it in the library. |
+| **Copilot Studio** | Use the installer's [licensing API flow](../../installer/README.md#copilot-studio-credits-flow) or the opt-in [usage reports preview](../../installer/README.md#copilot-studio-usage-reports-preview) (delegated admin; previous 14 days; no per-user rows) where you can. The PPAC export is still needed for backfill beyond the API window and, if only the preview runs, for per-user detail: mail it to the watched mailbox or drop it in the library. |
 | **Azure AI Foundry** | Schedule the API notebook above. No download or mailbox/SharePoint flow is needed. |
 | **GitHub** | The report is *emailed to you*, so the email flow can catch it with no human step at all. Better still, skip it and use the API notebook. |
 | **Entra org** | Schedule the Graph PowerShell snippet in [DATA-SOURCES.md](../../docs/DATA-SOURCES.md) and have it write to the SharePoint library. Fully automatable. |
 
 So realistically: **Viva, GitHub, Entra and Azure AI can be fully hands-off. Copilot Studio
-still needs someone to press export** — the flow just removes the "save it in the right place"
+is hands-off for daily credits with the installer's flows, but backfill and some per-user detail
+still need an export** — this flow just removes the "save it in the right place"
 step and the mistakes that come with it.
 
 That is still worth having. The failure mode you are protecting against is not someone forgetting to

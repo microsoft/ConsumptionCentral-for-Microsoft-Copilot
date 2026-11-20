@@ -129,7 +129,7 @@ export async function fabricUninstall(ctx) {
   ui.note(`Left alone: ${listJoin(leftAlone(config))}. Remove them yourself if nothing else uses them.`);
   const gh = config.github;
   if (config.dataSources.github === 'api' && gh?.tokenSetAt) {
-    ui.note(`The GitHub token still works${gh.tokenExpires ? ` until ${gh.tokenExpires.slice(0, 10)}` : ''}. Once nothing else uses it, ${revokeHint()}`);
+    ui.note(`The GitHub token still works${gh.tokenExpires ? ` until ${gh.tokenExpires.slice(0, 10)}` : ''}. Once nothing else uses it, ${revokeHint(gh.host)}`);
   }
   ui.note('The install record still names the deleted workspace. Move it aside before installing again.');
   return true;

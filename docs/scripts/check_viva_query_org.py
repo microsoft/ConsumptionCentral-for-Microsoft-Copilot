@@ -10,7 +10,7 @@ patcher public APIs to bytes only, then tests that candidate against the input.
 No PBIT, scratch files, dependencies, or network resources are created.
 
 Package checks inspect actual sources, caches and records, not only replacement
-byte equality. Baseline checks compare all 364 untouched ZIP local records and
+byte equality. Baseline checks compare all 384 untouched ZIP local records and
 central metadata (excluding relocated offsets), and all non-patch JSON fields.
 This includes unchanged relationship metadata, DAX source strings, and report
 bytes. JSON serialization of the two edited parts necessarily changes.
@@ -43,7 +43,7 @@ from fix_viva_direct_sources import ORG_EDITS as PAX_EDITS
 # Every record in the template except the two model parts the patcher may
 # rewrite. All three shipping templates carry the same report layer, so this
 # is a fixed number; it moves only when the report itself gains or loses parts.
-UNAFFECTED_RECORDS = 364
+UNAFFECTED_RECORDS = 384
 
 
 def documents(package):

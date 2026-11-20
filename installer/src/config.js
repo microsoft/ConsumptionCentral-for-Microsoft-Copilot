@@ -44,6 +44,7 @@ export const DEFAULT_CONFIG_FILE = RECORD_FILE;
  * Ingest_GitHub_API's settings. The token itself is never saved: it's in Key Vault, or in the notebook.
  * @typedef {object} GithubConfig
  * @property {string} [enterprise]  The enterprise slug, as in github.com/enterprises/<slug>.
+ * @property {string} [host]  GitHub Cloud web origin. Absent means https://github.com; otherwise https://<subdomain>.ghe.com.
  * @property {string} [secretName]  The Key Vault secret the token is in, when it isn't GITHUB_PAT_SECRET.
  * @property {string} [tokenSetAt]  When a token was last written to Key Vault or the notebook.
  * @property {string} [tokenExpires]  When that token expires, as GitHub reported it. Absent for one that doesn't.
@@ -121,11 +122,11 @@ export const flowIdentity = (config) => (config.uploads?.flowIdentity === 'app' 
  * @property {boolean} [folders]  The drop folder and the folders the loads read exist in the Lakehouse.
  * @property {FlowIdentity} [flowIdentity]  Who the flows write to OneLake as. Default user.
  * @property {FlowEnvironment} [flowEnvironment]  The Power Platform environment the flows are created in.
- * @property {Partial<Record<'studio', string>>} [flowIds]  The flows, once created.
- * @property {Partial<Record<'studio', string>>} [flowSignatures]  What each created flow was built from.
- * @property {Partial<Record<'studio', string>>} [flowFiles]  Where a flow was written when it couldn't be created.
+ * @property {Partial<Record<'studio' | 'studioReports', string>>} [flowIds]  The flows, once created.
+ * @property {Partial<Record<'studio' | 'studioReports', string>>} [flowSignatures]  What each created flow was built from.
+ * @property {Partial<Record<'studio' | 'studioReports', string>>} [flowFiles]  Where a flow was written when it couldn't be created.
  * @property {Record<string, string>} [flowConnections]  The connections the installer made for the flows, by connection reference.
- * @property {Partial<Record<'studio', string>>} [flowsConnected]  The flow IDs the installer signed in and turned on.
+ * @property {Partial<Record<'studio' | 'studioReports', string>>} [flowsConnected]  The flow IDs the installer signed in and turned on.
  */
 
 /**

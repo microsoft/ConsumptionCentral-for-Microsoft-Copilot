@@ -14,8 +14,10 @@ with SNAPSHOT_MONTH the run's month, to show what the change fixes. The failure 
 fails leaves its table as it was, and that the next run ends where it would have if nothing had failed.
 """
 import builtins
+import base64
 import fnmatch
 import functools
+import gzip
 from collections import Counter
 import csv
 from datetime import date, datetime, time, timedelta, timezone
@@ -1150,6 +1152,9 @@ class FakeSpark:
             entries.append(entry)
         return sorted(entries, key=lambda e: e.name)
 
+    def head(self, path, max_bytes):
+        return self.files[path].encode("utf-8")[:max_bytes].decode("utf-8")
+
 
 class FakeDeltaTable:
     def __init__(self, spark, name, alias=None):
@@ -1292,7 +1297,7 @@ MODULES = {"pyspark.sql.functions": module("pyspark.sql.functions", **FUNCTIONS)
 MODULES["pyspark.sql"] = module("pyspark.sql", functions=MODULES["pyspark.sql.functions"])
 MODULES["pyspark"] = module("pyspark", sql=MODULES["pyspark.sql"])
 MODULES["delta"] = module("delta", tables=MODULES["delta.tables"])
-REAL_MODULES = {"re", "time", "json", "math", "urllib.parse"}
+REAL_MODULES = {"base64", "csv", "gzip", "io", "re", "time", "json", "math", "urllib.parse"}
 
 
 def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
@@ -1350,6 +1355,23 @@ TENANT_KEYS = '["usage_date", "environment_id", "billing_plan_id", "capacity_typ
 # between them). They put back the settings and SNAPSHOT_MONTH, read() as it was, merge() and
 # drop_api_rows(), each export cell's merge, then delete, and cell 10's join.
 EXPORT_SWAPS = [
+    ('LANDING = "Files/landing/studio"',
+     'READ_API_FILES = False\n',
+     '# Saved by that flow.',
+     '\n'),
+    ('nothing to sum',
+     '              .groupBy("usage_date", "environment_id")\n',
+     '    if spark.catalog.tableExists(TBL_TENANT):',
+     '              .agg(F.sum(F.coalesce("billed_credit", F.lit(0.0))).alias("billed"),\n'
+     '                   F.sum(F.coalesce("non_billed_credit", F.lit(0.0))).alias("non_billed")))\n'),
+    ('nothing to sum',
+     '                                F.coalesce("entitled_quantity", F.lit(0.0)).alias("entitled_quantity"),\n',
+     '                                (F.col("billed") * F.lit(1.0 - share)).alias("payg_consumed"),',
+     '                                (F.col("billed") * F.lit(share) + F.col("non_billed")).alias("prepaid_consumed"),\n'),
+    ('nothing to sum',
+     '    DeltaTable.forName(spark, TBL_TENANT).delete(F.col("source_file") == API_USER_SOURCE)',
+     None,
+     ''),
     ('LANDING = "Files/landing/studio"',
      'LANDING = "Files/landing/studio"\n'
      '\n',
@@ -1584,7 +1606,7 @@ def run(spark, version, day, read_api=True, fail_at=None, at=time(6), settings=N
     CLOCK.now = spark.now
     spark.writes, spark.output, spark.history = [], [], []
     scope = {"__builtins__": BUILTINS, "__name__": "__main__", "spark": spark,
-             "notebookutils": SimpleNamespace(fs=SimpleNamespace(ls=spark.ls)),
+             "notebookutils": SimpleNamespace(fs=SimpleNamespace(ls=spark.ls, head=spark.head)),
              "print": lambda *args, **kwargs: spark.output.append(" ".join(map(str, args)))}
     cells = dict(CODE["new" if version == "new" else "old"])
 
@@ -1669,15 +1691,35 @@ def oracle_loads(spark, day, scope):
     return loads
 
 
-def snapshot(tables, drop=()):
-    """Each table's columns and rows, in a form two runs' tables compare by. drop leaves columns out."""
+def snapshot(tables, drop=(), legacy_estimate=False):
+    """Each table's columns and rows, in a form two runs' tables compare by. drop leaves columns out.
+
+    For oracle comparisons, remove the old user fallback's non-billed-to-prepaid attribution while
+    still comparing every value. The intentional change itself is checked separately.
+    """
     if isinstance(tables, FakeSpark):
         tables = tables.tables
+    unbilled = Counter()
+    if legacy_estimate and USER_DAILY in tables:
+        for row in rows_of(tables, USER_DAILY):
+            if row["usage_date"] is not None:
+                unbilled[(row["usage_date"], row["environment_id"])] += row["non_billed_credit"] or 0
     out = {}
     for name, t in tables.items():
         keep = [i for i, n in enumerate(t.names) if n not in drop]
+        rows = t.rows
+        if legacy_estimate and name == TENANT:
+            d, e = t.names.index("usage_date"), t.names.index("environment_id")
+            source, prepaid = t.names.index("source_file"), t.names.index("prepaid_consumed")
+            adjusted = []
+            for row in rows:
+                if row[source] == API_USERS and row[prepaid] is not None:
+                    value = row[prepaid] - unbilled[(row[d], row[e])]
+                    row = row[:prepaid] + (value,) + row[prepaid + 1:]
+                adjusted.append(row)
+            rows = adjusted
         out[name] = (tuple(t.names[i] for i in keep), tuple(t.types[i] for i in keep),
-                     Counter(tuple(r[i] for i in keep) for r in t.rows))
+                     Counter(tuple(r[i] for i in keep) for r in rows))
     return out
 
 
@@ -2181,9 +2223,7 @@ class Structure(unittest.TestCase):
 
 
 class SameEndState(unittest.TestCase):
-    """Daily runs from a first run, with no tables, to LAST_RUN: every run ends as the code at ORACLE_COMMIT
-    would end it, loading each export file on its own, oldest first, with SNAPSHOT_MONTH set to the file's
-    month. The tenant rows on the DIVERGENT keys are left out of the comparison: see NullSafeExported."""
+    """Compare daily runs with ORACLE_COMMIT, allowing the two documented tenant-row changes."""
 
     def test_every_run_succeeds(self):
         for r in scenario().runs:
@@ -2193,7 +2233,8 @@ class SameEndState(unittest.TestCase):
     def test_every_run_ends_as_the_old_code_would(self):
         for r in scenario().runs:
             with self.subTest(day=r.day, at=r.at):
-                self.assertEqual(differences(snapshot(outside(r.after["old"])), snapshot(outside(r.after["new"]))),
+                self.assertEqual(differences(snapshot(outside(r.after["old"]), legacy_estimate=True),
+                                             snapshot(outside(r.after["new"]))),
                                  [])
 
     def test_each_cell_writes_each_table_in_one_commit(self):
@@ -2287,7 +2328,8 @@ class Cases(unittest.TestCase):
                 self.assertEqual(frozen(x for x in rows_of(spark, USER_DAILY) if x["usage_date"] in only_agent), kept)
                 self.assertEqual({x["_loaded_at"] for x in rows_of(spark, AGENT_DAILY) if x["usage_date"] in only_agent},
                                  {datetime.combine(day, time(6))})
-        self.assertEqual(differences(snapshot(outside(ends["old"])), snapshot(outside(ends["new"]))), [])
+        self.assertEqual(differences(snapshot(outside(ends["old"]), legacy_estimate=True),
+                                     snapshot(outside(ends["new"]))), [])
 
     def test_an_export_replaces_the_api_figures_for_what_it_covers(self):
         r = run_on(EXPORT_DAY)
@@ -2391,6 +2433,28 @@ class Cell14(unittest.TestCase):
             remove(spark, "StudioApiUserDaily")
         self.check(land_files, "no per-user daily table - nothing to sum")
 
+    def test_user_only_tenant_estimate_excludes_non_billed_credits(self):
+        run_day, usage_day = date(2026, 7, 14), date(2026, 7, 13)
+        ends = {}
+        for version in ("old", "new"):
+            spark = FakeSpark()
+            land_api(spark, run_day, days=1, usage=[(CASEY, ONBOARDING)])
+            result = run(spark, version, run_day)
+            self.assertIsNone(result.error, result.tb)
+            ends[version] = spark
+
+        user = rows_of(ends["new"], USER_DAILY, usage_date=usage_day, environment_id=TRAINING)[0]
+        tenant = rows_of(ends["new"], TENANT, usage_date=usage_day, environment_id=TRAINING,
+                         source_file=API_USERS)[0]
+        previous = rows_of(ends["old"], TENANT, usage_date=usage_day, environment_id=TRAINING,
+                           source_file=API_USERS)[0]
+        monthly_user = rows_of(ends["new"], USER_MONTHLY, user_id=CASEY, agent_id=ONBOARDING.id)[0]
+        self.assertGreater(user["non_billed_credit"], 0)
+        self.assertEqual(tenant["prepaid_consumed"], user["billed_credit"] * 0.75)
+        self.assertEqual(tenant["payg_consumed"], user["billed_credit"] * 0.25)
+        self.assertEqual(previous["prepaid_consumed"], tenant["prepaid_consumed"] + user["non_billed_credit"])
+        self.assertEqual(monthly_user["credits_used"], user["billed_credit"] + user["non_billed_credit"])
+
 
 class Runs(unittest.TestCase):
     """Runs each version on its own copy of the same tables and files, so the tests below can compare
@@ -2409,7 +2473,8 @@ class Runs(unittest.TestCase):
         return out
 
     def assertSameEnd(self, ends):
-        self.assertEqual(differences(snapshot(outside(ends["old"].spark)), snapshot(outside(ends["new"].spark))),
+        self.assertEqual(differences(snapshot(outside(ends["old"].spark), legacy_estimate=True),
+                                     snapshot(outside(ends["new"].spark))),
                          [])
 
 
@@ -2447,7 +2512,7 @@ class Failures(unittest.TestCase):
                           (CELL["api_agent"], TENANT), (CELL["api_user"], USER_DAILY),
                           (CELL["api_user"], USER_MONTHLY), (CELL["sum"], TENANT)])
         for end in ("day_end", "end"):
-            self.assertEqual(differences(snapshot(outside(getattr(self.clean["old"], end))),
+            self.assertEqual(differences(snapshot(outside(getattr(self.clean["old"], end)), legacy_estimate=True),
                                          snapshot(outside(getattr(self.clean["new"], end)))), [], end)
 
     def test_a_failed_write_changes_nothing_and_the_next_run_heals(self):
@@ -2609,7 +2674,8 @@ class Schema(unittest.TestCase):
                     self.assertIn(table, {w[1] for w in result.writes})
                     self.assertNotIn("_loaded_at", spark.tables[table].names)
                     sparks[version] = spark
-                self.assertEqual(differences(snapshot(outside(sparks["old"])), snapshot(outside(sparks["new"]))),
+                self.assertEqual(differences(snapshot(outside(sparks["old"]), legacy_estimate=True),
+                                             snapshot(outside(sparks["new"]))),
                                  [])
 
     def test_a_column_the_rows_lack_fails_the_run_before_the_table_is_written(self):
@@ -2630,7 +2696,8 @@ class Schema(unittest.TestCase):
                     self.assertEqual(snapshot(spark)[table], snapshot(before)[table])
                     sparks[version] = spark
             with self.subTest(table=table):
-                self.assertEqual(differences(snapshot(outside(sparks["old"])), snapshot(outside(sparks["new"]))),
+                self.assertEqual(differences(snapshot(outside(sparks["old"]), legacy_estimate=True),
+                                             snapshot(outside(sparks["new"]))),
                                  [])
 
 
@@ -2638,7 +2705,7 @@ class NullSafeExported(unittest.TestCase):
     """Cell 10's `exported` now matches the stored export rows null-safely, as drop_api_rows matched them. A
     tenant key with no environment ID that an export row, or a row with no source, is on now keeps the
     licensing API rows off it. The old plain join never matched a NULL, so it wrote an API row there. These
-    keys, DIVERGENT, are the only rows where the new code ends differently from the oracle."""
+    keys, DIVERGENT, are the only other rows where the new code ends differently from the oracle."""
 
     def test_a_key_with_no_environment_keeps_its_export_row_and_gets_no_api_row(self):
         gap, end = tenant_export_name(GAP_RUN), scenario().runs[-1]
@@ -2657,7 +2724,8 @@ class NullSafeExported(unittest.TestCase):
     def test_the_divergent_keys_are_the_only_tenant_rows_that_differ(self):
         keys = set()
         for r in scenario().runs:
-            (names, _, old), (other, _, new) = snapshot(r.after["old"])[TENANT], snapshot(r.after["new"])[TENANT]
+            (names, _, old) = snapshot(r.after["old"], legacy_estimate=True)[TENANT]
+            (other, _, new) = snapshot(r.after["new"])[TENANT]
             self.assertEqual(names, other)
             d, e = names.index("usage_date"), names.index("environment_id")
             keys |= {(row[d], row[e]) for row in (old - new) + (new - old)}
@@ -2750,7 +2818,8 @@ class ArrivalMonth(Runs):
                         self.assertEqual({x["_loaded_at"] for x in now}, {datetime.combine(november, time(6))})
                         self.assertEqual(set(sources(spark, table, snapshot_month=first_of[october])), {name})
             with self.subTest(read_api=read_api):
-                self.assertEqual(differences(snapshot(ends["old"]), snapshot(ends["new"])), [])
+                self.assertEqual(differences(snapshot(ends["old"], legacy_estimate=True),
+                                             snapshot(ends["new"])), [])
 
     def test_a_file_with_no_modify_time_counts_as_the_month_of_the_run_and_says_so(self):
         names = (agent_export_name(EXPORT_DAY), user_export_name(EXPORT_DAY))
@@ -3082,7 +3151,8 @@ class Files(Runs):
                 self.assertEqual(differences(snapshot(run_on(EXPORT_DAY).after[version], drop=("source_file",)),
                                              snapshot(spark, drop=("source_file",)), ("one file", "two")), [])
                 sparks[version] = spark
-        self.assertEqual(differences(snapshot(outside(sparks["old"])), snapshot(outside(sparks["new"]))), [])
+        self.assertEqual(differences(snapshot(outside(sparks["old"]), legacy_estimate=True),
+                                     snapshot(outside(sparks["new"]))), [])
 
     def test_rows_that_share_a_key_within_one_file_are_all_written(self):
         text = with_copy(agent_export(), "Billed credit", "99.0")
@@ -3119,7 +3189,8 @@ class Files(Runs):
                 self.assertEqual(len(rows_of(sparks["old"], table, **match)), 2)
                 self.assertEqual(len(rows_of(sparks["new"], table, **match)), 1)
                 drop_one(sparks["old"], table, match)
-        self.assertEqual(differences(snapshot(outside(sparks["old"])), snapshot(outside(sparks["new"]))), [])
+        self.assertEqual(differences(snapshot(outside(sparks["old"]), legacy_estimate=True),
+                                     snapshot(outside(sparks["new"]))), [])
 
 
 def blank_dates(text, day=None):
@@ -3275,6 +3346,226 @@ class FirstLoad(Runs):
                           if x["agent_id"] in (HELP_DESK.id, SALES.id)},
                          {(HELP_DESK.id, 40.5, newer), (SALES.id, 45.5, newer)})
         self.assertSameEnd(ends)
+
+
+class PreviewReports(unittest.TestCase):
+    DAY = date(2026, 7, 15)
+    FEATURE_HEADER = ("ConsumptionDate", "EnvironmentID", "EnvironmentName", "ResourceID", "ResourceName", "ResourceType",
+                      "Product", "ScenarioName", "Feature", "Channel", "LLMModel", "ToolUsed",
+                      "KnowledgeSources", "BilledCredits", "NonBilledCredits")
+    BILLING_HEADER = ("BilledDate", "EnvironmentID", "EnvironmentName", "EntitlementID", "BillingPolicyId",
+                      "AllocatedCapacityPackCredits", "CapacityPackCreditsConsumed", "PayGoConsumedQuantity")
+
+    def setUp(self):
+        self.spark = FakeSpark()
+        land_api(self.spark, self.DAY, days=20)
+        first = run(self.spark, "new", self.DAY)
+        self.assertIsNone(first.error, first.tb)
+
+    def feature(self, when, billed=12.0, product="AI Builder", scenario="Assist", resource_type="Example resource"):
+        return (when.isoformat(), PRODUCTION, "Production", HELP_DESK.id, HELP_DESK.name, resource_type, product, scenario,
+                "Generative answer", "Teams", "GPT-4o", "Search", "Site", billed, 3.0)
+
+    def billing(self, when, prepaid=40.0, payg=10.0):
+        return (when.isoformat(), PRODUCTION, "Production", "entitlement-a", "policy-a", 200.0, prepaid, payg)
+
+    def package(self, feature_rows, billing_rows, serial=1, start=None, end=None, feature_payload=None):
+        start = start or self.DAY - timedelta(14)
+        end = end or self.DAY - timedelta(1)
+        feature = csv_text(self.FEATURE_HEADER, feature_rows)
+        wrapped = {"$content-type": "application/gzip",
+                   "$content": base64.b64encode(gzip.compress(feature.encode())).decode()}
+        package = {"startDate": start.isoformat(), "endDate": end.isoformat(),
+                   "feature": feature_payload if feature_payload is not None else wrapped,
+                   "billing": csv_text(self.BILLING_HEADER, billing_rows)}
+        name = f"StudioReportsPreview_{self.DAY:%Y%m%d}050000{serial:07d}_00000000-0000-0000-0000-{serial:012d}.json"
+        put(self.spark, name, json.dumps(package))
+        return name
+
+    def preview(self):
+        result = run(self.spark, "new", self.DAY, settings={"READ_REPORT_API_FILES": True})
+        self.assertIsNone(result.error, result.tb)
+        return result
+
+    def test_decodes_reports_uses_actual_funding_and_preserves_older_history(self):
+        day, old_day = self.DAY - timedelta(2), self.DAY - timedelta(15)
+        older = frozen(rows_of(self.spark, AGENT_DAILY, usage_date=old_day))
+        user_before = frozen(rows_of(self.spark, USER_DAILY))
+        self.package([self.feature(day), self.feature(day, billed=4.0, product="Copilot Studio", scenario="Other")],
+                     [self.billing(day)])
+        self.preview()
+        self.assertEqual(frozen(rows_of(self.spark, AGENT_DAILY, usage_date=old_day)), older)
+        self.assertEqual(frozen(rows_of(self.spark, USER_DAILY)), user_before)
+        daily = rows_of(self.spark, AGENT_DAILY, usage_date=day, agent_id=HELP_DESK.id)
+        self.assertEqual([(r["billed_credit"], r["non_billed_credit"], r["users"]) for r in daily], [(16.0, 6.0, None)])
+        monthly = rows_of(self.spark, AGENT_MONTHLY, agent_id=HELP_DESK.id, product="AI Builder", scenario_name="Assist")
+        self.assertEqual([r["billed_credit"] for r in monthly], [12.0])
+        tenant = rows_of(self.spark, TENANT, usage_date=day, environment_id=PRODUCTION)
+        self.assertEqual({(r["billing_plan_id"], r["prepaid_consumed"], r["payg_consumed"], r["entitled_quantity"])
+                          for r in tenant},
+                         {("entitlement-a", 40.0, 0.0, 200.0), ("policy-a", 0.0, 10.0, None)})
+
+    def test_preview_retains_product_and_resource_type_without_guessing_an_allowlist(self):
+        day = self.DAY - timedelta(2)
+        self.package([
+            self.feature(day, billed=5.0, product="Copilot Studio", resource_type="Example agent"),
+            self.feature(day, billed=8.0, product="Another product", resource_type="Example non-agent"),
+            self.feature(day, billed=3.0, product="Copilot Studio", resource_type=None),
+        ], [self.billing(day)])
+        self.preview()
+        detail = rows_of(self.spark, "studio_report_agent_daily", usage_date=day)
+        self.assertEqual({(r["product"], r["resource_type"], r["billed_credit"]) for r in detail},
+                         {("Copilot Studio", "Example agent", 5.0),
+                          ("Another product", "Example non-agent", 8.0),
+                          ("Copilot Studio", None, 3.0)})
+        monthly = rows_of(self.spark, AGENT_MONTHLY, agent_id=HELP_DESK.id, scenario_name="Assist")
+        self.assertEqual({(r["product"], r["billed_credit"]) for r in monthly},
+                         {("Copilot Studio", 8.0), ("Another product", 8.0)})
+
+    def test_overlap_replaces_and_fallback_retains_older_preview_dimensions(self):
+        older, newer = self.DAY - timedelta(8), self.DAY - timedelta(2)
+        self.package([self.feature(older, billed=6.0), self.feature(newer)], [self.billing(newer)])
+        self.preview()
+        self.package([self.feature(older, billed=8.0), self.feature(newer, billed=14.0)],
+                     [self.billing(newer, prepaid=41.0, payg=11.0)], serial=2)
+        self.preview()
+        rows = rows_of(self.spark, AGENT_MONTHLY, agent_id=HELP_DESK.id, product="AI Builder", scenario_name="Assist")
+        self.assertEqual([r["billed_credit"] for r in rows], [22.0])
+        self.assertEqual(sum(r["payg_consumed"] for r in rows_of(self.spark, TENANT, usage_date=newer)), 11.0)
+
+        land_api(self.spark, self.DAY, days=3)
+        result = run(self.spark, "new", self.DAY)
+        self.assertIsNone(result.error, result.tb)
+        rows = rows_of(self.spark, AGENT_MONTHLY, agent_id=HELP_DESK.id, product="AI Builder", scenario_name="Assist")
+        self.assertEqual([r["billed_credit"] for r in rows], [8.0])
+        self.assertTrue(rows_of(self.spark, AGENT_MONTHLY, agent_id=HELP_DESK.id, product="Copilot Studio"))
+
+    def test_preview_window_crossing_months_keeps_each_month_separate(self):
+        self.DAY = date(2026, 7, 4)
+        self.spark = FakeSpark()
+        land_api(self.spark, self.DAY, days=20)
+        first = run(self.spark, "new", self.DAY)
+        self.assertIsNone(first.error, first.tb)
+        june, july = date(2026, 6, 28), date(2026, 7, 2)
+        self.package([self.feature(june, billed=6.0), self.feature(july, billed=14.0)],
+                     [self.billing(june), self.billing(july)])
+        self.preview()
+        monthly = rows_of(self.spark, AGENT_MONTHLY, agent_id=HELP_DESK.id,
+                          product="AI Builder", scenario_name="Assist")
+        self.assertEqual({r["snapshot_month"]: r["billed_credit"] for r in monthly},
+                         {date(2026, 6, 1): 6.0, date(2026, 7, 1): 14.0})
+
+    def test_manual_exports_win_and_empty_reports_clear_only_their_window(self):
+        day, old_day = self.DAY - timedelta(2), self.DAY - timedelta(15)
+        land(self.spark, tenant_export_name(self.DAY), tenant_export(day, day, envs=[PRODUCTION]))
+        land(self.spark, agent_export_name(self.DAY), agent_export())
+        self.package([self.feature(day)], [self.billing(day)])
+        self.preview()
+        self.assertEqual(set(sources(self.spark, TENANT, usage_date=day, environment_id=PRODUCTION)),
+                         {tenant_export_name(self.DAY)})
+        self.assertEqual(set(sources(self.spark, AGENT_MONTHLY, snapshot_month=day.replace(day=1))),
+                         {agent_export_name(self.DAY)})
+        old = frozen(rows_of(self.spark, AGENT_DAILY, usage_date=old_day))
+        self.package([], [], serial=2)
+        self.preview()
+        self.assertFalse(rows_of(self.spark, AGENT_DAILY, usage_date=day))
+        self.assertEqual(frozen(rows_of(self.spark, AGENT_DAILY, usage_date=old_day)), old)
+        self.assertEqual(set(sources(self.spark, TENANT, usage_date=day, environment_id=PRODUCTION)),
+                         {tenant_export_name(self.DAY)})
+
+    def test_invalid_or_partial_packages_do_not_publish_preview_rows(self):
+        day = self.DAY - timedelta(2)
+        self.package([self.feature(day, billed="not-a-number")], [self.billing(day)])
+        result = run(self.spark, "new", self.DAY, settings={"READ_REPORT_API_FILES": True})
+        self.assertIsInstance(result.error, ValueError)
+        self.assertIn("nonnumeric BilledCredits", str(result.error))
+        self.assertNotIn("studio_report_agent_daily", self.spark.tables)
+        self.assertEqual(set(sources(self.spark, AGENT_DAILY, usage_date=day)), {API})
+
+        self.spark.files.clear()
+        land_api(self.spark, self.DAY, days=20)
+        put(self.spark, f"StudioReportsPreview_{self.DAY:%Y%m%d}0500000000001_00000000-0000-0000-0000-000000000001.json", "")
+        result = self.preview()
+        self.assertTrue(any("incomplete empty file" in line for line in result.output))
+        self.assertNotIn("studio_report_agent_daily", self.spark.tables)
+
+    def test_missing_resource_type_column_fails_before_preview_writes(self):
+        day = self.DAY - timedelta(2)
+        header = tuple(name for name in self.FEATURE_HEADER if name != "ResourceType")
+        feature = self.feature(day)
+        without_type = feature[:5] + feature[6:]
+        self.package([], [self.billing(day)], feature_payload=csv_text(header, [without_type]))
+        result = run(self.spark, "new", self.DAY, settings={"READ_REPORT_API_FILES": True})
+        self.assertIsInstance(result.error, ValueError)
+        self.assertIn("ResourceType", str(result.error))
+        self.assertNotIn("studio_report_agent_daily", self.spark.tables)
+        self.assertEqual(set(sources(self.spark, AGENT_DAILY, usage_date=day)), {API})
+
+    def test_bad_payloads_dates_and_conflicting_allocations_fail_before_preview_writes(self):
+        baseline = clone(self.spark)
+        day = self.DAY - timedelta(2)
+        truncated_gzip = base64.b64encode(gzip.compress(b"contents")[:-4]).decode()
+        cases = [
+            ("invalid base64", [self.feature(day)], [self.billing(day)],
+             {"$content": "not-base64!"}, ValueError),
+            ("truncated gzip", [self.feature(day)], [self.billing(day)],
+             {"$content": truncated_gzip}, (EOFError, OSError)),
+            ("invalid date", [("not-a-date",) + self.feature(day)[1:]],
+             [self.billing(day)], None, ValueError),
+            ("date outside window", [self.feature(self.DAY - timedelta(15))],
+             [self.billing(day)], None, ValueError),
+            ("nonfinite credits", [self.feature(day, billed="NaN")], [self.billing(day)], None, ValueError),
+            ("conflicting allocation", [self.feature(day)],
+             [self.billing(day), self.billing(day)[:5] + (201.0,) + self.billing(day)[6:]], None, ValueError),
+        ]
+        for label, feature, billing, payload, error in cases:
+            with self.subTest(label=label):
+                self.spark = clone(baseline)
+                self.package(feature, billing, feature_payload=payload)
+                result = run(self.spark, "new", self.DAY, settings={"READ_REPORT_API_FILES": True})
+                self.assertIsInstance(result.error, error, result.tb)
+                self.assertNotIn("studio_report_agent_daily", self.spark.tables)
+                self.assertEqual(set(sources(self.spark, AGENT_DAILY, usage_date=day)), {API})
+
+    def test_missing_dimensions_are_retained_without_inventing_ids(self):
+        day = self.DAY - timedelta(2)
+        feature = (day.isoformat(), None, None, None, None, None, None, None, None, None, None, None, None, 7.0, 2.0)
+        billing = (day.isoformat(), None, None, None, None, None, 5.0, 1.0)
+        self.package([feature], [billing])
+        self.preview()
+        agent = rows_of(self.spark, AGENT_MONTHLY, agent_id=None, product=None, scenario_name=None)
+        self.assertEqual([(r["billed_credit"], r["non_billed_credit"]) for r in agent], [(7.0, 2.0)])
+        tenant = rows_of(self.spark, TENANT, usage_date=day, environment_id=None, billing_plan_id=None)
+        self.assertEqual([(r["prepaid_consumed"], r["payg_consumed"]) for r in tenant], [(5.0, 1.0)])
+
+    def test_stale_pair_is_not_reapplied(self):
+        day = self.DAY - timedelta(2)
+        self.package([self.feature(day)], [self.billing(day)])
+        result = run(self.spark, "new", self.DAY + timedelta(4), settings={"READ_REPORT_API_FILES": True})
+        self.assertIsNone(result.error, result.tb)
+        self.assertTrue(any("stale preview pair" in line for line in result.output))
+        self.assertNotIn("studio_report_agent_daily", self.spark.tables)
+
+    def test_retry_after_each_preview_write_failure_restores_the_complete_result(self):
+        day = self.DAY - timedelta(2)
+        self.package([self.feature(day)], [self.billing(day)])
+        clean = clone(self.spark)
+        complete = run(clean, "new", self.DAY, settings={"READ_REPORT_API_FILES": True})
+        self.assertIsNone(complete.error, complete.tb)
+        first = next(i for i, (_, table, _) in enumerate(complete.writes, 1)
+                     if table == "studio_report_agent_daily")
+        indexes = [i for i, (cell, table, _) in enumerate(complete.writes, 1)
+                   if i >= first and cell == CELL["sum"] and table in
+                   {"studio_report_agent_daily", AGENT_DAILY, TENANT, AGENT_MONTHLY}]
+        self.assertEqual(len(indexes), 4)
+        for index in indexes:
+            with self.subTest(failed_write=index):
+                interrupted = clone(self.spark)
+                failed = run(interrupted, "new", self.DAY, fail_at=index, settings={"READ_REPORT_API_FILES": True})
+                self.assertIsInstance(failed.error, SimulatedFailure)
+                repaired = run(interrupted, "new", self.DAY, settings={"READ_REPORT_API_FILES": True})
+                self.assertIsNone(repaired.error, repaired.tb)
+                self.assertEqual(differences(snapshot(clean, drop=LOADED), snapshot(interrupted, drop=LOADED)), [])
 
 
 if __name__ == "__main__":

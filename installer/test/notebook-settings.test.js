@@ -116,7 +116,7 @@ test('every name notebookSettings writes is one installer-assets.json lists, for
             for (const name of [...names.values, ...names.expressions, ...names.patches]) written.get(nb.key)?.add(name);
           }
           // Credentials only where installer-assets.json says so; Ingest_Studio only for the licensing API.
-          const credentials = nb.credentials && (nb.key !== 'studioConsumption' || choice.studioCredits === 'api');
+          const credentials = nb.credentials && (nb.key !== 'studioConsumption' || ['api', 'reports'].includes(choice.studioCredits));
           assert.deepEqual(
             { tenantId: s.tenantId, clientId: s.clientId, secret: s.secret },
             credentials
@@ -178,6 +178,12 @@ test('the client secret: read from Key Vault, or with no Key Vault written in, a
   const studio = notebookSettings(csv.ctx, info('studioConsumption'));
   assert.deepEqual([studio.tenantId, studio.secret, studio.expressions], [undefined, undefined, undefined]);
   assert.deepEqual(notebookSettings(install().ctx, info('studioConsumption')).expressions, { READ_API_FILES: 'True' });
+  const preview = install({ ds: { studioCredits: 'reports' } });
+  assert.deepEqual(notebookSettings(preview.ctx, info('studioConsumption')).expressions,
+    { READ_API_FILES: 'True', READ_REPORT_API_FILES: 'True' });
+  const previewText = prepared('studioConsumption', notebookSettings(preview.ctx, info('studioConsumption')));
+  assert.match(previewText, /^READ_API_FILES = True/m);
+  assert.match(previewText, /^READ_REPORT_API_FILES = True/m);
 
   // Ingest_Azure_AI has its own settings rather than the credentials.
   const kv = install();
@@ -213,13 +219,28 @@ test('githubTokenSecret: the Key Vault read, or with no Key Vault the token itse
   // Ingest_GitHub_API's TOKEN, as deployed.
   const kv = install();
   const settings = notebookSettings(kv.ctx, info('githubApi'));
-  assert.deepEqual(settings.values, { ENTERPRISE: 'contoso' });
+  assert.deepEqual(settings.values, { ENTERPRISE: 'contoso', API: 'https://api.github.com' });
   assert.deepEqual(settings.secrets, { TOKEN: githubTokenSecret(kv.ctx) });
   const text = prepared('githubApi', settings);
   assert.ok(text.includes(`\nTOKEN = notebookutils.credentials.getSecret('${VAULT}', '${GITHUB_PAT_SECRET}')  # ${MARKER}: read from Azure Key Vault at run time`));
   assert.ok(!text.includes(TOKEN));
   const inline = install({ mode: 'notebook' });
   assert.ok(prepared('githubApi', notebookSettings(inline.ctx, info('githubApi'))).includes(`\nTOKEN = '${TOKEN}'  # ${INLINE_SECRET_NOTE}`));
+});
+
+test('GitHub Enterprise Cloud host reaches every generated notebook endpoint and changes its hash', () => {
+  for (const mode of /** @type {SecretMode[]} */ (['notebook', 'keyvault'])) {
+    const t = install({ mode });
+    const before = prepared('githubApi', notebookSettings(t.ctx, info('githubApi'), { placeholder: true }));
+    t.config.github = { ...t.config.github, host: 'https://example.ghe.com' };
+    const text = prepared('githubApi', notebookSettings(t.ctx, info('githubApi'), { placeholder: true }));
+    assert.ok(text.includes("API = 'https://api.example.ghe.com'"));
+    assert.ok(!text.includes('https://api.github.com'), 'no endpoint falls back to the public API');
+    assert.notEqual(text, before, 'a host change is reflected in the deployed notebook/hash');
+    for (const path of ['copilot/billing/seats', 'consumed-licenses', 'settings/billing/ai_credit/usage']) {
+      assert.ok(text.includes(`{API}/enterprises/{ENTERPRISE}/${path}`));
+    }
+  }
 });
 
 test('routerValues: the drop folder, the log table, and the signatures of the sources that take a CSV', () => {

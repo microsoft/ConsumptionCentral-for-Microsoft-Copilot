@@ -151,6 +151,29 @@ class PatchProject(unittest.TestCase):
         layout = visual["objects"]["layout"][0]["properties"]
         self.assertEqual(layout["columnCount"], F.literal("4L"))
 
+    def test_feedback_wording_preserves_measures_and_is_idempotent(self):
+        changes = F.patch_project(self.root, feedback=True)
+        self.assertEqual(set(changes), {
+            "Unused Seats $: description",
+            "Licensed but Inactive: description",
+            "Right-Size Net $: description",
+            f"{F.OPT_CARD}: four reconciling tiles",
+        })
+        self.assertEqual(F.patch_project(self.root, feedback=True), [])
+        visual = read(self.definition, F.OPT_PAGE, F.OPT_CARD)["visual"]
+        projections = visual["query"]["queryState"]["Data"]["projections"]
+        self.assertEqual([p["queryRef"] for p in projections],
+                         [f"{F.BILLING}.{value}" for value, _, _ in F.OPT_TILES])
+        self.assertEqual([p["displayName"] for p in projections],
+                         [label for _, label, _ in F.FEEDBACK_OPT_TILES])
+        bim = json.loads((self.root / "x.SemanticModel" / "model.bim").read_text(encoding="utf-8"))
+        billing = next(t for t in bim["model"]["tables"] if t["name"] == F.BILLING)
+        measures = {m["name"]: m for m in billing["measures"]}
+        self.assertEqual(measures["Unused Seats $"]["expression"],
+                         F.NEW_MEASURES["Unused Seats $"]["expression"])
+        self.assertEqual(measures["Unused Seats $"]["description"],
+                         F.FEEDBACK_UNUSED_DESCRIPTION)
+
     def test_slicers(self):
         for page, name in F.PERIOD_SLICERS:
             objects = read(self.definition, page, name)["visual"]["objects"]

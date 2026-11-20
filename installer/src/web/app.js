@@ -1312,7 +1312,7 @@ function renderPrompt(item) {
  */
 function renderSources(item) {
   const modes = Object.fromEntries(item.cards.map((c) => [c.id, c.mode]));
-  const wantsCsv = () => item.cards.some((c) => c.uploadable && modes[c.id] === 'csv');
+  const wantsCsv = () => item.cards.some((c) => c.uploadable && (c.uploadModes ?? ['csv']).includes(modes[c.id]));
   const card = (c) => {
     const where = h('p', { class: 'src-where' });
     const paint = () => {

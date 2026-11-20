@@ -654,7 +654,7 @@
        "b": true
       },
       {
-       "t": " was absorbed by an entitlement — real usage that cost nothing, which is why both are shown."
+       "t": " is reported separately from billed credit. The export does not identify why a row was non-billed."
       }
      ]
     ]
@@ -1138,7 +1138,7 @@
        "b": true
       },
       {
-       "t": "The share of an agent's credits absorbed by prepaid capacity, so they never reached a bill."
+       "t": "A non-billed share in the export; it does not identify the reason the credits were non-billed."
       }
      ],
      [

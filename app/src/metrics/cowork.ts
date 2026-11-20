@@ -94,7 +94,7 @@ export const ratesInUse = (s: Settings) =>
   `Cowork ${usd4(s.coworkPayg)} · Studio ${usd4(s.studioPayg)} · Cowork capacity pack ${int(s.pack)} credits`
 
 export const SAVING_NOTE =
-  'Savings are priced at the pay-as-you-go rate, because releasing a credit only saves money if you would otherwise have bought it.'
+  'These are review recommendations, not automatic changes. Dollar values use the pay-as-you-go rate; they are not actual savings unless releasing an allowance avoids a future purchase. Reassigning released credits to another person is not modelled.'
 
 /** [Action Value /mo] for one person. */
 export function actionValue(p: CoworkPerson, s: Settings): number {

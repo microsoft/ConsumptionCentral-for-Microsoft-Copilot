@@ -162,7 +162,7 @@ export function ghModel(ds: Dataset, f: Filters, s: Settings) {
     rows,
     ...t,
     billingPeriod: lo ? `${dayLabel(lo)} – ${dateLabel(lastDay)}` : 'No usage export loaded',
-    basisNote: `Based on ${int(days)} days of billed credit usage. Code completions and next-edit suggestions are unlimited on every paid plan and are not billed, so they never appear here.`,
+    basisNote: `Based on ${int(days)} days of the GitHub AI usage billing report. It provides the per-user, model and billed amount detail used here. Viva Insights also has a reference dashboard for GitHub usage, but its Consumption Dashboard export does not include GitHub billing metrics. Code completions and next-edit suggestions are unlimited on every paid plan and are not billed, so they never appear here.`,
     concentration:
       top10 === null
         ? 'No GitHub Copilot consumption in this selection.'
