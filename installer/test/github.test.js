@@ -27,11 +27,52 @@ import {
 } from '../src/steps/github.js';
 import { status } from '../src/steps/run.js';
 import { fakeCtx, fakeFabric, fakeUi } from './fakes.js';
+import { githubApi, githubApiUrl, githubHost } from '../src/clients/github.js';
+import { tokensUrl, newTokenUrl } from '../src/steps/github.js';
 
 const EXPIRES = 'github-authentication-token-expiration';
 const NEEDS = `The token needs scope ${GITHUB_TOKEN_SCOPES}, and whoever made it must be an owner or billing manager of the enterprise.`;
 const CREATE = `Create one at ${NEW_TOKEN_URL} (Generate new token (classic)).`;
 const BAD_TOKEN = "GitHub didn't accept the token: it's mistyped, expired or revoked.";
+
+test('GitHub Cloud hosts map to the matching API; invalid or non-Cloud token destinations are refused', () => {
+  assert.equal(githubHost(), 'https://github.com');
+  assert.equal(githubApiUrl(), 'https://api.github.com');
+  assert.equal(githubApiUrl(' HTTPS://Example.ghe.com/ '), 'https://api.example.ghe.com');
+  for (const host of ['', 'http://example.ghe.com', 'https://github.com.evil.example', 'https://example.ghe.com.evil.example',
+    'https://api.example.ghe.com', 'https://ghe.com', 'https://-bad.ghe.com', 'https://bad-.ghe.com',
+    'https://user@example.ghe.com', 'https://example.ghe.com:443', 'https://example.ghe.com/path',
+    'https://example.ghe.com/?query=1', 'https://example.ghe.com/#fragment', 'https://github.internal.example']) {
+    assert.throws(() => githubApi('ghp_synthetic', { host }), /Use https/, host);
+  }
+});
+
+test('token validation and token help use the chosen Cloud host without contacting GitHub.com', async () => {
+  for (const host of [undefined, 'https://example.ghe.com']) {
+    const t = githubCtx();
+    t.config.github = { ...t.config.github, host };
+    /** @type {string[]} */
+    const urls = [];
+    t.ctx.api.github = (token, selectedHost) => githubApi(token, {
+      host: selectedHost,
+      fetchImpl: async (url, opts) => {
+        urls.push(String(url));
+        assert.equal(/** @type {Record<string, string>} */ (opts.headers).Authorization, 'Bearer ghp_synthetic');
+        return new Response('{}', { status: 200 });
+      },
+    });
+    await checkGithubToken(t.ctx, 'ghp_synthetic');
+    assert.deepEqual(urls, [
+      `${githubApiUrl(host)}/enterprises/contoso/copilot/billing/seats?per_page=1`,
+      `${githubApiUrl(host)}/enterprises/contoso/settings/billing/ai_credit/usage`,
+    ]);
+  }
+  assert.equal(tokensUrl('https://example.ghe.com'), 'https://example.ghe.com/settings/tokens');
+  assert.equal(newTokenUrl('https://example.ghe.com'), 'https://example.ghe.com/settings/tokens/new?description=Consumption%20Central');
+  const why = refusal(refused(404), 'example', 'seats', 'https://example.ghe.com');
+  assert.ok(why);
+  assert.match(why, /example\.ghe\.com\/enterprises\/<slug>/);
+});
 
 /**
  * An error from GitHub's API.

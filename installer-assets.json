@@ -85,7 +85,7 @@
       "name": "Ingest_GitHub_API",
       "path": "2. Fabric/notebooks/Ingest_GitHub_API.ipynb",
       "credentials": false,
-      "values": ["ENTERPRISE"],
+      "values": ["ENTERPRISE", "API"],
       "expressions": ["TOKEN"],
       "patches": [],
       "secret": { "kind": "githubPat", "name": "github-billing-pat" },

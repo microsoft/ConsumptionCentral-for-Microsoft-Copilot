@@ -670,7 +670,7 @@ export async function ensureNotebooks(ctx, opts = {}) {
     if (hadToken) {
       ui.warn(
         'The GitHub token was in Ingest_GitHub_API, where anyone with a role in the workspace could read it. ' +
-          `If Key Vault now has that same token, make a new one, put it in place with "${commandLine('github-token')}", then ${revokeHint()}`,
+          `If Key Vault now has that same token, make a new one, put it in place with "${commandLine('github-token')}", then ${revokeHint(config.github?.host)}`,
       );
     }
   }
@@ -718,7 +718,7 @@ async function scrubGithubToken(ctx, wanted, ids) {
   delete gh.tokenSetAt;
   delete gh.tokenExpires;
   ctx.save();
-  ui.warn(`Anyone who could read that notebook may have seen the token. If nothing else uses it, ${revokeHint()}`);
+  ui.warn(`Anyone who could read that notebook may have seen the token. If nothing else uses it, ${revokeHint(gh.host)}`);
 }
 
 /**

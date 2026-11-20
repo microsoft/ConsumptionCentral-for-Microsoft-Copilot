@@ -124,6 +124,32 @@ test('applyDataFlags: another GitHub enterprise needs a new token; the same one 
   assert.deepEqual(config.github, { enterprise: 'contoso-labs', secretName: 'consumption-central-github-pat-2', tokenInNotebook: true });
 });
 
+test('cli: GitHub host is opt-in, validated, saved and changing it invalidates the token', () => {
+  assert.equal(cli().githubHost, undefined);
+  assert.equal(cli('preview', '--github-host', ' https://Example.ghe.com/ ').githubHost, 'https://example.ghe.com');
+  assert.throws(() => cli('update', '--github-host', 'https://example.ghe.com'), /go with install/);
+  assert.throws(() => cli('--ui', '--github-host', 'https://example.ghe.com'), /choose data sources/);
+  assert.throws(() => cli('--github-host', 'https://unrelated.example'), /Use https/);
+  assert.throws(() => cli('--target', 'pax', '--github-host', 'https://example.ghe.com'), /Fabric/);
+  const config = emptyConfig();
+  const token = { tokenSetAt: '2026-05-01', tokenExpires: '2026-08-01' };
+  config.github = { enterprise: 'example', ...token };
+  applyDataFlags(config, cli('--github-host', 'https://github.com/'));
+  assert.equal(config.github.tokenSetAt, token.tokenSetAt, 'an explicit default leaves the existing GitHub.com token alone');
+  applyDataFlags(config, cli('--github-host', 'https://example.ghe.com/'));
+  assert.equal(config.github.enterprise, 'example');
+  assert.equal(config.github.host, 'https://example.ghe.com');
+  assert.equal(config.github.tokenSetAt, undefined);
+  assert.equal(config.github.tokenExpires, undefined);
+  Object.assign(config.github, token);
+  applyDataFlags(config, cli('--github-host', 'https://EXAMPLE.ghe.com'));
+  assert.equal(config.github.tokenSetAt, token.tokenSetAt);
+  applyDataFlags(config, cli());
+  assert.equal(config.github.host, 'https://example.ghe.com', 'no flag leaves the saved choice alone');
+  applyDataFlags(config, cli('--github-host', 'https://github.com'));
+  assert.equal(config.github.tokenSetAt, undefined, 'switching back asks for a GitHub.com token');
+});
+
 test('applyDataFlags: another billing scope is read again after setup; the same one keeps its last run', () => {
   const config = emptyConfig();
   applyDataFlags(config, cli('--billing-scope', `${ACCOUNT}/`));

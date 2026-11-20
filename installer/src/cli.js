@@ -15,6 +15,7 @@ import { PRODUCT, PRODUCT_ID, UPLOAD_DIR } from './product.js';
 import { recordWorkspaceGone, staleRecordMessage } from './steps/fabric.js';
 import { isResumeLater, MAX_SECRET_DAYS, NOTEBOOK_SECRET_DAYS } from './steps/identity.js';
 import { billingScopeFrom, validateBillingScope, validateEnterprise } from './steps/plan.js';
+import { githubHost } from './clients/github.js';
 import { paxHostProblem, ROUTE_NAMES, settledRoute, TARGETS } from './target.js';
 import { isVivaId } from './transform/dataflow.js';
 import { c, createUi } from './ui.js';
@@ -135,6 +136,9 @@ ${ROUTE_NAMES.fabric} route options. Without --target or an install record, they
   --github-enterprise <slug>
                        With install: the enterprise, as in github.com/enterprises/<slug>, whose
                        Copilot billing Ingest_GitHub_API reads (needs github=api)
+  --github-host <https://host>
+                       With install: GitHub Cloud web host (default https://github.com).
+                       For data residency, https://<subdomain>.ghe.com (needs github=api)
   --billing-scope <id> With install: the subscription (/subscriptions/<id>), billing account or
                        billing profile Ingest_CommercialTerms reads the credit rate from (needs
                        commercialTerms=api)
@@ -192,6 +196,7 @@ export function parseCli(argv, env = process.env) {
       'viva-partition': { type: 'string' },
       'viva-query': { type: 'string' },
       'github-enterprise': { type: 'string' },
+      'github-host': { type: 'string' },
       'billing-scope': { type: 'string' },
       run: { type: 'boolean' },
       'secret-in-notebook': { type: 'boolean' },
@@ -223,7 +228,7 @@ export function parseCli(argv, env = process.env) {
     secretDays = Number(values['secret-days']);
     if (!Number.isInteger(secretDays) || secretDays < 1 || secretDays > MAX_SECRET_DAYS) throw new Error(`--secret-days must be a whole number from 1 to ${MAX_SECRET_DAYS}.`);
   }
-  const installOnly = ['studio-flow', 'flow-environment', 'flow-identity', 'viva-partition', 'viva-query', 'github-enterprise', 'billing-scope'].filter((k) => values[/** @type {'studio-flow'} */ (k)] !== undefined);
+  const installOnly = ['studio-flow', 'flow-environment', 'flow-identity', 'viva-partition', 'viva-query', 'github-enterprise', 'github-host', 'billing-scope'].filter((k) => values[/** @type {'studio-flow'} */ (k)] !== undefined);
   if ((values.data?.length || values.csv?.length || installOnly.length) && !['install', 'preview'].includes(command)) {
     throw new Error(`--data, --csv${installOnly.map((k) => ` and --${k}`).join('')} go with install. To add exports later, use upload.`);
   }
@@ -235,6 +240,7 @@ export function parseCli(argv, env = process.env) {
     if (values[k] !== undefined && !isVivaId(values[k])) throw new Error(`--${k} should be a GUID, as Viva Insights shows it.`);
   }
   const githubEnterprise = values['github-enterprise']?.trim();
+  const ghHost = values['github-host'] === undefined ? undefined : githubHost(values['github-host']);
   const billingScope = values['billing-scope'] === undefined ? undefined : billingScopeFrom(values['billing-scope']);
   for (const [flag, value, check] of /** @type {const} */ ([
     ['--github-enterprise', githubEnterprise, validateEnterprise],
@@ -313,6 +319,7 @@ export function parseCli(argv, env = process.env) {
     vivaPartition: values['viva-partition']?.trim(),
     vivaQuery: values['viva-query']?.trim(),
     githubEnterprise,
+    githubHost: ghHost,
     billingScope,
     files,
     run: values.run,
@@ -336,7 +343,7 @@ export function version() {
  * install record's answers. The Data sources screen then opens with them, and --yes takes them as
  * they are.
  * @param {import('./config.js').InstallConfig} config
- * @param {{ dataSources: Partial<import('./uploads.js').DataSourceModes>, studioFlow?: boolean, flowEnvironment?: string, flowIdentity?: import('./config.js').FlowIdentity, vivaPartition?: string, vivaQuery?: string, githubEnterprise?: string, billingScope?: string }} args
+ * @param {{ dataSources: Partial<import('./uploads.js').DataSourceModes>, studioFlow?: boolean, flowEnvironment?: string, flowIdentity?: import('./config.js').FlowIdentity, vivaPartition?: string, vivaQuery?: string, githubEnterprise?: string, githubHost?: string, billingScope?: string }} args
  */
 export function applyDataFlags(config, args) {
   // --studio-flow is the same as studioCredits=api; with csv or alone, it means api.
@@ -355,6 +362,15 @@ export function applyDataFlags(config, args) {
       delete gh.tokenExpires;
     }
     gh.enterprise = args.githubEnterprise;
+  }
+  if (args.githubHost !== undefined) {
+    const gh = (config.github ??= {});
+    const host = githubHost(args.githubHost);
+    if (githubHost(gh.host) !== host) {
+      delete gh.tokenSetAt;
+      delete gh.tokenExpires;
+    }
+    gh.host = host;
   }
   if (args.billingScope) {
     const ct = (config.commercialTerms ??= {});

@@ -5,6 +5,7 @@
  * (steps/fabric.js ensureNotebooks).
  */
 import { secretMode } from '../config.js';
+import { githubHost } from '../clients/github.js';
 import { HttpError } from '../http.js';
 import { commandLine } from '../launch.js';
 import { ENV, GITHUB_PAT_SECRET, PRODUCT_NAME } from '../product.js';
@@ -16,14 +17,20 @@ import { ENV, GITHUB_PAT_SECRET, PRODUCT_NAME } from '../product.js';
 
 export const TOKENS_URL = 'https://github.com/settings/tokens';
 export const NEW_TOKEN_URL = `${TOKENS_URL}/new?description=${encodeURIComponent(PRODUCT_NAME)}`;
+/** @param {string} [host] */
+export const tokensUrl = (host) => `${githubHost(host)}/settings/tokens`;
+/** @param {string} [host] */
+export const newTokenUrl = (host) => `${tokensUrl(host)}/new?description=${encodeURIComponent(PRODUCT_NAME)}`;
 // As Ingest_GitHub_API documents it. Which of the two the AI credit usage endpoint takes is on the test-tenant list.
 export const GITHUB_TOKEN_SCOPES = 'read:enterprise or manage_billing:copilot';
 export const TOKEN_TRIES = 3;
 /** The Done page shows a card this many days before the token expires. */
 export const TOKEN_WARN_DAYS = 30;
 
-export const revokeHint = () => `revoke it at ${TOKENS_URL}.`;
-const createHint = () => `Create one at ${NEW_TOKEN_URL} (Generate new token (classic)).`;
+/** @param {string} [host] */
+export const revokeHint = (host) => `revoke it at ${tokensUrl(host)}.`;
+/** @param {string} [host] */
+const createHint = (host) => `Create one at ${newTokenUrl(host)} (Generate new token (classic)).`;
 
 /**
  * The Key Vault secret the token is in: GITHUB_PAT_SECRET, or a free name when a shared vault already had that one.
@@ -58,8 +65,9 @@ export function tokenExpiry(headers) {
  * @param {unknown} err
  * @param {string} enterprise
  * @param {string} what  e.g. "the Copilot seats".
+ * @param {string} [host]
  */
-export function refusal(err, enterprise, what) {
+export function refusal(err, enterprise, what, host) {
   if (!(err instanceof HttpError)) return undefined;
   const h = err.headers;
   if (err.status >= 500 || err.status === 429 || (err.status === 403 && h?.get('x-ratelimit-remaining') === '0')) return undefined;
@@ -72,7 +80,7 @@ export function refusal(err, enterprise, what) {
     return `GitHub wouldn't show ${what}. The token needs scope ${GITHUB_TOKEN_SCOPES}, and whoever made it must be an owner or billing manager of the enterprise.${has}`;
   }
   if (err.status === 404) {
-    return `GitHub found no enterprise "${enterprise}" with ${what} this token can see. Check the slug (github.com/enterprises/<slug>), and that whoever made the token is an owner or billing manager of it.${has}`;
+    return `GitHub found no enterprise "${enterprise}" with ${what} this token can see. Check the slug (${githubHost(host).slice('https://'.length)}/enterprises/<slug>), and that whoever made the token is an owner or billing manager of it.${has}`;
   }
   return `GitHub answered ${err.status} for ${what}: ${err.message}`;
 }
@@ -88,11 +96,12 @@ export function refusal(err, enterprise, what) {
 export async function checkGithubToken(ctx, token) {
   const { ui, config } = ctx;
   const enterprise = config.github?.enterprise;
+  const host = githubHost(config.github?.host);
   if (!enterprise) throw new Error('The GitHub enterprise isn\'t set.');
   const value = token.trim();
   if (!value) throw new Error('No token was entered.');
-  if (value.startsWith('github_pat_')) throw new Error(`That's a fine-grained token, and GitHub's billing endpoints take only classic ones. ${createHint()}`);
-  const gh = ctx.api.github(value);
+  if (value.startsWith('github_pat_')) throw new Error(`That's a fine-grained token, and GitHub's billing endpoints take only classic ones. ${createHint(host)}`);
+  const gh = ctx.api.github(value, host);
   /** @type {[string, () => Promise<import('../http.js').HttpResponse>][]} */
   const checks = [
     ['the Copilot seats', () => gh.copilotSeats(enterprise)],
@@ -106,7 +115,7 @@ export async function checkGithubToken(ctx, token) {
       const res = await call();
       headers ??= res.headers;
     } catch (err) {
-      const why = refusal(err, enterprise, what);
+      const why = refusal(err, enterprise, what, host);
       if (why) throw new Error(why);
       ui.warn(
         `Couldn't ${headers ? 'finish checking' : 'check'} the GitHub token: ${messageOf(err)}. It's used unchecked; ` +
@@ -143,7 +152,7 @@ export async function askGithubToken(ctx, opts = {}) {
   }
   if (ui.yes) return undefined;
   if (opts.why) ui.info(opts.why);
-  ui.info(`Ingest_GitHub_API reads Copilot billing with a classic personal access token, scope ${GITHUB_TOKEN_SCOPES}, made by an owner or billing manager of the enterprise. ${createHint()}`);
+  ui.info(`Ingest_GitHub_API reads Copilot billing with a classic personal access token, scope ${GITHUB_TOKEN_SCOPES}, made by an owner or billing manager of the enterprise. ${createHint(ctx.config.github?.host)}`);
   for (let tries = 1; ; tries++) {
     try {
       return await checkGithubToken(ctx, await ui.secret('GitHub token'));

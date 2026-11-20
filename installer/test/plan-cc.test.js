@@ -15,6 +15,7 @@ const ACCOUNT = '/providers/Microsoft.Billing/billingAccounts/12345678';
 const ENTERPRISE_RULE = 'The slug from github.com/enterprises/<slug>: letters, digits and hyphens.';
 const SCOPE_RULE = 'A subscription (/subscriptions/<id>), a billing account (/providers/Microsoft.Billing/billingAccounts/<id>) or a billing profile (…/billingAccounts/<id>/billingProfiles/<id>).';
 const SLUG_QUESTION = 'GitHub enterprise slug, as in github.com/enterprises/<slug>';
+const HOST_QUESTION = 'GitHub host (GitHub.com or your Enterprise Cloud https://<subdomain>.ghe.com)';
 const SCOPE_QUESTION = 'Which billing scope should it read the credit rate from? Copilot credits are charged to the subscription a billing policy names.';
 
 /** @type {import('../src/steps/plan.js').Preflight} */
@@ -99,18 +100,18 @@ test('plan: GitHub asks nothing unless it reads from the API', async () => {
 });
 
 test('plan: GitHub from the API asks for the enterprise, then says which token comes next', async () => {
-  const t = fakeUi({ answers: ['  contoso  '] });
+  const t = fakeUi({ answers: ['https://github.com', '  contoso  '] });
   const { ctx, config } = fakeCtx({ ui: t.ui });
   config.dataSources.github = 'api';
   await planGithub(ctx);
-  assert.deepEqual(t.asked, [SLUG_QUESTION]);
+  assert.deepEqual(t.asked, [HOST_QUESTION, SLUG_QUESTION]);
   assert.deepEqual(config.github, { enterprise: 'contoso' });
   assert.match(
     t.text(),
     /Once you go ahead, the installer asks for a classic personal access token with scope read:enterprise or manage_billing:copilot, made by an owner or billing manager of contoso\. Or set CONSUMPTION_CENTRAL_GITHUB_TOKEN before you start\.\n/,
   );
 
-  const web = fakeUi({ answers: ['contoso'] });
+  const web = fakeUi({ answers: ['https://github.com', 'contoso'] });
   /** @type {any} */ (web.ui).web = true;
   const w = fakeCtx({ ui: web.ui });
   w.config.dataSources.github = 'api';
@@ -118,7 +119,7 @@ test('plan: GitHub from the API asks for the enterprise, then says which token c
   assert.match(web.text(), /made by an owner or billing manager of contoso\.\n/);
   assert.doesNotMatch(web.text(), /CONSUMPTION_CENTRAL_GITHUB_TOKEN/);
 
-  const bad = fakeUi({ answers: ['contoso labs'] });
+  const bad = fakeUi({ answers: ['https://github.com', 'contoso labs'] });
   const b = fakeCtx({ ui: bad.ui });
   b.config.dataSources.github = 'api';
   await assert.rejects(planGithub(b.ctx), { message: `${SLUG_QUESTION}: ${ENTERPRISE_RULE}` });
@@ -142,7 +143,7 @@ test('plan: with --yes, GitHub from the API needs --github-enterprise', async ()
 
 test('plan: another GitHub enterprise needs a new token; the same one in other capitals does not', async () => {
   const token = { tokenSetAt: '2026-05-01T00:00:00Z', tokenExpires: '2026-08-01T00:00:00Z' };
-  const same = fakeUi({ answers: ['CONTOSO'] });
+  const same = fakeUi({ answers: ['https://github.com', 'CONTOSO'] });
   const a = fakeCtx({ ui: same.ui });
   a.config.dataSources.github = 'api';
   a.config.github = { enterprise: 'contoso', ...token };
@@ -150,13 +151,34 @@ test('plan: another GitHub enterprise needs a new token; the same one in other c
   assert.deepEqual(a.config.github, { enterprise: 'CONTOSO', ...token });
   assert.doesNotMatch(same.text(), /Once you go ahead/);
 
-  const other = fakeUi({ answers: ['contoso-labs'] });
+  const other = fakeUi({ answers: ['https://github.com', 'contoso-labs'] });
   const b = fakeCtx({ ui: other.ui });
   b.config.dataSources.github = 'api';
   b.config.github = { enterprise: 'contoso', secretName: 'consumption-central-github-pat-2', ...token };
   await planGithub(b.ctx);
   assert.deepEqual(b.config.github, { enterprise: 'contoso-labs', secretName: 'consumption-central-github-pat-2' });
   assert.match(other.text(), /made by an owner or billing manager of contoso-labs\./);
+});
+
+test('plan: Enterprise Cloud host works in browser setup and host changes require a fresh token', async () => {
+  const ui = fakeUi({ answers: ['https://example.ghe.com/', 'example'] });
+  /** @type {any} */ (ui.ui).web = true;
+  const t = fakeCtx({ ui: ui.ui });
+  t.config.dataSources.github = 'api';
+  t.config.github = { enterprise: 'example', tokenSetAt: '2026-05-01', tokenExpires: '2026-08-01' };
+  t.ctx.pendingGithubToken = { value: 'ghp_synthetic' };
+  await planGithub(t.ctx);
+  assert.equal(t.config.github.enterprise, 'example');
+  assert.equal(t.config.github.host, 'https://example.ghe.com');
+  assert.equal(t.config.github.tokenSetAt, undefined);
+  assert.equal(t.config.github.tokenExpires, undefined);
+  assert.equal(t.ctx.pendingGithubToken, undefined);
+  assert.deepEqual(ui.asked, [HOST_QUESTION, 'GitHub enterprise slug, as in example.ghe.com/enterprises/<slug>']);
+
+  t.ctx.ui = fakeUi({ yes: true }).ui;
+  t.config.github.tokenSetAt = '2026-05-02';
+  await planGithub(t.ctx);
+  assert.equal(t.config.github.tokenSetAt, '2026-05-02', 'the saved host is reused without clearing a valid token');
 });
 
 test('plan: the credit rate asks nothing unless it reads from Cost Management', async () => {

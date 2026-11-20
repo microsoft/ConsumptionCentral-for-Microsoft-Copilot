@@ -7,15 +7,41 @@ import { createClient } from '../http.js';
 import { USER_AGENT } from '../product.js';
 
 export const GITHUB_API_URL = 'https://api.github.com';
+export const GITHUB_HOST = 'https://github.com';
+const HOST_RULE = 'Use https://github.com or https://<subdomain>.ghe.com, without a path, port, query or credentials.';
+
+/** GitHub Enterprise Cloud only, not arbitrary token destinations or Enterprise Server. @param {string} [host] */
+export function githubHost(host = GITHUB_HOST) {
+  const raw = host.trim();
+  const match = /^https:\/\/(github\.com|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.ghe\.com)\/?$/i.exec(raw);
+  if (!match) throw new Error(HOST_RULE);
+  return `https://${match[1].toLowerCase()}`;
+}
+
+/** @param {string} v */
+export function validateGithubHost(v) {
+  try {
+    githubHost(v);
+    return true;
+  } catch {
+    return HOST_RULE;
+  }
+}
+
+/** @param {string} [host] */
+export function githubApiUrl(host) {
+  const webHost = githubHost(host);
+  return webHost === GITHUB_HOST ? GITHUB_API_URL : webHost.replace('https://', 'https://api.');
+}
 // The version Ingest_GitHub_API sends.
 export const GITHUB_API_VERSION = '2022-11-28';
 
 /**
  * @param {string} token
- * @param {{ fetchImpl?: typeof fetch, debug?: (m: string) => void }} [opts]
+ * @param {{ host?: string, fetchImpl?: typeof fetch, debug?: (m: string) => void }} [opts]
  */
 export function githubApi(token, opts = {}) {
-  const http = createClient({ baseUrl: GITHUB_API_URL, getToken: async () => token, fetchImpl: opts.fetchImpl, debug: opts.debug });
+  const http = createClient({ baseUrl: githubApiUrl(opts.host), getToken: async () => token, fetchImpl: opts.fetchImpl, debug: opts.debug });
   /** @type {import('../http.js').RequestOptions} */
   const base = {
     headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': GITHUB_API_VERSION, 'User-Agent': USER_AGENT },

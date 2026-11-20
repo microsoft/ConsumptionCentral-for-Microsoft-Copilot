@@ -148,6 +148,11 @@ jobs:
           python docs/scripts/check_limit_and_token_measures.py
           python docs/scripts/test_limit_and_token_measures.py
 
+      - name: Studio tenant-user gap does not imply attribution or completeness
+        run: |
+          python docs/scripts/fix_studio_combined_caveat.py --check
+          python docs/scripts/test_studio_combined_caveat.py
+
       - name: Chargeback model is in every template
         run: |
           python docs/scripts/check_chargeback.py

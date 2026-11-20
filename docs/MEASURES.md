@@ -356,6 +356,9 @@ One line on what the combined page can and cannot tell you.
 Qualifies the combined Studio figures. A difference between tenant and user totals does not by
 itself establish unattributed usage: their coverage, dates and billing definitions may differ,
 including when the optional usage reports preview is used.
+The same applies to a zero, negative or blank gap: it does not establish completeness
+or prove that no Studio data was supplied. Person and department views depend on the
+user data supplied. All three active templates use this neutral caveat.
 
 **`Cowork Cost /mo`** · *CoworkBilling*  
 Cowork cost normalised to a month.

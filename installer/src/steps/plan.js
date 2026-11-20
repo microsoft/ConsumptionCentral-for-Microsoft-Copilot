@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { basename } from 'node:path';
 import { appNeeded, appWanted, notebooksFor, permissionsFor, secretWanted } from '../catalog.js';
 import { allowsAction, armLocation, validateVaultName } from '../clients/azure.js';
+import { GITHUB_HOST, githubHost, validateGithubHost } from '../clients/github.js';
 import { APP_ROLES, CONSENT_ROLES } from '../clients/graph.js';
 import { HttpError } from '../http.js';
 import { inCloudShell } from '../launch.js';
@@ -260,12 +261,17 @@ export async function planGithub(ctx) {
   if (ui.yes && !gh.enterprise) {
     throw new Error('Reading GitHub Copilot from the API needs your enterprise. Add --github-enterprise <slug>, as in github.com/enterprises/<slug>, or run without --yes.');
   }
-  const enterprise = (await ui.input('GitHub enterprise slug, as in github.com/enterprises/<slug>', { default: gh.enterprise ?? '', validate: validateEnterprise })).trim();
-  if (gh.enterprise && enterprise.toLowerCase() !== gh.enterprise.toLowerCase()) {
+  const host = githubHost(await ui.input('GitHub host (GitHub.com or your Enterprise Cloud https://<subdomain>.ghe.com)', {
+    default: githubHost(gh.host), validate: validateGithubHost,
+  }));
+  const enterprise = (await ui.input(`GitHub enterprise slug, as in ${host.slice('https://'.length)}/enterprises/<slug>`, { default: gh.enterprise ?? '', validate: validateEnterprise })).trim();
+  if (host !== githubHost(gh.host) || (gh.enterprise && enterprise.toLowerCase() !== gh.enterprise.toLowerCase())) {
     // The token's owner may not manage the new enterprise's billing, so a new one is asked for.
     delete gh.tokenSetAt;
     delete gh.tokenExpires;
+    delete ctx.pendingGithubToken;
   }
+  if (host !== GITHUB_HOST || gh.host) gh.host = host;
   gh.enterprise = enterprise;
   if (!gh.tokenSetAt) {
     ui.note(
@@ -1260,7 +1266,7 @@ export async function confirmPlan(ctx, pre) {
       : secretMode(config) === 'keyvault-admin'
         ? 'the vault admin adds the token'
         : 'token asked for once you go ahead';
-    ui.info(`GitHub:      ${gh.enterprise} ${c.dim(`(${token})`)}`);
+    ui.info(`GitHub:      ${gh.enterprise}${gh.host && gh.host !== GITHUB_HOST ? ` on ${gh.host}` : ''} ${c.dim(`(${token})`)}`);
   }
   if (ds.commercialTerms === 'api' && config.commercialTerms?.scope) {
     const ct = config.commercialTerms;

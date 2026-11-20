@@ -56,7 +56,7 @@ import { buildPipeline } from './transform/pipeline.js';
 import { c } from './ui.js';
 import { fabricUninstall } from './steps/fabric-uninstall.js';
 import { accessCommand, ensureViewerGroup, grantModelAccess, myGroupsUrl, shareReport, shareReportPending, workspaceUrl } from './steps/access.js';
-import { askGithubToken, githubSecretName, tokenLine, TOKENS_URL } from './steps/github.js';
+import { askGithubToken, githubSecretName, tokenLine, tokensUrl } from './steps/github.js';
 import { nextSteps, stepsLeftTitle } from './steps/next-steps.js';
 import { paxCommand, paxInstall } from './steps/pax/flow.js';
 import { refreshConfig, scriptFiles } from './steps/pax/local.js';
@@ -77,7 +77,7 @@ import { askTarget, holdTarget, isPax, requiredPermissions, ROUTE_NAMES } from '
  * @property {import('./clients/flow.js').FlowApi} flow
  * @property {import('./clients/connections.js').ConnectionsApi} [connections]  Power Platform connections, for signing the flows in.
  * @property {(url: string) => import('./clients/dataverse.js').DataverseApi} dataverse  A Dataverse environment, by org URL.
- * @property {(token: string) => import('./clients/github.js').GithubApi} github  GitHub, with a token the user gave. A factory, so memoApi leaves it alone and each check is live.
+ * @property {(token: string, host?: string) => import('./clients/github.js').GithubApi} github  GitHub, with a token the user gave. A factory, so memoApi leaves it alone and each check is live.
  *
  * @typedef {{ id: string, upn: string, tenantId: string, displayName?: string }} User
  *
@@ -141,7 +141,7 @@ export async function connect(opts) {
     flow: flowApi(client(FLOW_URL, 'flow')),
     connections: connectionsApi(client(POWERAPPS_URL, 'powerApps')),
     dataverse: (url) => dataverseApi(client(`${orgUrl(url)}/api/data/v9.2`, dataverseScope(url)), url),
-    github: (token) => githubApi(token, { debug: opts.debug }),
+    github: (token, host) => githubApi(token, { host, debug: opts.debug }),
   };
   if (opts.checkTokens) await checkTokens(getToken);
   const claims = decodeJwt(await getToken('graph'));
@@ -776,7 +776,7 @@ export async function githubToken(ctx) {
   ctx.pendingGithubToken = token;
   if (mode === 'notebook') await ensureNotebooks(ctx, { only: ['githubApi'] });
   else await ensureGithubToken(ctx, { replace: true });
-  if (had) ui.note(`Revoke the old token at ${TOKENS_URL} once GitHub data has loaded with the new one.`);
+  if (had) ui.note(`Revoke the old token at ${tokensUrl(gh.host)} once GitHub data has loaded with the new one.`);
 }
 
 /**

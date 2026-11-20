@@ -364,6 +364,16 @@ for a token:
   `Ingest_GitHub_API`. See [Where the secrets go](#where-the-secrets-go).
 - Before it expires, replace it with **Replace the GitHub token** (`github-token`). The **Done**
   page has a card from 30 days before. Once it expires, the GitHub load fails.
+
+The **GitHub host** question defaults to `https://github.com`. For GitHub Enterprise Cloud
+with data residency, enter your web host `https://<subdomain>.ghe.com`, or pass
+`--github-host https://<subdomain>.ghe.com` with `install --data github=api --github-enterprise <slug>`.
+The installer saves the host (never the token), checks the token against
+`https://api.<subdomain>.ghe.com`, and writes that same API origin into `Ingest_GitHub_API`
+for seats, identity mapping and usage. Create the classic token on that same web host;
+token creation/revocation links follow it too. Existing records without a host keep using
+`api.github.com`. Changing hosts asks for a new token. GitHub Enterprise Server and arbitrary
+API URLs are not supported. This host-routing option has mocked tests, not live ghe.com validation.
 - To pass it without the question, set `$env:CONSUMPTION_CENTRAL_GITHUB_TOKEN` first.
 
 ### Credit rate from Azure Cost Management

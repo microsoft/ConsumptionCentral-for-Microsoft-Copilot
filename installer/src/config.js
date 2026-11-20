@@ -44,6 +44,7 @@ export const DEFAULT_CONFIG_FILE = RECORD_FILE;
  * Ingest_GitHub_API's settings. The token itself is never saved: it's in Key Vault, or in the notebook.
  * @typedef {object} GithubConfig
  * @property {string} [enterprise]  The enterprise slug, as in github.com/enterprises/<slug>.
+ * @property {string} [host]  GitHub Cloud web origin. Absent means https://github.com; otherwise https://<subdomain>.ghe.com.
  * @property {string} [secretName]  The Key Vault secret the token is in, when it isn't GITHUB_PAT_SECRET.
  * @property {string} [tokenSetAt]  When a token was last written to Key Vault or the notebook.
  * @property {string} [tokenExpires]  When that token expires, as GitHub reported it. Absent for one that doesn't.

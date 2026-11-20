@@ -6,6 +6,7 @@
  */
 import { createHash } from 'node:crypto';
 import { secretMode } from '../config.js';
+import { githubApiUrl } from '../clients/github.js';
 import { statusConfigJson } from '../loads.js';
 import { INLINE_SECRET_NOTE, MARKER, pyString } from '../transform/notebook.js';
 import { routedSources, routerSignaturesJson, SHAREPOINT_SUBDIR, UPLOAD_DIR, UPLOAD_LOG_TABLE } from '../uploads.js';
@@ -168,7 +169,7 @@ export function notebookSettings(ctx, nb, opts = {}) {
       if (config.dataSources.studioCredits === 'reports') expressions.READ_REPORT_API_FILES = 'True';
       break;
     case 'githubApi':
-      values = { ENTERPRISE: /** @type {string} */ (config.github?.enterprise) };
+      values = { ENTERPRISE: /** @type {string} */ (config.github?.enterprise), API: githubApiUrl(config.github?.host) };
       secrets.TOKEN = githubTokenSecret(ctx, opts);
       break;
     case 'commercialTerms': {
