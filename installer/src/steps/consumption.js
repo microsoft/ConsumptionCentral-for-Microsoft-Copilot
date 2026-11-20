@@ -507,10 +507,11 @@ export function consumptionSummary(ctx) {
 
   const ds = config.dataSources;
   if (ds.studioCredits !== 'skip') {
-    const api = ds.studioCredits === 'api';
-    ui.info(c.bold('Copilot Studio credits') + c.dim(api ? '  (a daily flow reads the licensing API)' : '  (upload the exports)'));
+    const api = ['api', 'reports'].includes(ds.studioCredits);
+    ui.info(c.bold('Copilot Studio credits') + c.dim(ds.studioCredits === 'reports' ? '  (preview reports and the existing daily flow)' : api ? '  (a daily flow reads the licensing API)' : '  (upload the exports)'));
     if (api) {
-      ui.info('  1. Sign in to the flow and turn it on: see Power Automate flows.');
+      ui.info(`  1. Sign in to the ${ds.studioCredits === 'reports' ? 'flows' : 'flow'} and turn ${ds.studioCredits === 'reports' ? 'them' : 'it'} on: see Power Automate flows.`);
+      if (ds.studioCredits === 'reports') ui.note('     The reports API is public preview; its download and connector handling have not been validated in a tenant. The existing flow remains the fallback.');
       ui.note(`     Optional: drop the Power Platform admin center exports in ${UPLOAD_DIR}. They add user emails and the exact prepaid split, and win for the months they cover.`);
     } else {
       ui.info('  1. Power Platform admin center > Licensing > Products > Copilot Studio. On the Summary,');

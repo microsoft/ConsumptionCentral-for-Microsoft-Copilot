@@ -119,7 +119,8 @@ Options:
 ${ROUTE_NAMES.fabric} route options. Without --target or an install record, they choose this route:
   --data <id=mode>     With install: how a source arrives, api, csv or skip. Repeat it or use
                        commas, e.g. --data studioCredits=flow,github=api. flow is the Power
-                       Automate flow, the api mode of studioCredits.
+                       Automate flow, the api mode of studioCredits. Use studioCredits=reports
+                       to opt in to the preview reports API alongside the existing flow.
                        Sources: ${DATA_SOURCE_IDS.join(', ')}
   --csv <file>         With install: an export to upload during the install. Repeat for more.
   --studio-flow        With install: same as --data studioCredits=api, the daily flow that reads
@@ -339,7 +340,7 @@ export function version() {
  */
 export function applyDataFlags(config, args) {
   // --studio-flow is the same as studioCredits=api; with csv or alone, it means api.
-  const studio = args.studioFlow && args.dataSources.studioCredits !== 'skip' ? { studioCredits: /** @type {const} */ ('api') } : {};
+  const studio = args.studioFlow && !['skip', 'reports'].includes(args.dataSources.studioCredits ?? '') ? { studioCredits: /** @type {const} */ ('api') } : {};
   const sources = { ...args.dataSources, ...studio };
   if (Object.keys(sources).length) config.dataSources = { ...config.dataSources, ...sources };
   if (args.flowEnvironment && args.flowEnvironment !== config.uploads.flowEnvironment?.url) config.uploads.flowEnvironment = { url: args.flowEnvironment };

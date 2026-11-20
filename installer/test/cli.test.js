@@ -79,6 +79,7 @@ test('cli: --data takes source=mode pairs, repeated or comma-separated, in any c
     commercialTerms: 'api',
   });
   assert.deepEqual(cli('--data', 'github=csv', '--data', 'github=skip').dataSources, { github: 'skip' }, 'the last one wins');
+  assert.deepEqual(cli('--data', 'studioCredits=reports').dataSources, { studioCredits: 'reports' });
   assert.deepEqual(cli('preview', '--data', 'azureAi=api', '--csv', 'usage.csv').dataSources, { azureAi: 'api' });
   assert.deepEqual(cli('preview', '--csv', 'usage.csv').csvFiles, ['usage.csv']);
 });
@@ -89,7 +90,7 @@ test('cli: --data refuses sources it does not have and modes a source cannot tak
   assert.throws(() => cli('--data', 'commercialTerms=csv'), { message: '--data: commercialTerms can be api or skip, not "csv".' });
   assert.throws(() => cli('--data', 'coworkTasks=api'), { message: '--data: coworkTasks can be csv or skip, not "api".' });
   assert.throws(() => cli('--data', 'github=flow'), { message: '--data: github can be api or csv or skip or token, not "flow".' });
-  assert.throws(() => cli('--data', 'studioCredits'), { message: '--data: studioCredits can be api or csv or skip or flow, not "".' });
+  assert.throws(() => cli('--data', 'studioCredits'), { message: '--data: studioCredits can be api or reports or csv or skip or flow, not "".' });
   assert.throws(() => cli('upload', '--data', 'github=csv'), { message: '--data, --csv go with install. To add exports later, use upload.' });
   assert.throws(() => cli('--ui', '--data', 'github=api'), { message: 'With --ui, choose data sources and exports on the Data sources page.' });
 });
@@ -102,6 +103,8 @@ test('applyDataFlags: --data changes only the sources it names', () => {
   assert.deepEqual(config.dataSources, { ...before, github: 'api', commercialTerms: 'api' });
   applyDataFlags(config, cli());
   assert.deepEqual(config.dataSources, { ...before, github: 'api', commercialTerms: 'api' });
+  applyDataFlags(config, cli('--studio-flow', '--data', 'studioCredits=reports'));
+  assert.equal(config.dataSources.studioCredits, 'reports', 'the preview still includes the existing Studio flow');
 });
 
 test('applyDataFlags: another GitHub enterprise needs a new token; the same one in other capitals keeps it', () => {

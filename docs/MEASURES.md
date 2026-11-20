@@ -353,7 +353,9 @@ All three products' monthly credit run rate added together.
 One line on what the combined page can and cannot tell you.
 
 **`Combined Caveat`** · *Settings*  
-Why the combined figures understate Copilot Studio. Adapts to whether any unattributed Studio credits are actually present in this tenant's export.
+Qualifies the combined Studio figures. A difference between tenant and user totals does not by
+itself establish unattributed usage: their coverage, dates and billing definitions may differ,
+including when the optional usage reports preview is used.
 
 **`Cowork Cost /mo`** · *CoworkBilling*  
 Cowork cost normalised to a month.

@@ -280,7 +280,7 @@ test('DATA_SOURCES: each source with its modes, default, group and page', () => 
     [
       ['coworkCredits', ['api', 'csv', 'skip'], 'csv', USAGE_GROUP, '1–4. Cowork'],
       ['coworkTasks', ['csv', 'skip'], 'skip', USAGE_GROUP, '2.1. Cowork: Tasks'],
-      ['studioCredits', ['api', 'csv', 'skip'], 'csv', USAGE_GROUP, '5–8. Studio'],
+      ['studioCredits', ['api', 'reports', 'csv', 'skip'], 'csv', USAGE_GROUP, '5–8. Studio'],
       ['github', ['api', 'csv', 'skip'], 'skip', USAGE_GROUP, '11–14. GHCP'],
       ['azureAi', ['api', 'skip'], 'skip', USAGE_GROUP, '9–10.1. Azure'],
       ['orgData', ['api', 'csv', 'skip'], 'skip', CONTEXT_GROUP, undefined],
@@ -421,7 +421,7 @@ test('UPLOAD_KINDS: each kind lands where the notebook that reads it looks', () 
 });
 
 test('describeSources: each source and how it arrives, as its card names the mode', () => {
-  assert.deepEqual(MODE_LABELS, { api: 'Connected (API)', csv: 'Upload CSV', skip: 'Skip' });
+  assert.deepEqual(MODE_LABELS, { api: 'Connected (API)', reports: 'Connected (preview)', csv: 'Upload CSV', skip: 'Skip' });
   assert.deepEqual(describeSources(defaultDataSources()), [
     'Copilot Cowork and Work IQ credits: Upload CSV',
     'Cowork task categories: Skip',
@@ -600,7 +600,7 @@ test('parseDataFlags: comma-separated or repeated; unknown sources and modes are
     message: '--data: unknown source "nope". Use one of coworkCredits, coworkTasks, studioCredits, github, azureAi, orgData, commercialTerms.',
   });
   assert.throws(() => parseDataFlags(['github=flow']), { message: '--data: github can be api or csv or skip or token, not "flow".' });
-  assert.throws(() => parseDataFlags(['studioCredits=token']), { message: '--data: studioCredits can be api or csv or skip or flow, not "token".' });
+  assert.throws(() => parseDataFlags(['studioCredits=token']), { message: '--data: studioCredits can be api or reports or csv or skip or flow, not "token".' });
   assert.throws(() => parseDataFlags(['azureAi=csv']), { message: '--data: azureAi can be api or skip, not "csv".' });
   assert.throws(() => parseDataFlags(['coworkTasks']), { message: '--data: coworkTasks can be csv or skip, not "".' });
   for (const gone of ['core', 'productFeedback', 'agent365', 'workday']) assert.throws(() => parseDataFlags([`${gone}=csv`]), new RegExp(`unknown source "${gone}"`));
@@ -620,7 +620,8 @@ test('normaliseDataSources: a record with the Studio flow on reads as the api mo
   assert.equal(normaliseDataSources({}, { studioFlow: true }).studioCredits, 'api', 'csv is the default, so a record without the choice reads the same');
   assert.equal(normaliseDataSources({ studioCredits: 'csv' }, {}).studioCredits, 'csv');
   assert.equal(normaliseDataSources({ studioCredits: 'skip' }, { studioFlow: true }).studioCredits, 'skip');
-  assert.deepEqual(dataSource('studioCredits').modes, ['api', 'csv', 'skip'], 'Connected first');
+  assert.equal(normaliseDataSources({ studioCredits: 'reports' }, { studioFlow: true }).studioCredits, 'reports');
+  assert.deepEqual(dataSource('studioCredits').modes, ['api', 'reports', 'csv', 'skip'], 'Connected first');
 });
 
 test('sourceCards: each card with its modes, what each needs and where to get its export', () => {
@@ -632,7 +633,7 @@ test('sourceCards: each card with its modes, what each needs and where to get it
     [
       ['coworkCredits', true, ['api', 'csv'], ['api', 'csv']],
       ['coworkTasks', true, ['csv'], ['csv']],
-      ['studioCredits', true, ['api', 'csv'], ['csv']],
+      ['studioCredits', true, ['api', 'reports', 'csv'], ['csv']],
       ['github', true, ['csv'], ['csv']],
       ['azureAi', false, [], undefined],
       ['orgData', true, ['csv'], ['csv']],
@@ -646,6 +647,7 @@ test('sourceCards: each card with its modes, what each needs and where to get it
     ['coworkCredits', 'api', /Viva Insights analyst/],
     ['coworkCredits', 'api', /Spending policies are still a CSV upload/],
     ['studioCredits', 'api', /Power Automate Premium/],
+    ['studioCredits', 'reports', /not yet been validated in a tenant/],
     ['github', 'api', /Azure Key Vault or, with no Key Vault, in the notebook/],
     ['github', 'api', /enterprise owner or billing manager/],
     ['azureAi', 'api', /Reader, Cost Management Reader and Monitoring Reader/],
@@ -673,7 +675,8 @@ test('parseModes: each source takes only its own modes; the rest keep theirs', (
   assert.deepEqual(parseModes({ github: 'csv', azureAi: 'api', productFeedback: 'csv' }, ds), { modes: defaultsWith({ github: 'csv', azureAi: 'api' }) });
   assert.deepEqual(parseModes({ azureAi: 'csv' }, ds), { error: 'Azure AI Foundry and Azure OpenAI can be Connected (API) or Skip.' });
   assert.deepEqual(parseModes({ coworkTasks: 'api' }, ds), { error: 'Cowork task categories can be Upload CSV or Skip.' });
-  assert.deepEqual(parseModes({ studioCredits: 'flow' }, ds), { error: 'Copilot Studio credits can be Connected (Power Automate flow) or Upload CSV only or Skip.' });
+  assert.deepEqual(parseModes({ studioCredits: 'flow' }, ds), { error: 'Copilot Studio credits can be Connected (Power Automate flow) or Connected (reports API preview) or Upload CSV only or Skip.' });
+  assert.deepEqual(parseModes({ studioCredits: 'reports' }, ds), { modes: defaultsWith({ studioCredits: 'reports' }) });
   for (const raw of [null, undefined, 'github=csv']) assert.deepEqual(parseModes(raw, ds), { error: 'Choose how each source arrives.' });
   assert.deepEqual(ds, defaultDataSources(), 'the current modes are left alone');
 });

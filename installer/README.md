@@ -178,7 +178,7 @@ turn one on later, choose **Repair or change**.
 |---|---|---|---|---|
 | Copilot Cowork and Work IQ credits | **Connected (Dataflow)**: a [Dataflow Gen2](#cowork-credits-dataflow) reads your Viva Insights query. Spending policies are still an upload | Viva Insights > Copilot Consumption Dashboard > **Export**. Upload `PersonServiceCreditsMetrics.csv` and `SpendingPolicyMetadata.csv` from the ZIP | Upload CSV | Pages 1–4 (Cowork) |
 | Cowork task categories | | Viva Insights: the Cowork weekly metrics export, `CoworkWeeklyMetrics.csv` with its `PeopleMetaData.csv`. See [Cowork tasks](../docs/COWORK-TASKS.md) | Skip | 2.1. Cowork: Tasks |
-| Copilot Studio credits | **Connected (Power Automate flow)**: a [daily flow](#copilot-studio-credits-flow) reads the Power Platform licensing API | Power Platform admin center > **Licensing** > **Products** > **Copilot Studio**. Download the Summary, Environments and Agents exports (`EntitlementConsumption*_MCSMessages*.csv`) | Upload CSV | Pages 5–8 (Studio) |
+| Copilot Studio credits | **Connected (Power Automate flow)** reads the licensing API; **Connected (reports API preview)** also opts in to [usage reports](#copilot-studio-usage-reports-preview) | Power Platform admin center > **Licensing** > **Products** > **Copilot Studio**. Download the Summary/Environments, Agents and optional Users exports (`EntitlementConsumption*_MCSMessages*.csv`) | Upload CSV | Pages 5–8 (Studio) |
 | GitHub Copilot | **Connected (GitHub API)**, with a [GitHub token](#github-token) | GitHub: your enterprise > **Billing and licensing** > **Usage** > **AI usage** > **Get usage report**. The seat map is a CSV of username, UPN, display name and plan | Skip | Pages 11–14 (GHCP) |
 | Azure AI Foundry and Azure OpenAI | [From Azure](#azure-ai), with the app registration | | Skip | Pages 9–10.1 (Azure) |
 | Org data | **Connected (Microsoft Entra ID)**: read from Microsoft Graph each day | Microsoft Entra admin center > **Users** > **All users** > **Download users**, or any CSV with a UPN or email column and your org columns | Skip | Department and other org filters. Without it, departments come from Viva Insights |
@@ -257,6 +257,57 @@ file beside your answers in `Documents\Consumption Central`. Create a cloud flow
 file's `definition` in. **Repair or change** updates the flow and keeps the connections you signed
 in to. Exports are still accepted alongside the flow: for a month an export covers, its figures
 win.
+
+### Copilot Studio usage reports preview
+
+Choose **Connected (reports API preview)** on the Studio card, or use
+`--data studioCredits=reports`. This adds a separate daily flow and keeps the existing Studio
+credits flow running as the fallback. Sign in to the preview flow's **Power Platform for Admins
+V2** connector separately using its **OAuth Connection** option; the existing flow uses its
+own Power Platform API connection.
+The [reports API](https://learn.microsoft.com/power-platform/admin/programmability-tutorial-download-copilot-credit-usage-reports)
+is public preview, unavailable in sovereign clouds, and requires a **delegated user** who is a
+Global, Power Platform or Dynamics 365 administrator. A Billing administrator alone is not
+sufficient. `--flow-identity app` changes only the OneLake writer; it does not make the reports
+API accept a service principal. Power Automate Premium and the existing connector/DLP requirements
+still apply.
+
+The preview flow requests `FeatureDetailsPerResource` and `BillingDetailsPerEnvironment` for the
+previous 14 complete UTC days. It uses the returned operation ID and file name, waits for
+each `Retry-After`, and saves a pair only after both reports succeed. Generation can take longer
+than the hour before the pipeline; the pipeline uses the latest completed pair. A failed
+submission, invalid polling response or timeout stops the preview flow instead of resubmitting
+automatically. Inspect its run history and the operation URL; for a 429, wait for the service's
+`Retry-After`. The flow does not automatically resume a previously submitted operation.
+
+The notebook validates both reports before applying them. The feature report supplies billed and
+non-billed credits, product and scenario by agent or other resource; the existing report labels
+those resources as agents and can include other products. Product and resource type are retained
+in `studio_report_agent_daily`, but resource type is not displayed by the existing report. The
+report does **not** explain why credits were non-billed. The billing report supplies the
+prepaid/PAYG consumption split, but has no product field, so its totals cannot be isolated to
+Studio. These classifications and dates need not reconcile. Tenant exports retain precedence for their day/environment; an agent export
+wins for its whole month, including later preview days. Older history remains. A header-only
+report is valid and clears the API rows in its requested window.
+The preview reports contain no per-user rows: the existing flow's best-effort user data and the
+optional per-user CSV remain available. When the legacy flow must estimate tenant totals from
+user rows alone, non-billed credits remain in user consumption but are not assigned to prepaid
+or PAYG without evidence.
+
+For safe text transport through the OneLake connector, the flow stores each pair as JSON in
+`Files/landing/studio/`; the notebook accepts either CSV text or a base64 connector wrapper,
+including gzip. Packages are limited to 32 MiB and each decoded report to 16 MiB. An invalid or
+oversized pair fails the Studio notebook without applying that pair. The existing flow and export
+cells may already have updated their tables; inspect or remove that specific package before
+rerunning with the fallback. A pair more than three days old is not reapplied. The packages and
+versioned detail table are retained, so apply your normal
+access and retention controls. To opt out, switch Studio back to **Connected (Power Automate
+flow)** or **Upload CSV** in the installer. It attempts to turn off the preview flow (and, for
+CSV-only mode, the existing flow too) and warns if you must do so manually.
+
+**Not tenant-validated:** the generated flow, connector download representation and Fabric
+ingestion have only been exercised offline. Confirm a real downloaded pair and compare it with
+the admin center before relying on the preview.
 
 ### Cowork credits Dataflow
 

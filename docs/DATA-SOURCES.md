@@ -21,7 +21,7 @@ The single question most people arrive with. Answered once, here:
 | [Cowork / Work IQ](#1-cowork--work-iq-credits--viva-insights-consumption-dashboard) | Certified Power Query connector — direct on Power BI, Dataflow Gen2 on Fabric | **No** |
 | [GitHub Copilot](#3-github-copilot-ai-credits) | REST API | **No** |
 | [Entra org attributes](#5-org-attributes--microsoft-entra-optional) | Graph PowerShell on a schedule, or the [`Ingest_Org_Graph`](../2.%20Fabric/notebooks/Ingest_Org_Graph.ipynb) Fabric notebook | **No** |
-| [Copilot Studio](#2-copilot-studio-credits) | None — PPAC is download-only | **Yes** |
+| [Copilot Studio](#2-copilot-studio-credits) | Fabric only: the installer's [licensing API flow](../installer/README.md#copilot-studio-credits-flow) (about six months on first run, then the last ten days, with per-user rows), or the opt-in [usage reports preview](../installer/README.md#copilot-studio-usage-reports-preview) (delegated admin; previous 14 days; no per-user rows) | **Partly** — Local CSV and Viva Direct always need the PPAC export; on Fabric it is still needed for history before the flow's window and, if only the preview runs, for per-user detail |
 | [Azure AI Foundry](#4-azure-ai-foundry) | Cost Management Query API + Azure Monitor; scheduled Python collector or Fabric notebook, which also records Copilot pay-as-you-go | **No** |
 
 For manually downloaded exports, a [Power Automate flow](../2.%20Fabric/flows/) can land
@@ -304,6 +304,20 @@ treat `ServiceName` as an open list — Consumption Central groups by whatever v
 > saves from it (`READ_API_FILES`, off by default; the installer turns it on with the flow). Each run
 > replaces the days and months those files cover, one Delta commit per table, so a failed write leaves
 > its table as it was, and older days keep their rows.
+>
+> **Preview usage reports (opt in).** The installer's
+> [reports API preview](../installer/README.md#copilot-studio-usage-reports-preview) adds daily
+> `FeatureDetailsPerResource` and `BillingDetailsPerEnvironment` reports alongside the existing
+> flow. The first provides product, scenario and billed/non-billed credits by agent or other
+> resource; the existing report labels those resources as agents and can include other products.
+> Product and resource type are retained in the preview detail table, but resource type is not
+> displayed by the existing report. The second provides prepaid and PAYG consumption by environment,
+> but has no product field to isolate Studio. Those classifications are different, can use different
+> dates and need not reconcile. Non-billed credits do not reveal the reason they
+> were not billed. The reports have no per-user rows; the old flow and optional per-user CSV
+> remain. Manual exports win on their covered scope. This public-preview route requires a
+> delegated Global, Power Platform or Dynamics 365 administrator, is unavailable in sovereign
+> clouds, and has not been validated with a real report download or Fabric tenant.
 >
 > **The per-user grain has no documented API.** The installer's flow also reads credits per user from
 > a licensing API route that isn't documented (`/licensing/entitlements/MCSMessages/users`) and saves

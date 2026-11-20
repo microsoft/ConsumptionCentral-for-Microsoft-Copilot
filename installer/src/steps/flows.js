@@ -31,7 +31,10 @@ import {
   PPAPI,
   STORAGE_RESOURCE,
   STUDIO_FLOW_NAME,
+  STUDIO_REPORTS_FLOW_NAME,
+  STUDIO_REPORTS_DAYS,
   studioFlowDefinition,
+  studioReportsFlowDefinition,
 } from '../transform/flows.js';
 import { c } from '../ui.js';
 import { PRODUCT_ID, PRODUCT_NAME } from '../product.js';
@@ -39,20 +42,22 @@ import { UPLOAD_DIR } from '../uploads.js';
 import { ensureWorkspaceRole } from './model.js';
 
 /** @typedef {import('../install.js').Ctx} Ctx */
-/** @typedef {'studio'} FlowKind */
+/** @typedef {'studio' | 'studioReports'} FlowKind */
 
 const MAKER = 'https://make.powerautomate.com/';
 export const FLOW_FILES = /** @type {Record<FlowKind, string>} */ ({
   studio: `${PRODUCT_ID}-studio-credits-flow.json`,
+  studioReports: `${PRODUCT_ID}-studio-credit-reports-preview-flow.json`,
 });
 
 /** @type {Record<FlowKind, string>} */
-export const FLOW_NAMES = { studio: STUDIO_FLOW_NAME };
+export const FLOW_NAMES = { studio: STUDIO_FLOW_NAME, studioReports: STUDIO_REPORTS_FLOW_NAME };
 
 /** @param {import('../config.js').InstallConfig} config @returns {FlowKind[]} */
 const flowsChosen = (config) => {
   return [
-    ...(config.dataSources.studioCredits === 'api' ? /** @type {const} */ (['studio']) : []),
+    ...(['api', 'reports'].includes(config.dataSources.studioCredits) ? /** @type {const} */ (['studio']) : []),
+    ...(config.dataSources.studioCredits === 'reports' ? /** @type {const} */ (['studioReports']) : []),
   ];
 };
 
@@ -88,7 +93,7 @@ export async function planFlows(ctx) {
 
 /** What the user should know before picking the flows' environment. */
 export const FLOW_ENVIRONMENT_HINT =
-  'The flows run in this environment, and people with access to it can see them. Its data policy (DLP) must allow the "HTTP with Microsoft Entra ID (preauthorized)" connector, and whoever signs in to the flows needs a Power Automate Premium licence.';
+  'The flows run in this environment, and people with access to it can see them. Its data policy (DLP) must allow the "HTTP with Microsoft Entra ID (preauthorized)" connector and, for preview reports, "Power Platform for Admins V2". Whoever signs in to the flows needs a Power Automate Premium licence.';
 
 /**
  * The tenant's default Power Platform environment ID, from Power Automate. If that can't be read,
@@ -165,6 +170,11 @@ export function flowDefinitions(config, tenantId) {
       description: `Saves Copilot Studio credits from the Power Platform licensing API to ${where} each day. Created by the Consumption Central installer.`,
       definition: nameByConnection(studioFlowDefinition(t, schedule), t),
     },
+    studioReports: {
+      name: STUDIO_REPORTS_FLOW_NAME,
+      description: `Saves completed Copilot Studio preview report pairs to ${config.fabric.lakehouseName ?? 'the Lakehouse'} > Files/landing/studio. The existing credits flow remains the fallback.`,
+      definition: nameByConnection(studioReportsFlowDefinition(t, schedule), t),
+    },
   };
 }
 
@@ -186,6 +196,27 @@ const connectorLabel = (name) => connectorByName(name)?.label ?? name;
  */
 export async function ensureFlows(ctx) {
   const { ui, config, api } = ctx;
+  const deselected = [
+    ...(config.dataSources.studioCredits === 'reports' ? [] : /** @type {const} */ (['studioReports'])),
+    ...(['api', 'reports'].includes(config.dataSources.studioCredits) ? [] : /** @type {const} */ (['studio'])),
+  ];
+  for (const kind of deselected) {
+    const id = config.uploads.flowIds?.[kind];
+    if (!id) continue;
+    try {
+      if (!config.uploads.flowEnvironment) throw new Error('the saved Power Platform environment is missing');
+      const dv = api.dataverse(config.uploads.flowEnvironment.url);
+      const flow = await dv.getFlow(id);
+      if (flow?.statecode === 1) {
+        await dv.turnOffFlow(id);
+        ui.ok(`Turned off ${FLOW_NAMES[kind]}`);
+      }
+      if (config.uploads.flowsConnected?.[kind]) delete config.uploads.flowsConnected[kind];
+      ctx.save();
+    } catch (err) {
+      ui.warn(`Couldn't turn off ${FLOW_NAMES[kind]} (${/** @type {Error} */ (err).message}). Turn it off in Power Automate.`);
+    }
+  }
   const kinds = flowsWanted(config);
   if (!kinds.length) return;
   const up = config.uploads;
@@ -625,6 +656,9 @@ export function connectionSteps(config, kind) {
       ? `${CONNECTORS.keyVault.label}: vault ${config.keyVault.name ?? 'your Key Vault'}.`
       : `${CONNECTORS.storage.label}: Base Resource URL ${ONELAKE_DFS}, Resource URI ${STORAGE_RESOURCE}. Sign in as someone with Contributor or higher on ${workspace}. Its actions end in "via OneLake".`) +
     (flowIdentity(config) === 'app' ? '' : orPick(CONNECTORS.storage.name));
+  if (kind === 'studioReports') {
+    return [`${CONNECTORS.powerPlatformAdmin.label}: create an OAuth Connection and sign in as a Global, Power Platform or Dynamics 365 administrator. Pick it for the submit, poll and download actions.`, storage];
+  }
   const ppApi = `${CONNECTORS.entra.label}: Base Resource URL and Resource URI ${PPAPI}.`;
   const ppActions = `Its actions end in "via Power Platform API".${orPick(CONNECTORS.entra.name)}`;
   return [`${ppApi} Sign in as a Power Platform, Billing or Global administrator. ${ppActions}`, storage];
@@ -650,7 +684,11 @@ function flowSteps(ctx, kind, link) {
   ui.info(`  ${n++}. Allow pop-ups for make.powerautomate.com: each sign-in opens one. Sign in on the first action for each connection below, then pick that connection on its other actions.`);
   for (const step of connectionSteps(config, kind)) ui.info(`  ${n++}. ${step}`);
   ui.info(`  ${n++}. Save, then turn it on.`);
-  ui.info(`  ${n++}. To load about six months now rather than at its first daily run, click Run. Or use "${commandLine('run')}", which offers to run it before the pipeline.`);
+  if (kind === 'studioReports') {
+    ui.info(`  ${n++}. Click Run to request the previous ${STUDIO_REPORTS_DAYS} complete UTC days. Generation can take hours; the pipeline uses only a completed pair.`);
+  } else {
+    ui.info(`  ${n++}. To load about six months now rather than at its first daily run, click Run. Or use "${commandLine('run')}", which offers to run it before the pipeline.`);
+  }
   ui.note('     After that it runs daily, an hour before the pipeline.');
 }
 

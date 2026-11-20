@@ -11,6 +11,7 @@ import {
   CONNECT_POLLS,
   CONNECTION_NAMES,
   connectFlows,
+  connectionSteps,
   ensureFlows,
   FLOW_FILES,
   flowDefinitions,
@@ -41,7 +42,10 @@ import {
   STUDIO_BACKFILL_DAYS,
   STUDIO_FLOW_DAYS,
   STUDIO_FLOW_NAME,
+  STUDIO_REPORTS_DAYS,
+  STUDIO_REPORTS_FLOW_NAME,
   studioFlowDefinition,
+  studioReportsFlowDefinition,
 } from '../src/transform/flows.js';
 import { DATA_SOURCES, detectSource, routedSources, routerWanted, STUDIO_DIR, UPLOAD_DIR } from '../src/uploads.js';
 import { fakeConnections, fakeCtx, fakeFabric, fakeUi } from './fakes.js';
@@ -162,6 +166,62 @@ test('studioFlowDefinition: as the app, Key Vault and the Power Platform API, wr
   for (const [name, a] of allActions(def.actions)) if (a.type === 'Http') assert.ok(a.runtimeConfiguration?.secureData, `${name} hides its inputs`);
 });
 
+test('studioReportsFlowDefinition: polls each operation, validates completion, then saves one text package', () => {
+  for (const target of [USER, APP]) {
+    const def = studioReportsFlowDefinition(target, SCHEDULE);
+    assertWellFormed(def);
+    assert.equal(def.triggers.Daily.runtimeConfiguration.concurrency.runs, 1);
+    assert.ok(connectorsUsed(def).includes(CONNECTORS.powerPlatformAdmin.name));
+    assert.ok(!connectorsUsed(def).includes(CONNECTORS.entra.name), 'the binary report download does not use HTTP with Entra');
+    const actions = Object.fromEntries(allActions(def.actions));
+    for (const [label, report] of [['Feature', 'FeatureDetailsPerResource'], ['Billing', 'BillingDetailsPerEnvironment']]) {
+      const submit = actions[`Submit_${label}`];
+      assert.equal(submit.inputs.host.operationId, 'GenerateLicensingReport');
+      assert.equal(submit.inputs.host.connectionName, CONNECTORS.powerPlatformAdmin.name);
+      assert.deepEqual(submit.inputs.retryPolicy, { type: 'none' });
+      assert.deepEqual(submit.inputs.parameters, {
+        ReportName: report, 'api-version': '2024-10-01',
+        'body/startDate': "@variables('FromDate')", 'body/endDate': "@variables('ToDate')", 'body/granularity': 'Daily',
+      });
+      assert.match(actions[`Check_${label}_submission`].expression, /statusCode.*202.*Location.*Retry-After/);
+      assert.match(actions[`Initial_${label}_wait`].inputs.interval.count, /Retry-After/);
+      const loop = actions[`Until_${label}_ready`];
+      assert.equal(loop.operationOptions, 'FailWhenLimitsReached');
+      assert.deepEqual(loop.limit, { count: 120, timeout: 'PT2H' });
+      assert.match(loop.expression, /Running/);
+      assert.equal(actions[`Poll_${label}`].inputs.host.operationId, 'GetLicensingReportOperation');
+      assert.equal(actions[`Poll_${label}`].inputs.parameters.ReportName, report);
+      assert.match(actions[`Poll_${label}`].inputs.parameters.OperationId, new RegExp(`uriPath.*Submit_${label}.*Location`));
+      assert.deepEqual(actions[`Poll_${label}`].inputs.retryPolicy, { type: 'none' });
+      assert.match(actions[`Record_${label}_status`].inputs.value, /\['status'\]/);
+      assert.match(actions[`Check_${label}_retry`].expression, /Retry-After/);
+      assert.match(actions[`${label}_poll_delay`].inputs.interval.count, /Retry-After/);
+      assert.equal(actions[`${label}_invalid_retry`].inputs.value, 'InvalidRetryAfter');
+      assert.match(actions[`Check_${label}_result`].expression, /Succeeded.*fileName/);
+      assert.equal(actions[`Fail_${label}_result`].inputs.runStatus, 'Failed');
+      assert.equal(actions[`Download_${label}`].inputs.host.operationId, 'DownloadLicensingReportFile');
+      assert.deepEqual(actions[`Download_${label}`].inputs.parameters, {
+        ReportName: report, FileName: `@body('Poll_${label}')?['fileName']`, 'api-version': '2024-10-01',
+      });
+      assert.deepEqual(actions[`Download_${label}`].runtimeConfiguration.secureData.properties, ['inputs', 'outputs']);
+    }
+    assert.deepEqual(actions.Submit_Billing.runAfter, { Download_Feature: ['Succeeded'] });
+    assert.deepEqual(actions.Package_reports.runAfter, { Download_Billing: ['Succeeded'] });
+    assert.equal(actions.Package_reports.inputs.feature, "@body('Download_Feature')");
+    assert.equal(actions.Package_reports.inputs.billing, "@body('Download_Billing')");
+    assert.deepEqual(actions.Save_reports.runAfter, { Package_reports: ['Succeeded'] });
+    assert.match(JSON.stringify(actions.Save_reports), /StudioReportsPreview_/);
+    assert.match(JSON.stringify(actions.Save_reports), /Files\/landing\/studio/);
+    assert.match(JSON.stringify(actions.Save_reports), /string\(outputs\('Package_reports'\)\)/);
+    assert.match(actions.From_date.inputs.variables[0].value, new RegExp(`-${STUDIO_REPORTS_DAYS}`));
+
+    const named = nameByConnection(def, target);
+    assertWellFormed(named);
+    const names = new Set(allActions(named.actions).map(([name]) => name));
+    for (const [, ref] of JSON.stringify(named).matchAll(/(?:body|outputs|actions|result)\('([^']+)'\)/g)) assert.ok(names.has(ref), ref);
+  }
+});
+
 test('nameByConnection: each action on an HTTP with Microsoft Entra ID connection says which, references follow, and no Set variable is empty', () => {
   /** @param {any} def @param {{ endpoint: string }} t @param {string} storage */
   const check = (def, t, storage) => {
@@ -256,6 +316,9 @@ test("flowsWanted: only Copilot Studio credits' Power Automate mode brings a flo
   assert.deepEqual(flowsWanted(config), [], "no other source's API brings a flow");
   config.dataSources.studioCredits = 'api';
   assert.deepEqual(flowsWanted(config), ['studio']);
+  config.dataSources.studioCredits = 'reports';
+  assert.deepEqual(flowsWanted(config), ['studio', 'studioReports'], 'the old flow stays as fallback');
+  config.dataSources.studioCredits = 'api';
 
   // The secret in the notebooks no longer rules the flow out: it signs in itself.
   config.keyVault.mode = 'notebook';
@@ -278,6 +341,15 @@ test('flowDefinitions: the user identity by default, the app on request', () => 
   const app = flowDefinitions(config, 'tenant-1').studio.definition;
   assert.deepEqual(connectorsUsed(app), [CONNECTORS.entra.name, CONNECTORS.keyVault.name].sort());
   assert.match(JSON.stringify(app), /"clientId":"app-1"/);
+});
+
+test('preview reports use a separately signed-in delegated admin connector', () => {
+  const { ctx, config } = fakeCtx();
+  config.dataSources.studioCredits = 'reports';
+  const preview = flowDefinitions(config, 'tenant-1').studioReports.definition;
+  assert.deepEqual(connectorsUsed(preview), [CONNECTORS.powerPlatformAdmin.name, CONNECTORS.storage.name].sort());
+  assert.match(connectionSteps(config, 'studioReports')[0], /Power Platform for Admins V2.*OAuth Connection.*Global, Power Platform or Dynamics 365 administrator/);
+  assert.deepEqual(ownedConnections(ctx, ['studioReports']).map((c) => c.ref), [CONNECTORS.storage.name]);
 });
 
 test('planFlows: with the Studio flow, just the environment from the list; without it, no questions', async () => {
@@ -389,6 +461,30 @@ function signIn(dv, id) {
   flow.clientdata = JSON.stringify(data);
   flow.statecode = 1;
 }
+
+test('ensureFlows: opting out stops the preview flow without removing the existing flow', async () => {
+  const dv = fakeDataverse();
+  const { ui } = fakeUi();
+  const { ctx, config } = fakeCtx({ ui, fabric: fakeFabric().api, dataverse: () => dv.api });
+  config.uploads.flowEnvironment = { url: 'https://org1.crm.dynamics.com' };
+  config.dataSources.studioCredits = 'reports';
+  await ensureFlows(ctx);
+  assert.deepEqual(dv.calls, [`createFlow ${STUDIO_FLOW_NAME}`, `createFlow ${STUDIO_REPORTS_FLOW_NAME}`]);
+  signIn(dv, 'flow-1');
+  signIn(dv, 'flow-2');
+  config.dataSources.studioCredits = 'api';
+  await ensureFlows(ctx);
+  assert.equal(dv.flows.get('flow-1').statecode, 1);
+  assert.equal(dv.flows.get('flow-2').statecode, 0);
+  assert.equal(dv.calls.at(-1), `turnOffFlow ${STUDIO_REPORTS_FLOW_NAME}`);
+  assert.ok(dv.flows.has('flow-2'), 'the preview is not deleted');
+
+  config.dataSources.studioCredits = 'csv';
+  await ensureFlows(ctx);
+  assert.equal(dv.flows.get('flow-1').statecode, 0, 'CSV-only mode also stops the existing flow');
+  assert.equal(dv.flows.get('flow-2').statecode, 0);
+  assert.ok(dv.flows.has('flow-1'), 'the existing flow remains available');
+});
 
 test('ensureFlows: as a user, grants nothing, creates the flow once, updates it keeping its sign-ins, and makes it again if deleted', async () => {
   const fabric = fakeFabric();

@@ -543,6 +543,8 @@ export async function ensureNotebooks(ctx, opts = {}) {
   const exists = (nb) => !!f.notebooks[nb.key] && ids.has(/** @type {string} */ (f.notebooks[nb.key]));
   /** @param {NotebookInfo} nb */
   const labelOf = (nb) => f.notebookNames?.[nb.key] ?? nb.displayName;
+  /** @param {NotebookInfo} nb */
+  const studioInline = (nb) => nb.key === 'studioConsumption' && inNotebooks && secretNb(nb);
 
   /** @param {NotebookInfo} nb */
   const stale = (nb) =>
@@ -550,6 +552,7 @@ export async function ensureNotebooks(ctx, opts = {}) {
     !!opts.force ||
     (switched && secretNb(nb)) ||
     (rotate && secretNb(nb)) ||
+    (studioInline(nb) && hashOf(contentOf(nb, { placeholder: true })) !== f.notebookHashes?.[nb.key]) ||
     (nb.key === 'azureAi' && paygIds(config) !== (config.consumption.deployedPayg ?? '')) ||
     (nb.key === 'uploadRouter' && routerSignature(config) !== f.deployedRouter);
   /** @param {NotebookInfo} nb */
@@ -598,9 +601,9 @@ export async function ensureNotebooks(ctx, opts = {}) {
       const routed = nb.key === 'uploadRouter' ? routerSignature(config) : undefined;
       // Notebooks are updated when this checkout's version differs, so running the installer again
       // from a newer release pushes their fixes. Not those holding the client secret inline: their
-      // content changes with each secret, and writing them needs a fresh one. The one holding the
-      // token is hashed with a placeholder for it.
-      const hash = token ? hashOf(contentOf(nb, { placeholder: true })) : inNotebooks && secretNb(nb) ? undefined : hashOf(content);
+      // content changes with each secret, and writing them needs a fresh one. Studio's source
+      // selection and the GitHub token are hashed with placeholders for their secrets.
+      const hash = token || studioInline(nb) ? hashOf(contentOf(nb, { placeholder: true })) : inNotebooks && secretNb(nb) ? undefined : hashOf(content);
       let id = f.notebooks[nb.key];
       // Older records saved only the ID: keep the name the notebook already has.
       const current = id ? items.find((i) => i.id === id)?.displayName : undefined;

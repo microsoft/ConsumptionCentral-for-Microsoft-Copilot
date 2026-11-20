@@ -12,9 +12,11 @@
  * SharePoint connector instead.
  */
 import { FLOWS_DIR, PRODUCT_NAME } from '../product.js';
-import { UPLOAD_DIR } from '../uploads.js';
+import { STUDIO_DIR, UPLOAD_DIR } from '../uploads.js';
 
 export const STUDIO_FLOW_NAME = `${PRODUCT_NAME} - Copilot Studio credits`;
+export const STUDIO_REPORTS_FLOW_NAME = `${PRODUCT_NAME} - Copilot Studio credit reports (preview)`;
+export const STUDIO_REPORTS_DAYS = 14;
 /** Days of credits each Studio flow run restates; the licensing API revises recent days. */
 export const STUDIO_FLOW_DAYS = 10;
 /** Days the first Studio flow run reads. The licensing API has kept about six months in practice. */
@@ -45,12 +47,13 @@ const ANY = ['Succeeded', 'Failed', 'Skipped', 'TimedOut'];
  * @property {string} label  What the user sees.
  */
 
-/** @type {Record<'keyVault' | 'entra' | 'storage' | 'sharePoint', Connector>} */
+/** @type {Record<'keyVault' | 'entra' | 'storage' | 'sharePoint' | 'powerPlatformAdmin', Connector>} */
 export const CONNECTORS = {
   keyVault: { name: 'shared_keyvault', api: 'shared_keyvault', label: 'Azure Key Vault' },
   entra: { name: 'shared_webcontents', api: 'shared_webcontents', label: 'HTTP with Microsoft Entra ID (preauthorized), for the Power Platform API' },
   storage: { name: 'shared_webcontents_storage', api: 'shared_webcontents', label: 'HTTP with Microsoft Entra ID (preauthorized), for OneLake' },
   sharePoint: { name: 'shared_sharepointonline', api: 'shared_sharepointonline', label: 'SharePoint' },
+  powerPlatformAdmin: { name: 'shared_powerplatformadminv2', api: 'shared_powerplatformadminv2', label: 'Power Platform for Admins V2' },
 };
 
 /** @param {string} name  A connection reference key. */
@@ -332,6 +335,172 @@ function ppApi(path, body) {
           : { 'request/method': 'POST', 'request/url': `${PPAPI}${path}`, 'request/headers': { 'Content-Type': 'application/json' }, 'request/body': body },
       authentication: "@parameters('$authentication')",
     },
+  };
+}
+
+/**
+ * The report connector returns an operation URL and then a file name. Retain the downloaded
+ * body as JSON text: the storage connector cannot send raw binary.
+ * The notebook validates and decodes the pair before changing any report-derived tables.
+ * @param {FlowTarget} t
+ * @param {{ time: string, timeZone: string }} schedule
+ */
+export function studioReportsFlowDefinition(t, schedule) {
+  /** @param {string} name @param {string} value @param {string} [after] */
+  const init = (name, value, after) => ({
+    type: 'InitializeVariable',
+    runAfter: after ? { [after]: ['Succeeded'] } : {},
+    inputs: { variables: [{ name, type: 'string', value }] },
+  });
+  /** @param {string} action @param {string} header */
+  const header = (action, header) =>
+    `coalesce(outputs('${action}')?['headers']?['${header}'], outputs('${action}')?['headers']?['${header.toLowerCase()}'], '')`;
+  /** @param {string} action */
+  const validDelay = (action) => {
+    const h = `string(${header(action, 'Retry-After')})`;
+    return `@greater(int(if(isInt(${h}), ${h}, '0')), 0)`;
+  };
+  /** @param {string} message */
+  const fail = (message) => ({
+    type: 'Terminate',
+    runAfter: {},
+    inputs: { runStatus: 'Failed', runError: { code: 'ReportNotReady', message } },
+  });
+  /** @param {string} operationId @param {Record<string, string>} parameters */
+  const reportCall = (operationId, parameters) => ({
+    type: 'OpenApiConnection',
+    inputs: {
+      host: host(CONNECTORS.powerPlatformAdmin, operationId),
+      parameters,
+      authentication: "@parameters('$authentication')",
+      retryPolicy: { type: 'none' },
+    },
+  });
+  /** @type {Record<string, any>} */
+  const actions = {
+    Anchor: init('Anchor', "@{formatDateTime(utcNow(), 'yyyy-MM-dd')}"),
+    From_date: init('FromDate', `@{formatDateTime(addDays(variables('Anchor'), -${STUDIO_REPORTS_DAYS}), 'yyyy-MM-dd')}`, 'Anchor'),
+    To_date: init('ToDate', "@{formatDateTime(addDays(variables('Anchor'), -1), 'yyyy-MM-dd')}", 'From_date'),
+    Run_id: init('RunId', "@{formatDateTime(utcNow(), 'yyyyMMddHHmmssfffffff')}_@{guid()}", 'To_date'),
+    Feature_status: init('FeatureStatus', 'Running', 'Run_id'),
+    Billing_status: init('BillingStatus', 'Running', 'Feature_status'),
+  };
+  const secret = secretStep(t, { Billing_status: ['Succeeded'] });
+  Object.assign(actions, secret.actions);
+  let after = Object.keys(secret.next)[0];
+  for (const [label, report] of [['Feature', 'FeatureDetailsPerResource'], ['Billing', 'BillingDetailsPerEnvironment']]) {
+    const submit = `Submit_${label}`;
+    const check = `Check_${label}_submission`;
+    const initialWait = `Initial_${label}_wait`;
+    const poll = `Poll_${label}`;
+    const record = `Record_${label}_status`;
+    const failed = `Record_${label}_poll_failure`;
+    const running = `Wait_if_${label}_running`;
+    const delayCheck = `Check_${label}_retry`;
+    const delay = `${label}_poll_delay`;
+    const invalid = `${label}_invalid_retry`;
+    const until = `Until_${label}_ready`;
+    const terminal = `Check_${label}_result`;
+    const download = `Download_${label}`;
+    const status = `${label}Status`;
+    const operationId = `last(split(uriPath(${header(submit, 'Location')}), '/'))`;
+    const submitCall = reportCall('GenerateLicensingReport', {
+      ReportName: report,
+      'api-version': LICENSING_VERSION,
+      'body/startDate': "@variables('FromDate')",
+      'body/endDate': "@variables('ToDate')",
+      'body/granularity': 'Daily',
+    });
+    actions[submit] = { ...submitCall, runAfter: { [after]: ['Succeeded'] } };
+    actions[check] = {
+      type: 'If',
+      runAfter: { [submit]: ['Succeeded'] },
+      expression: `@and(equals(outputs('${submit}')?['statusCode'], 202), startsWith(toLower(string(${header(submit, 'Location')})), 'https://api.powerplatform.com/'), not(empty(${operationId})), ${validDelay(submit).slice(1)})`,
+      actions: {},
+      else: { actions: { [`Fail_${label}_submission`]: fail('The report submission did not return a valid operation URL and positive Retry-After. Inspect the run before retrying.') } },
+    };
+    actions[initialWait] = {
+      type: 'Wait', runAfter: { [check]: ['Succeeded'] },
+      inputs: { interval: { count: `@int(${header(submit, 'Retry-After')})`, unit: 'Second' } },
+    };
+    actions[until] = {
+      type: 'Until',
+      runAfter: { [initialWait]: ['Succeeded'] },
+      expression: `@not(equals(variables('${status}'), 'Running'))`,
+      limit: { count: 120, timeout: 'PT2H' },
+      operationOptions: 'FailWhenLimitsReached',
+      actions: {
+        [poll]: {
+          ...reportCall('GetLicensingReportOperation', {
+            ReportName: report, OperationId: `@${operationId}`, 'api-version': LICENSING_VERSION,
+          }),
+          runAfter: {},
+        },
+        [record]: {
+          type: 'SetVariable', runAfter: { [poll]: ['Succeeded'] },
+          inputs: { name: status, value: `@coalesce(body('${poll}')?['status'], 'InvalidStatus')` },
+        },
+        [failed]: {
+          type: 'SetVariable', runAfter: { [poll]: ['Failed', 'TimedOut'] },
+          inputs: { name: status, value: 'PollFailed' },
+        },
+        [running]: {
+          type: 'If', runAfter: { [record]: ['Succeeded'] },
+          expression: `@equals(variables('${status}'), 'Running')`,
+          actions: {
+            [delayCheck]: {
+              type: 'If', runAfter: {}, expression: validDelay(poll),
+              actions: {
+                [delay]: { type: 'Wait', runAfter: {}, inputs: { interval: { count: `@int(${header(poll, 'Retry-After')})`, unit: 'Second' } } },
+              },
+              else: {
+                actions: { [invalid]: { type: 'SetVariable', runAfter: {}, inputs: { name: status, value: 'InvalidRetryAfter' } } },
+              },
+            },
+          },
+        },
+      },
+    };
+    actions[terminal] = {
+      type: 'If', runAfter: { [until]: ['Succeeded'] },
+      expression: `@and(equals(variables('${status}'), 'Succeeded'), not(empty(body('${poll}')?['fileName'])))`,
+      actions: {},
+      else: { actions: { [`Fail_${label}_result`]: fail('The report did not succeed with a file name. Inspect the operation before retrying.') } },
+    };
+    actions[download] = {
+      ...reportCall('DownloadLicensingReportFile', {
+        ReportName: report, FileName: `@body('${poll}')?['fileName']`, 'api-version': LICENSING_VERSION,
+      }),
+      runAfter: { [terminal]: ['Succeeded'] },
+      runtimeConfiguration: SECURE,
+    };
+    after = download;
+  }
+  actions.Package_reports = {
+    type: 'Compose',
+    runAfter: { [after]: ['Succeeded'] },
+    inputs: {
+      startDate: "@variables('FromDate')",
+      endDate: "@variables('ToDate')",
+      feature: "@body('Download_Feature')",
+      billing: "@body('Download_Billing')",
+    },
+    runtimeConfiguration: SECURE,
+  };
+  Object.assign(actions, saveFile(t, 'Save_reports', STUDIO_DIR, "StudioReportsPreview_@{variables('RunId')}.json",
+    "@{string(outputs('Package_reports'))}", { Package_reports: ['Succeeded'] }, 'application/json'));
+  return {
+    $schema: SCHEMA,
+    contentVersion: '1.0.0.0',
+    parameters: PARAMETERS,
+    triggers: {
+      Daily: {
+        type: 'Recurrence',
+        recurrence: { frequency: 'Day', interval: 1, timeZone: schedule.timeZone, schedule: hourBefore(schedule.time) },
+        runtimeConfiguration: { concurrency: { runs: 1 } },
+      },
+    },
+    actions,
   };
 }
 

@@ -121,11 +121,11 @@ export const flowIdentity = (config) => (config.uploads?.flowIdentity === 'app' 
  * @property {boolean} [folders]  The drop folder and the folders the loads read exist in the Lakehouse.
  * @property {FlowIdentity} [flowIdentity]  Who the flows write to OneLake as. Default user.
  * @property {FlowEnvironment} [flowEnvironment]  The Power Platform environment the flows are created in.
- * @property {Partial<Record<'studio', string>>} [flowIds]  The flows, once created.
- * @property {Partial<Record<'studio', string>>} [flowSignatures]  What each created flow was built from.
- * @property {Partial<Record<'studio', string>>} [flowFiles]  Where a flow was written when it couldn't be created.
+ * @property {Partial<Record<'studio' | 'studioReports', string>>} [flowIds]  The flows, once created.
+ * @property {Partial<Record<'studio' | 'studioReports', string>>} [flowSignatures]  What each created flow was built from.
+ * @property {Partial<Record<'studio' | 'studioReports', string>>} [flowFiles]  Where a flow was written when it couldn't be created.
  * @property {Record<string, string>} [flowConnections]  The connections the installer made for the flows, by connection reference.
- * @property {Partial<Record<'studio', string>>} [flowsConnected]  The flow IDs the installer signed in and turned on.
+ * @property {Partial<Record<'studio' | 'studioReports', string>>} [flowsConnected]  The flow IDs the installer signed in and turned on.
  */
 
 /**

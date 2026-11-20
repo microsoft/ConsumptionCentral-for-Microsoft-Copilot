@@ -116,7 +116,7 @@ test('every name notebookSettings writes is one installer-assets.json lists, for
             for (const name of [...names.values, ...names.expressions, ...names.patches]) written.get(nb.key)?.add(name);
           }
           // Credentials only where installer-assets.json says so; Ingest_Studio only for the licensing API.
-          const credentials = nb.credentials && (nb.key !== 'studioConsumption' || choice.studioCredits === 'api');
+          const credentials = nb.credentials && (nb.key !== 'studioConsumption' || ['api', 'reports'].includes(choice.studioCredits));
           assert.deepEqual(
             { tenantId: s.tenantId, clientId: s.clientId, secret: s.secret },
             credentials
@@ -178,6 +178,12 @@ test('the client secret: read from Key Vault, or with no Key Vault written in, a
   const studio = notebookSettings(csv.ctx, info('studioConsumption'));
   assert.deepEqual([studio.tenantId, studio.secret, studio.expressions], [undefined, undefined, undefined]);
   assert.deepEqual(notebookSettings(install().ctx, info('studioConsumption')).expressions, { READ_API_FILES: 'True' });
+  const preview = install({ ds: { studioCredits: 'reports' } });
+  assert.deepEqual(notebookSettings(preview.ctx, info('studioConsumption')).expressions,
+    { READ_API_FILES: 'True', READ_REPORT_API_FILES: 'True' });
+  const previewText = prepared('studioConsumption', notebookSettings(preview.ctx, info('studioConsumption')));
+  assert.match(previewText, /^READ_API_FILES = True/m);
+  assert.match(previewText, /^READ_REPORT_API_FILES = True/m);
 
   // Ingest_Azure_AI has its own settings rather than the credentials.
   const kv = install();
