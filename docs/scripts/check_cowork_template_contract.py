@@ -19,6 +19,28 @@ TEMPLATES = [
 ]
 
 
+def neutral_hourly_default(hourly):
+    """Accept an unfiltered rate or Desktop's explicit (Blank), never a rate."""
+    for entry in hourly.get("objects", {}).get("general", []):
+        stored = entry.get("properties", {}).get("filter")
+        if stored is None:
+            continue
+        body = stored.get("filter", {})
+        sources = body.get("From", [])
+        if len(sources) != 1 or sources[0].get("Entity") != model.HOURLY:
+            return False
+        source = sources[0].get("Name")
+        expected = {"Version": 2, "From": [{"Name": source, "Entity": model.HOURLY, "Type": 0}],
+                    "Where": [{"Condition": {"In": {
+                        "Expressions": [{"Column": {"Expression": {"SourceRef": {"Source": source}},
+                                                     "Property": "Hourly Value"}}],
+                        "Values": [[{"Literal": {"Value": "null"}}]],
+                    }}}]}
+        if not source or body != expected:
+            return False
+    return True
+
+
 def check(path):
     errors = []
     with zipfile.ZipFile(path) as archive:
@@ -111,8 +133,8 @@ def check(path):
             selection = hourly.get("objects", {}).get("selection", [])
             if not any(s.get("properties", {}).get("strictSingleSelect") == report.literal(True) for s in selection):
                 errors.append("Hourly value must be strict single-select with a blank no-value option.")
-            if "filter" in json.dumps(hourly.get("objects", {}).get("general", [])):
-                errors.append("Hourly value must have no initial selection.")
+            if not neutral_hourly_default(hourly):
+                errors.append("Hourly value must initially be unfiltered or (Blank), never a rate.")
             scenario = json.loads(archive.read(page_root + "visuals/task_scenario/visual.json"))["visual"]
             if "'Typical'" not in json.dumps(scenario.get("objects", {}).get("general", [])):
                 errors.append("Effort scenario must initially select Typical.")

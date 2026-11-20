@@ -5,7 +5,7 @@ The report layer of a shipped .pbit is signed, so this script never touches a
 cowork_tasks/prepare_offline_export.py); Desktop then re-exports the template
 and fix_pbit_defaults.py repairs the model parts. See docs/BUILD.md.
 
-    python docs/scripts/fix_cowork_kpi_cards.py <project folder>
+    python docs/scripts/fix_cowork_kpi_cards.py <project folder> [--feedback]
 
 What it changes, and why:
 
@@ -20,13 +20,14 @@ What it changes, and why:
    that option always exists in the Cowork Period table so the saved default
    can never point at a missing value. The four-week fallback in Cowork Period
    Weeks stays as the safety net.
-3. The Optimisation KPI row mixed figures that matched nothing else on the
-   page. It is now four cards that add up and tie to "Financial impact by
-   action": unused seats + oversized seats + upgrades (a cost) = net saving.
-   Each $/mo value carries its seat count underneath. Licensed but Inactive
-   is no longer shown; its description now says what it actually counts.
+3. The Optimisation KPI row now has four reconciling cards, each with a seat
+   count. The feedback variant labels them as modeled limit changes at the PAYG
+   rate, not savings. The default retains the older template labels until
+   those templates are updated.
 
 Every edit is idempotent. Running it twice changes nothing the second time.
+Use --feedback for templates with the reviewed limit-change wording; the
+default retains the existing contract for templates not yet updated.
 """
 import copy
 import json
@@ -207,6 +208,27 @@ recommendation.
 """),
 }
 
+FEEDBACK_UNUSED_DESCRIPTION = lines("""
+Monthly value of the recorded limits to review: "1. Review - no weekly rows in supplied history" and
+"2. Review - no use in current snapshot", each at its full limit. The same
+branches as Action Value /mo, so it ties to the Modeled limit change table.
+""")
+FEEDBACK_DESCRIPTIONS = {
+    "Licensed but Inactive": lines("""
+Licensed people with no consumption in the four-week billing snapshot - a
+licence-management question rather than a capacity one. Not "never used":
+someone idle this period may have used Cowork earlier. Seat Action's
+"1. Review - no weekly rows in supplied history" counts people without weekly rows in the supplied export.
+"""),
+    "Right-Size Net $": lines("""
+Modeled monthly limit reductions after review and
+downsizes, less limit increases, valued at the PAYG rate. Not an invoice. Equals
+Unused Seats $ + Oversized Seats $ + Upgrade Seats $. Prefer it to
+Reclaimable $, which resizes every seat and is not scoped to the
+recommendation.
+"""),
+}
+
 PERIOD_EXPRESSION = lines("""
 // The window options are built from the history that is actually loaded,
 // so the labels cannot drift from the data. "Current period (4 weeks)" is
@@ -258,6 +280,12 @@ OPT_TILES = (
     ("Upgrade Seats $", "Upgrades (cost) /mo", "Upgrade Seats"),
     ("Right-Size Net $", "Net saving /mo", "Actioned Seats"),
 )
+FEEDBACK_OPT_TILES = (
+    ("Unused Seats $", "Review /mo", "Unused Seats"),
+    ("Oversized Seats $", "Downsize /mo", "Oversized Seats"),
+    ("Upgrade Seats $", "Upgrade /mo", "Upgrade Seats"),
+    ("Right-Size Net $", "Net limit change /mo", "Actioned Seats"),
+)
 SEAT_TITLES = {
     "Unused Seats": "Seats",
     "Oversized Seats": "Seats",
@@ -299,7 +327,7 @@ def named(items, label):
     return {item.get("name"): item for item in items}
 
 
-def patch_model(bim):
+def patch_model(bim, feedback=False):
     """Patch a model.bim / DataModelSchema document in place."""
     changes = []
     tables = named(bim["model"]["tables"], "tables")
@@ -318,6 +346,8 @@ def patch_model(bim):
                 f"Action Value /mo no longer has branch {group}")
 
     for name, spec in NEW_MEASURES.items():
+        if feedback and name == "Unused Seats $":
+            spec = {**spec, "description": FEEDBACK_UNUSED_DESCRIPTION}
         target = measures.get(name)
         if target is None:
             target = {"name": name, **copy.deepcopy(spec)}
@@ -330,7 +360,8 @@ def patch_model(bim):
                 target[key] = copy.deepcopy(value)
                 changes.append(f"{name}: {key}")
 
-    for name, description in UPDATED_DESCRIPTIONS.items():
+    descriptions = FEEDBACK_DESCRIPTIONS if feedback else UPDATED_DESCRIPTIONS
+    for name, description in descriptions.items():
         if measures[name].get("description") != description:
             measures[name]["description"] = description
             changes.append(f"{name}: description")
@@ -365,16 +396,17 @@ def patch_exec_card(document):
     return [f"{EXEC_CARD}: Weekly active -> Avg weekly active"]
 
 
-def opt_projections():
-    return [projection(BILLING, value, label, label) for value, label, _ in OPT_TILES]
+def opt_projections(feedback=False):
+    tiles = FEEDBACK_OPT_TILES if feedback else OPT_TILES
+    return [projection(BILLING, value, label, label) for value, label, _ in tiles]
 
 
-def patch_opt_card(document):
+def patch_opt_card(document, feedback=False):
     visual = document["visual"]
     require(visual.get("visualType") == "cardVisual", f"{OPT_CARD}: not a cardVisual")
     changes = []
     data = visual["query"]["queryState"]["Data"]
-    wanted = opt_projections()
+    wanted = opt_projections(feedback)
     if data.get("projections") != wanted:
         data["projections"] = wanted
         changes.append(f"{OPT_CARD}: four reconciling tiles")
@@ -461,10 +493,10 @@ def patch_period_slicer(document, label):
     return changes
 
 
-def patch_report(definition):
+def patch_report(definition, feedback=False):
     changes = []
     targets = [((EXEC_PAGE, EXEC_CARD), patch_exec_card),
-               ((OPT_PAGE, OPT_CARD), patch_opt_card)]
+               ((OPT_PAGE, OPT_CARD), lambda d: patch_opt_card(d, feedback))]
     targets += [(slicer, lambda d, s=slicer: patch_period_slicer(d, "/".join(s)))
                 for slicer in PERIOD_SLICERS]
     for (page, visual), patch in targets:
@@ -479,26 +511,28 @@ def patch_report(definition):
     return changes
 
 
-def patch_project(project):
+def patch_project(project, feedback=False):
     project = Path(project)
     models = list(project.glob("*.SemanticModel/model.bim"))
     reports = list(project.glob("*.Report/definition"))
     require(len(models) == 1 and len(reports) == 1,
             f"{project}: expected one model.bim and one report definition")
     bim = json.loads(models[0].read_text(encoding="utf-8-sig"))
-    changes = patch_model(bim)
+    changes = patch_model(bim, feedback)
     if changes:
         models[0].write_text(json.dumps(bim, indent=2, ensure_ascii=False) + "\n",
                              encoding="utf-8", newline="\n")
-    return changes + patch_report(reports[0])
+    return changes + patch_report(reports[0], feedback)
 
 
 def main(argv):
-    if len(argv) != 1:
+    feedback = "--feedback" in argv
+    args = [arg for arg in argv if arg != "--feedback"]
+    if len(args) != 1 or len(argv) != len(args) + int(feedback):
         print(__doc__)
         return 2
     try:
-        changes = patch_project(argv[0])
+        changes = patch_project(args[0], feedback)
     except PatchError as error:
         print(f"FAIL {error}")
         return 1

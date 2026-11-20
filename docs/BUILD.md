@@ -246,6 +246,12 @@ python docs\scripts\check_cowork_kpi_cards.py
 Repeat for every variant with its own profile. `check_cowork_kpi_cards.py` replays the same patch
 against every shipped template and fails if anything would still change.
 
+For Local CSV, add `--feedback` to `fix_cowork_kpi_cards.py`: its reviewed labels describe
+modeled limit changes at the PAYG rate, not cash savings. Other variants retain their existing
+wording until separately validated. The Tasks row must show all five KPIs, including the estimated
+monetary equivalent. Before export, restore Typical and no hourly rate (unfiltered or explicit
+`(Blank)`), then fresh-open the exported template and refresh with synthetic sample data.
+
 ### Chargeback page
 
 The chargeback model (four optional `SpendingPolicy` billing columns and the `Allocated …`

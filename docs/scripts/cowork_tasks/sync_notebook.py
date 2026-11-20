@@ -149,7 +149,7 @@ No task file means existing task history is left unchanged. Empty task exports d
 Missing optional credits remain null; malformed numbers, dates or populated duplicate keys fail.
 Task counts are reported activity, not successful completions. No value assumptions are applied during ingestion.
 """)
-    path.write_text(json.dumps(book, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(book, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
