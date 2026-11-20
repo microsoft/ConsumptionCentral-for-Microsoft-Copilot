@@ -349,9 +349,11 @@ class RevertAndRerun(unittest.TestCase):
     def assertSameTemplate(self, rebuilt, raw):
         shipped, again = F.Package(raw), F.Package(rebuilt)
         self.assertEqual(list(again.infos), list(shipped.infos))
+        # Desktop can reorder JSON keys; every model value must still match.
+        self.assertEqual(parts(rebuilt), parts(raw))
         for member in shipped.infos:
-            self.assertTrue(again.contents[member] == shipped.contents[member], member)
             if member not in (F.SCHEMA, F.UNAPPLIED):
+                self.assertTrue(again.contents[member] == shipped.contents[member], member)
                 self.assertTrue(again.locals[member] == shipped.locals[member], member)
 
     def test_undoing_the_change_and_running_again_gives_the_shipped_template(self):
@@ -520,7 +522,11 @@ class CommandLine(unittest.TestCase):
                 self.assertTrue(path.read_bytes() == stale)
                 self.assertEqual(self.run_main(F.main, [])[0], 0)
                 written = path.read_bytes()
-                self.assertTrue(F.Package(written).contents == F.Package(raw).contents)
+                self.assertEqual(parts(written), parts(raw))
+                written_parts = F.Package(written).contents
+                for member, content in F.Package(raw).contents.items():
+                    if member not in (F.SCHEMA, F.UNAPPLIED):
+                        self.assertEqual(written_parts[member], content, member)
                 self.assertEqual(self.run_main(F.main, ["--check"])[0], 0)
                 self.assertEqual(self.run_main(F.main, [])[0], 0)
                 self.assertTrue(path.read_bytes() == written)
@@ -530,7 +536,7 @@ class CommandLine(unittest.TestCase):
                 code, output = self.run_main(F.main, [])
                 self.assertEqual(code, 1)
                 self.assertIn("missing template", output)
-                self.assertTrue(F.Package(path.read_bytes()).contents == F.Package(raw).contents)
+                self.assertTrue(F.Package(path.read_bytes()).contents == written_parts)
             self.assertEqual([entry.name for entry in Path(folder).iterdir()], ["template.pbit"])
 
     def test_the_check_names_what_is_missing(self):
