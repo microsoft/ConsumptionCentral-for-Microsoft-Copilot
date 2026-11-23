@@ -148,9 +148,10 @@ on those days stay, and where two files share a key the newer file wins.
 > **Usage reports preview (separate opt-in).** A completed report pair replaces API rows in its
 > date window, preserving manual export precedence and older history. The billing report supplies
 > prepaid and PAYG amounts rather than the legacy flow's estimated split. The feature report
-> retains `product`, `resource_type` and `scenario_name` in versioned `studio_report_agent_daily`
+> retains `product`, `resource_type`, optional `harness_type` and `scenario_name` in versioned `studio_report_agent_daily`
 > rows; the report-facing monthly agent table is rebuilt from the prevailing preview and legacy
-> daily rows. It retains product but does not expose resource type. Preview rows can be for other
+> daily rows. It retains product but does not expose resource or harness type. Missing types stay
+> null; they are not inferred from product or resource name. Preview rows can be for other
 > products and resources, not only Studio agents; the existing report labels them as agents. The
 > billing report has no product dimension, so its totals cannot be isolated to Studio. Preview
 > reports do not supply user rows. The route and connector have not been tenant-validated.

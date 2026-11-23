@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { MANIFEST_FILE } from '../src/catalog.js';
-import { APP_BUILD, DEFAULT_SOURCE_DIR, PAX_SCRIPTS, appDistOf, readJson } from '../src/sources.js';
+import { APP_BUILD, CREDIT_SCRIPTS, DEFAULT_SOURCE_DIR, PAX_SCRIPTS, appDistOf, readJson } from '../src/sources.js';
 import {
   APP_SAMPLE_MANIFEST, MANAGED_CLI_DIR, MAX_NATIVE_PATH, MAX_PAYLOAD_PATH, MIRROR_REGISTRY, PUBLIC_REGISTRY, appSampleFiles, fileVersion,
   installerFile, leakedIds, localIds, msalRuntimeArch, paxQueryFiles, payloadId, prunable, publicRegistry, sourceFiles, tooLong,
@@ -25,7 +25,7 @@ test('packaging: ships every template the installer reads, and they exist', () =
   assert.ok(files.includes('3. Viva Direct/SourceFiles.SharePoint.m'));
   // Never deployed, so never shipped.
   assert.ok(!files.some((f) => f.endsWith('/Ingest_Studio_Consumption.ipynb')));
-  assert.ok(!files.some((f) => f.startsWith('1. ')));
+  assert.deepEqual(files.filter((f) => f.startsWith('1. ')), [...CREDIT_SCRIPTS], 'only the shared credit collector and helper ship from Local CSV');
   // The helper notebooks ship with the installer code, not the source folder.
   assert.ok(!files.some((f) => f.includes('ConsumptionCentral_')));
   assert.ok(installerFile('assets/notebooks/ConsumptionCentral_Refresh_Model.ipynb'));

@@ -222,6 +222,19 @@ test('studioReportsFlowDefinition: polls each operation, validates completion, t
   }
 });
 
+test('studioReportsFlowDefinition: the paired report can be written to SharePoint', () => {
+  const target = { endpoint: '', sharePoint: { siteUrl: 'https://example.sharepoint.com/sites/test', folder: '/sites/test/Shared Documents/Reports' } };
+  const def = studioReportsFlowDefinition(target, SCHEDULE);
+  assertWellFormed(def);
+  assert.deepEqual(connectorsUsed(def), [CONNECTORS.powerPlatformAdmin.name, CONNECTORS.sharePoint.name].sort());
+  const save = def.actions.Save_reports;
+  assert.deepEqual(save.runAfter, { Package_reports: ['Succeeded'] });
+  assert.equal(save.inputs.host.operationId, 'CreateFile');
+  assert.equal(save.inputs.parameters.folderPath, `/sites/test/Shared Documents/Reports/${STUDIO_DIR}`);
+  assert.match(save.inputs.parameters.name, /^StudioReportsPreview_/);
+  assert.match(save.inputs.parameters.body, /string\(outputs\('Package_reports'\)\)/);
+});
+
 test('nameByConnection: each action on an HTTP with Microsoft Entra ID connection says which, references follow, and no Set variable is empty', () => {
   /** @param {any} def @param {{ endpoint: string }} t @param {string} storage */
   const check = (def, t, storage) => {

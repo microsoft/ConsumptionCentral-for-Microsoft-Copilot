@@ -3414,6 +3414,7 @@ class PreviewReports(unittest.TestCase):
         ], [self.billing(day)])
         self.preview()
         detail = rows_of(self.spark, "studio_report_agent_daily", usage_date=day)
+        self.assertTrue(all(r["harness_type"] is None for r in detail))
         self.assertEqual({(r["product"], r["resource_type"], r["billed_credit"]) for r in detail},
                          {("Copilot Studio", "Example agent", 5.0),
                           ("Another product", "Example non-agent", 8.0),
@@ -3439,6 +3440,21 @@ class PreviewReports(unittest.TestCase):
         rows = rows_of(self.spark, AGENT_MONTHLY, agent_id=HELP_DESK.id, product="AI Builder", scenario_name="Assist")
         self.assertEqual([r["billed_credit"] for r in rows], [8.0])
         self.assertTrue(rows_of(self.spark, AGENT_MONTHLY, agent_id=HELP_DESK.id, product="Copilot Studio"))
+
+    def test_preview_preserves_optional_harness_without_inferring_missing_types(self):
+        day = self.DAY - timedelta(2)
+        feature = csv_text(self.FEATURE_HEADER + ("HarnessType",), [
+            self.feature(day, billed=5.0, resource_type=None) + ("Example harness",),
+            self.feature(day, billed=8.0, resource_type=None) + ("Another harness",),
+            self.feature(day, billed=3.0, resource_type=None) + ("",),
+        ])
+        self.package([], [self.billing(day)], feature_payload=feature)
+        self.preview()
+        detail = rows_of(self.spark, "studio_report_agent_daily", usage_date=day)
+        self.assertEqual({(r["resource_type"], r["harness_type"], r["billed_credit"]) for r in detail},
+                         {(None, "Example harness", 5.0), (None, "Another harness", 8.0), (None, None, 3.0)})
+        daily = rows_of(self.spark, AGENT_DAILY, usage_date=day, agent_id=HELP_DESK.id)
+        self.assertEqual([r["billed_credit"] for r in daily], [16.0])
 
     def test_preview_window_crossing_months_keeps_each_month_separate(self):
         self.DAY = date(2026, 7, 4)

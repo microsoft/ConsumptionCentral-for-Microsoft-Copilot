@@ -513,6 +513,12 @@ def validate_measure_shape(measure):
     require(isinstance(expression, (str, list)), f"{measure['name']}: invalid expression shape")
 
 
+from fix_studio_resource_wording import repaired as resource_wording
+
+for _name in ("Studio Forecast Note", "Studio Forecast Summary"):
+    UPDATED_MEASURES[_name]["expression"] = resource_wording(
+        "Credit Consumption (Tenant)", _name, source_text(UPDATED_MEASURES[_name]["expression"]))
+
 for _measure in list(UPDATED_MEASURES.values()) + list(NEW_MEASURES.values()):
     validate_measure_shape(_measure)
 

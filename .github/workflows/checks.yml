@@ -172,6 +172,16 @@ jobs:
           python docs/scripts/test_studio_notebook_writes.py
           python docs/scripts/test_studio_consumption_writes.py
 
+      - name: Optional credit API sources and truthful Studio resource measures
+        run: |
+          python docs/scripts/check_credit_api_tables.py
+          python docs/scripts/check_studio_report_tables.py
+          python docs/scripts/check_studio_resource_wording.py
+          python docs/scripts/test_credit_api_tables.py
+          python docs/scripts/test_studio_credit_api_views.py
+          python docs/scripts/test_copilot_cost_notebook.py
+          python "1. Local CSV/test_pull_copilot_cost_management.py"
+
       - name: Local Azure collector regression tests
         run: python "1. Local CSV/test_pull_azure_ai.py"
 

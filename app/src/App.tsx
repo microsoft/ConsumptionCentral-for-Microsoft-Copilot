@@ -5,6 +5,7 @@ import { AzureHealth, AzureRecon, AzureSpend } from './pages/Azure'
 import { CoworkConsumption, CoworkCost, CoworkForecast, CoworkOptimization } from './pages/Cowork'
 import { CoworkChargeback } from './pages/Chargeback'
 import { CoworkTasks } from './pages/Tasks'
+import { CostManagement } from './pages/CostManagement'
 import { GitHubConsumption, GitHubCost, GitHubForecast, GitHubOptimization } from './pages/GitHub'
 import { Guide } from './pages/Guide'
 import { Overview } from './pages/Overview'
@@ -27,6 +28,7 @@ function Page({ route }: { route: Route }) {
       if (view === 'cost') return <CoworkCost />
       if (view === 'chargeback') return <CoworkChargeback />
       if (view === 'tasks') return <CoworkTasks />
+      if (view === 'credit-aggregates') return <CostManagement />
       if (view === 'optimization') return <CoworkOptimization />
       if (view === 'forecast') return <CoworkForecast />
       return <CoworkConsumption />
@@ -53,7 +55,7 @@ function Page({ route }: { route: Route }) {
 function viewSources({ tab, view }: Route): SourceKind[] | null {
   switch (tab.id) {
     case 'cowork':
-      return view === 'tasks' ? null : ['coworkMetrics']
+      return view === 'tasks' || view === 'credit-aggregates' ? null : ['coworkMetrics']
     case 'studio':
       return ['studioTenant', 'studioAgent', 'studioUser']
     case 'github':

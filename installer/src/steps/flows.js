@@ -40,6 +40,7 @@ import { c } from '../ui.js';
 import { PRODUCT_ID, PRODUCT_NAME } from '../product.js';
 import { UPLOAD_DIR } from '../uploads.js';
 import { ensureWorkspaceRole } from './model.js';
+import { isPax } from '../target.js';
 
 /** @typedef {import('../install.js').Ctx} Ctx */
 /** @typedef {'studio' | 'studioReports'} FlowKind */
@@ -62,7 +63,7 @@ const flowsChosen = (config) => {
 };
 
 /** The app identity reads its secret from Key Vault, which notebook mode doesn't use. @param {import('../config.js').InstallConfig} config */
-const appWithoutVault = (config) => flowIdentity(config) === 'app' && secretMode(config) === 'notebook';
+const appWithoutVault = (config) => !isPax(config) && flowIdentity(config) === 'app' && secretMode(config) === 'notebook';
 
 /** @param {import('../config.js').InstallConfig} config @returns {FlowKind[]} */
 export const flowsWanted = (config) => (appWithoutVault(config) ? [] : flowsChosen(config));
@@ -155,14 +156,21 @@ async function pickFlowEnvironment(ctx) {
  * @returns {Record<FlowKind, { name: string, description: string, definition: any }>}
  */
 export function flowDefinitions(config, tenantId) {
-  const identity = flowIdentity(config);
+  const pax = isPax(config);
+  const sp = config.sharePoint;
+  if (pax && !sp) throw new Error('Choose a SharePoint folder before creating the credit reports flows.');
+  const identity = pax ? 'user' : flowIdentity(config);
   /** @type {import('../transform/flows.js').FlowTarget} */
   const t = {
     identity,
     endpoint: oneLakeEndpoint(config.fabric.workspaceId ?? '', config.fabric.lakehouseId ?? ''),
+    ...(pax && sp ? {
+      sharePoint: { siteUrl: sp.siteUrl, folder: decodeURIComponent(new URL(sp.folderUrl).pathname).slice(decodeURIComponent(new URL(sp.siteUrl).pathname).length) },
+      dropDir: '',
+    } : {}),
     ...(identity === 'app' ? { tenantId, clientId: config.app.appId ?? '', secretName: config.keyVault.secretName } : {}),
   };
-  const where = `${config.fabric.lakehouseName ?? 'the Lakehouse'} > ${UPLOAD_DIR}`;
+  const where = pax ? 'the selected SharePoint folder' : `${config.fabric.lakehouseName ?? 'the Lakehouse'} > ${UPLOAD_DIR}`;
   const schedule = { time: config.schedule.time, timeZone: config.schedule.timeZone };
   return {
     studio: {
@@ -172,7 +180,7 @@ export function flowDefinitions(config, tenantId) {
     },
     studioReports: {
       name: STUDIO_REPORTS_FLOW_NAME,
-      description: `Saves completed Copilot Studio preview report pairs to ${config.fabric.lakehouseName ?? 'the Lakehouse'} > Files/landing/studio. The existing credits flow remains the fallback.`,
+      description: `Saves completed Copilot Studio preview report pairs to ${pax ? 'the selected SharePoint folder' : config.fabric.lakehouseName ?? 'the Lakehouse'} > Files/landing/studio. The existing credits flow remains the fallback.`,
       definition: nameByConnection(studioReportsFlowDefinition(t, schedule), t),
     },
   };
@@ -220,7 +228,7 @@ export async function ensureFlows(ctx) {
   const kinds = flowsWanted(config);
   if (!kinds.length) return;
   const up = config.uploads;
-  if (flowIdentity(config) === 'app') {
+  if (!isPax(config) && flowIdentity(config) === 'app') {
     try {
       await ensureWorkspaceRole(ctx, 'Contributor', 'so the Power Automate flows can write to the drop folder');
     } catch (err) {
@@ -651,8 +659,9 @@ export function connectionSteps(config, kind) {
     const name = ownedConnectionName(ref);
     return made[ref] && name ? ` Or pick the connection "${name}" the installer made, once it's signed in to.` : '';
   };
-  const storage =
-    (flowIdentity(config) === 'app'
+  const storage = isPax(config)
+    ? `${CONNECTORS.sharePoint.label}: sign in with write access to the selected SharePoint folder. Pick it on every file action.`
+    : (flowIdentity(config) === 'app'
       ? `${CONNECTORS.keyVault.label}: vault ${config.keyVault.name ?? 'your Key Vault'}.`
       : `${CONNECTORS.storage.label}: Base Resource URL ${ONELAKE_DFS}, Resource URI ${STORAGE_RESOURCE}. Sign in as someone with Contributor or higher on ${workspace}. Its actions end in "via OneLake".`) +
     (flowIdentity(config) === 'app' ? '' : orPick(CONNECTORS.storage.name));

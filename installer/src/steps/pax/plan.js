@@ -23,6 +23,8 @@ import { askAppId, askMoreHistory, blockedSettings, HISTORY_CHOICES, keepAwake, 
 import { checkHost, paxHostOf, PAX_RELEASE, secretStored, SEED_DAYS, TASK_AT, userInfoMode } from './local.js';
 import { refreshTimes, workspaceItems } from './publish.js';
 import { describeFolder, folderConfig, folderValidator, parseSharePointFolder, SITE_ADMIN } from './site.js';
+import { dataSource } from '../../uploads.js';
+import { planFlows } from '../flows.js';
 
 /** @typedef {import('../../install.js').Ctx} Ctx */
 /** @typedef {import('../../config.js').InstallConfig} InstallConfig */
@@ -47,7 +49,10 @@ const LOCAL_FOLDER = `%LOCALAPPDATA%\\${PRODUCT.home}\\${PRODUCT.pax.folder}`;
  * @param {InstallConfig} config
  */
 export const paxCollectedLabels = (config) =>
-  userInfoMode() ? ['users and their departments, as the org file'] : ['Copilot interactions', 'users', ...(config.pax?.agent365 ? ['Agent 365'] : [])];
+  [
+    ...(userInfoMode() ? ['users and their departments, as the org file'] : ['Copilot interactions', 'users', ...(config.pax?.agent365 ? ['Agent 365'] : [])]),
+    ...(config.dataSources.costManagement === 'api' ? ['Graph Copilot credit aggregates (beta)'] : []),
+  ];
 
 /**
  * What the refresh collects, in words.
@@ -78,7 +83,7 @@ export async function paxPreflight(ctx) {
   const hostProblem = paxHostProblem(host);
   if (hostProblem) throw new Error(hostProblem);
   // Checking this PC runs PowerShell a few times, so it starts now and is read after the tenant.
-  const pcCheck = checkHost(host).then(
+  const pcCheck = checkHost(host, { python: !userInfoMode() || config.dataSources.costManagement === 'api' }).then(
     (check) => ({ check }),
     (/** @type {unknown} */ error) => ({ error }),
   );
@@ -296,6 +301,21 @@ export async function paxPlan(ctx, pre, section) {
     if (sm.enabled || paxAppWanted(ctx)) await planAccess(ctx);
   }
 
+  if (editing('sources')) {
+    for (const id of advanced() ? /** @type {const} */ (['costManagement', 'studioCredits']) : []) {
+      const source = dataSource(id);
+      config.dataSources[id] = await ui.select(source.label, source.modes.map((mode) => ({
+        name: source.modeLabels?.[mode] ?? mode,
+        value: mode,
+        description: source.hints?.[mode],
+      })), config.dataSources[id]);
+    }
+    await planFlows(ctx);
+    if (config.dataSources.costManagement === 'api') {
+      const checked = await checkHost(paxHostOf(ctx), { python: true });
+      if (checked.problems.length) throw new Error(checked.problems.map((p) => `${p.title}. ${p.fix}`).join('\n'));
+    }
+  }
   // The report's sources: the Viva Insights query and, behind Advanced settings, the prices. The app
   // reads neither, so there's nothing to ask without the report.
   if (editing('sources') && sm.enabled && sources.paxModelFile) {

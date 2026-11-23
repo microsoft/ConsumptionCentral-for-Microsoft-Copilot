@@ -28,6 +28,7 @@ import {
   confirmFolderAccess, describeFolder, ensureSiteGrant, removeRetiredGrants, removeSiteGrant,
 } from './site.js';
 import { paxUpload } from './upload.js';
+import { ensureFlows, flowsSummary } from '../flows.js';
 
 /** @typedef {import('../../install.js').Ctx} Ctx */
 /** @typedef {Ctx['config']} Config */
@@ -219,6 +220,9 @@ async function prepareSharePoint(ctx, consented) {
   const { pax } = paxOf(config);
   if (!sources.paxScripts) {
     throw new Error(`This copy of the ${PRODUCT.installer} is missing the PAX refresh scripts. Download it again, then run it.`);
+  }
+  if (config.dataSources.costManagement === 'api' && !sources.paxScripts.some((s) => s.endsWith('pull_copilot_cost_management.py'))) {
+    throw new Error('This installer is missing the Graph credit collector. Download the current complete installer before enabling it.');
   }
   const host = paxHostOf(ctx);
   pax.scriptsHash = writeScripts(host, sources.paxScripts);
@@ -519,6 +523,8 @@ export async function paxInstall(ctx, pre, { wait = true } = {}) {
   await ensureTaskSecret(ctx);
   step('SharePoint access');
   const reachable = await prepareSharePoint(ctx, consented);
+  await ensureFlows(ctx);
+  flowsSummary(ctx);
   step('Scheduled refresh');
   await ensureTask(ctx);
 

@@ -38,6 +38,7 @@ export const TABS: TabDef[] = [
       { id: 'cost', label: 'Cost', intro: 'What does it cost: prepaid, pay-as-you-go and blended?' },
       { id: 'chargeback', label: 'Chargeback', intro: 'What should each cost centre or department be charged?' },
       { id: 'tasks', label: 'Tasks', intro: 'Task mix, credit intensity and estimated work equivalent.' },
+      { id: 'credit-aggregates', label: 'Credit aggregates', intro: 'Graph beta service usage, funding and tenant balance as separate views.' },
       { id: 'optimization', label: 'Optimization', intro: 'How do we optimize credit capacity and configuration?' },
       { id: 'forecast', label: 'Forecast', intro: 'Where is demand heading, and how confident are we?' },
     ],
@@ -45,7 +46,7 @@ export const TABS: TabDef[] = [
   {
     id: 'studio',
     label: 'Copilot Studio',
-    intro: 'Credits consumed by Copilot Studio agents: per tenant, per agent and per user.',
+    intro: 'Credit consumption by tenant, resource and user. Resource data may include other products.',
     views: FOUR('Copilot Studio'),
   },
   {

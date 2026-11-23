@@ -84,6 +84,18 @@ is not displayed by the existing report. The billing report has no product field
 cannot be isolated to Studio. In a notebook configured by hand, `READ_REPORT_API_FILES` is off
 by default; enable it only after setting up the separate preview flow. Its connector/download and
 Fabric execution have not been validated in a tenant.
+For manual setup, see the [preview flow instructions](flows/STUDIO-REPORTS-MANUAL.md).
+
+For the separate Graph Cost Management beta, import the [preview notebook](notebooks/Ingest_Copilot_Cost_Management.ipynb), attach the
+Lakehouse, and configure its tenant and client IDs and Key Vault secret name. Grant the app
+`CopilotCostManagement.Read.All` **application** permission with administrator consent. The
+notebook's execution identity, including its pipeline connection, needs permission to read that
+secret and write to the Lakehouse. Run the notebook before any dependent model refresh and stop
+refresh if it fails. Its service, funding and balance tables are separate credit views and must
+not be added together. The notebook and application authorization have not been tenant-validated,
+and the existing report does not yet consume these tables. Graph beta is not supported for
+production. The local CSV collector is generated into this notebook by
+`docs/scripts/sync_copilot_cost_notebook.py`.
 
 There is also an `Ingest_Studio_Consumption` notebook in that folder which reads
 the Power Platform licensing API instead of the export. **A scheduled Fabric

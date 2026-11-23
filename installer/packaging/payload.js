@@ -12,6 +12,7 @@
 import { posix } from 'node:path';
 import { MANIFEST_FILE, resolveNotebooks } from '../src/catalog.js';
 import { EXE_NAME, PRODUCT } from '../src/product.js';
+import { CREDIT_SCRIPTS } from '../src/sources.js';
 
 export { EXE_NAME };
 /** The source folder (the repo root) inside the payload. */
@@ -54,6 +55,7 @@ export function sourceFiles(manifest) {
   if (!viva) throw new Error(`${MANIFEST_FILE} has no templates.vivaDirect, the PAX route's template.`);
   return [
     MANIFEST_FILE,
+    ...CREDIT_SCRIPTS,
     ...resolveNotebooks(manifest).filter((nb) => !nb.asset).map((nb) => posix.normalize(slash(nb.path))),
     manifest.templates.fabric.path,
     viva,

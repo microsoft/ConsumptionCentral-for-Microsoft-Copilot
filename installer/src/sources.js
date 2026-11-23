@@ -17,6 +17,7 @@ export const DEFAULT_SOURCE_DIR = resolve(INSTALLER_ROOT, '..');
 
 /** The PAX scripts the scheduled refresh runs, beside its own in the runner folder. */
 export const PAX_SCRIPTS = Object.freeze(['Run-PAX-AIBV.ps1', 'Upload-Rollups-SharePoint.ps1']);
+export const CREDIT_SCRIPTS = Object.freeze(['1. Local CSV/pull_copilot_cost_management.py', '1. Local CSV/pull_azure_ai.py']);
 
 /**
  * The app's build, which the PAX route deploys as a Copilot managed app: this folder in the app
@@ -68,6 +69,8 @@ export function loadSources(dir = DEFAULT_SOURCE_DIR) {
   const viva = manifest.templates?.vivaDirect?.path;
   const paxModelFile = viva ? join(root, viva) : undefined;
   const paxScripts = PAX_SCRIPTS.map((s) => join(RUNNER_DIR, s));
+  const creditScripts = CREDIT_SCRIPTS.map((s) => join(root, s));
+  if (creditScripts.every((s) => existsSync(s))) paxScripts.push(...creditScripts);
   const app = appDistOf(manifest);
   const appDist = app ? join(root, app) : undefined;
   return {

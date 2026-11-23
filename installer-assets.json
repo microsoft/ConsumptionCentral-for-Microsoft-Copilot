@@ -17,6 +17,22 @@
   },
   "notebooks": [
     {
+      "key": "costManagement",
+      "name": "Ingest_Copilot_Cost_Management",
+      "path": "2. Fabric/notebooks/Ingest_Copilot_Cost_Management.ipynb",
+      "credentials": false,
+      "values": ["TENANT_ID", "CLIENT_ID", "KEY_VAULT_URL", "CLIENT_SECRET_NAME"],
+      "expressions": [],
+      "patches": ["secret = notebookutils.credentials.getSecret(KEY_VAULT_URL, CLIENT_SECRET_NAME)"],
+      "secret": { "kind": "clientSecret", "name": "consumption-central-azure-client-secret" },
+      "reads": [],
+      "writes": ["copilot_cost_service_daily", "copilot_cost_funding_monthly", "copilot_cost_balance"],
+      "landing": null,
+      "loadSummary": null,
+      "run": "pipeline",
+      "exclusiveGroup": null
+    },
+    {
       "key": "azureAi",
       "name": "Ingest_Azure_AI",
       "path": "2. Fabric/notebooks/Ingest_Azure_AI.ipynb",

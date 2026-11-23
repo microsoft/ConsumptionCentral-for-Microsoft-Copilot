@@ -41,7 +41,7 @@ export const credentialsFor = (config, nb) => nb.credentials && (nb.key !== 'stu
  * @param {InstallConfig} config
  * @param {NotebookInfo} nb
  */
-export const usesSecret = (config, nb) => credentialsFor(config, nb) || nb.key === 'azureAi';
+export const usesSecret = (config, nb) => credentialsFor(config, nb) || nb.key === 'azureAi' || nb.key === 'costManagement';
 
 /**
  * Notebooks that hold or read the GitHub token (Ingest_GitHub_API).
@@ -149,6 +149,15 @@ export function notebookSettings(ctx, nb, opts = {}) {
   /** @type {import('../catalog.js').NotebookPatch[]} */
   const patches = [];
   switch (nb.key) {
+    case 'costManagement':
+      values = {
+        TENANT_ID: user.tenantId,
+        CLIENT_ID: /** @type {string} */ (config.app.appId),
+        KEY_VAULT_URL: inline ? '' : /** @type {string} */ (config.keyVault.uri),
+        CLIENT_SECRET_NAME: inline ? '' : config.keyVault.secretName,
+      };
+      if (inline) patches.push({ find: AZURE_AI_SECRET_FIND, replace: `secret = ${pyString(value)}  # ${INLINE_SECRET_NOTE}` });
+      break;
     case 'uploadRouter':
       values = routerValues(config);
       break;

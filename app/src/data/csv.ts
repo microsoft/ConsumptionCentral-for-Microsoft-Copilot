@@ -2,12 +2,17 @@ import Papa from 'papaparse'
 
 export type Rec = Record<string, string>
 
-export function parseCsv(text: string): { headers: string[]; rows: Rec[] } {
+export function parseCsv(text: string, strict = false): { headers: string[]; rows: Rec[] } {
   const res = Papa.parse<Rec>(text.replace(/^\uFEFF/, ''), {
     header: true,
     skipEmptyLines: true,
     transformHeader: (h) => h.trim(),
   })
+  if (strict && res.errors.length) throw new Error(`CSV parsing failed: ${res.errors[0].message}`)
+  if (strict && (Object.keys(res.meta.renamedHeaders ?? {}).length ||
+      new Set((res.meta.fields ?? []).map(hkey)).size !== (res.meta.fields ?? []).length)) {
+    throw new Error('CSV parsing failed: duplicate column headers.')
+  }
   return { headers: res.meta.fields ?? [], rows: res.data }
 }
 

@@ -260,6 +260,40 @@ win.
 
 ### Copilot Studio usage reports preview
 
+On **No Fabric**, use `--data studioCredits=reports` or choose it in Advanced source settings.
+The installer creates the preview and fallback licensing flows with SharePoint writers and
+prepares their landing/state folders. Sign in to **Power Platform for Admins V2** as a
+Global, Power Platform or Dynamics 365 administrator, and to **SharePoint** with write access.
+The report reads the paired JSON directly into separate **Power Platform Credit Resources**
+and **Power Platform Credit Billing** tables; existing CSV views remain unchanged.
+The app still requires CSV input and does not read paired JSON. Tenant execution remains unverified.
+
+### Graph Copilot credit aggregates (beta)
+
+Use `--data costManagement=api` on either route; default **skip**. Fabric deploys the
+`Ingest_Copilot_Cost_Management` notebook using the existing app registration and Key Vault
+(or the chosen inline notebook secret). The model refresh depends on the notebook succeeding.
+No Fabric reuses the PAX app and Windows Credential Manager secret; the scheduled task
+passes its app-only Graph token to the shared collector through standard input, never
+through command-line arguments. **Python 3.10+ is required only when this source is enabled**.
+
+Grant **CopilotCostManagement.Read.All application permission** and administrator consent
+on the existing app. API authorization must also permit the requests. The collector reloads
+fourteen completed UTC service days and the matching funding months, preserves older CSV/Delta
+history, and replaces the balance. On a new PC it restores cumulative CSVs from SharePoint first.
+Any collection/upload failure fails the refresh; the three files/tables are not one transaction,
+so do not refresh downstream consumers after a failed run.
+
+The three optional **Copilot Credit** model tables and the app's **Credit aggregates** view
+remain separate from product/person facts and from one another. Credits are not currency;
+never sum the overlapping service, funding and balance views. The app reads the three CSV
+files alongside other selected inputs. Manual routes are documented in
+[Local CSV](../1.%20Local%20CSV/README.md) and [Fabric](../2.%20Fabric/README.md).
+Graph beta is not supported for production; app authorization, API collection and service
+rendering remain tenant-unverified.
+
+### Fabric Studio reports configuration
+
 Choose **Connected (reports API preview)** on the Studio card, or use
 `--data studioCredits=reports`. This adds a separate daily flow and keeps the existing Studio
 credits flow running as the fallback. Sign in to the preview flow's **Power Platform for Admins
@@ -444,6 +478,9 @@ in Power BI. To keep your edits, use **File** > **Save a copy** in Power BI firs
 **The pipeline.** `ConsumptionCentral_Pipeline` runs `ConsumptionCentral_Upload_Router` first,
 then the load notebooks for the sources you chose, the Cowork Dataflow before the Viva load, then
 `Refresh_Consumption_Model`, and last `Record_Load_Status`.
+
+The installer leaves an existing disabled pipeline schedule disabled, including when its time
+changes. Enable it explicitly in Fabric when scheduled runs are wanted again.
 
 **One Spark session.** The notebooks share one Spark session instead of each starting its own.
 This keeps a small capacity from being too busy to start them. The installer turns on the

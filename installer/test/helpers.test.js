@@ -288,6 +288,7 @@ test('schedule body starts tomorrow and is compared on what matters', () => {
   const fromApi = { id: 's', enabled: true, owner: {}, configuration: { ...daily.configuration, startDateTime: '2025-01-01T00:00:00' } };
   assert.equal(sameSchedule(fromApi, daily), true, 'start date is ignored');
   assert.equal(sameSchedule({ ...fromApi, enabled: false }, daily), false);
+  assert.equal(sameSchedule({ ...fromApi, enabled: false }, { ...daily, enabled: false }), true);
   assert.equal(sameSchedule({ ...fromApi, configuration: { ...fromApi.configuration, times: ['03:00'] } }, daily), false);
   assert.equal(sameSchedule({ ...fromApi, configuration: { ...weekly.configuration, weekdays: ['Friday'] } }, weekly), false);
   assert.equal(describeSchedule({ frequency: 'weekly', time: '06:30', weekday: 'Monday', timeZone: 'UTC' }), 'every Monday at 06:30 UTC');

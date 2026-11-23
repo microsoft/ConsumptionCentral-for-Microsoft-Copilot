@@ -480,6 +480,8 @@ export function refreshConfig(config, o = {}) {
     files: { ...PRODUCT.pax.files },
     ...(userInfo ? {} : { seedDays: config.pax?.seedDays ?? SEED_DAYS }),
     agent365: !userInfo && !!config.pax?.agent365,
+    costManagement: config.dataSources.costManagement === 'api',
+    studioReports: ['api', 'reports'].includes(config.dataSources.studioCredits),
     repairHint: `To fix it, run the ${PRODUCT.installer}'s repair: ${command('install')}`,
     // A user directory held back for a drop: the command that publishes it, once.
     ...(userInfo ? { acceptDropHint: `If the drop is genuine, run: ${command('run --accept-drop')}` } : {}),

@@ -574,6 +574,8 @@ test('pax local: refreshConfig fills refresh.json from the install record and pr
     paxSha256: PAX_RELEASE.sha256,
     files: { ...PRODUCT.pax.files },
     agent365: false,
+    costManagement: false,
+    studioReports: false,
     repairHint: `To fix it, run the ${PRODUCT.installer}'s repair: ${commandLine('install')}`,
     acceptDropHint: `If the drop is genuine, run: ${commandLine('run --accept-drop')}`,
   });
@@ -677,8 +679,8 @@ test('CC: pax local: the task refreshes the org file alone and replaces it whole
   config.history = { days: 90 };
   const cfg = refreshConfig(config);
   assert.deepEqual(Object.keys(cfg).sort(), [
-    'acceptDropHint', 'agent365', 'clientId', 'credentialTarget', 'files', 'folderPath', 'library', 'mode',
-    'paxReleaseTag', 'paxSha256', 'product', 'repairHint', 'schema', 'siteId', 'tenantId',
+    'acceptDropHint', 'agent365', 'clientId', 'costManagement', 'credentialTarget', 'files', 'folderPath', 'library', 'mode',
+    'paxReleaseTag', 'paxSha256', 'product', 'repairHint', 'schema', 'siteId', 'studioReports', 'tenantId',
   ]);
   assert.equal(cfg.mode, 'userInfo');
   assert.deepEqual(cfg.files, { users: 'entra_org.csv' });

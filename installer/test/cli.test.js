@@ -6,7 +6,7 @@ import { emptyConfig } from '../src/config.js';
 
 const SUB = '00000000-0000-0000-0000-00000000000c';
 const ACCOUNT = '/providers/Microsoft.Billing/billingAccounts/12345678';
-const SOURCES = 'coworkCredits, coworkTasks, studioCredits, github, azureAi, orgData, commercialTerms';
+const SOURCES = 'coworkCredits, coworkTasks, studioCredits, github, azureAi, orgData, commercialTerms, costManagement';
 
 /** Parses as if outside Azure Cloud Shell, whatever this machine's environment. @param {string[]} argv */
 const cli = (...argv) => parseCli(argv, {});

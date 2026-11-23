@@ -5,7 +5,7 @@
  * scheduled task on this PC runs PAX for the org file, which it writes to the SharePoint folder
  * that the report and the app read. Ported from the ValueLens installer's target.js (5910a84).
  */
-import { permissionsFor } from './catalog.js';
+import { COST_MANAGEMENT_READ_ALL, permissionsFor } from './catalog.js';
 import { PRODUCT } from './product.js';
 import { paxHostOf } from './steps/pax/local.js';
 
@@ -42,6 +42,7 @@ export function requiredPermissions(config) {
   return [
     ...new Set([
       ...PAX_PERMISSIONS,
+      ...(config.dataSources.costManagement === 'api' ? [COST_MANAGEMENT_READ_ALL] : []),
       ...(PRODUCT.pax.mode === 'audit' ? PAX_AUDIT_PERMISSIONS : []),
       ...(config.pax?.agent365 ? PAX_AGENT365_PERMISSIONS : []),
     ]),
@@ -57,7 +58,7 @@ export function requiredPermissions(config) {
 export function retiredPermissions(config) {
   if (!isPax(config)) return [];
   const need = new Set(requiredPermissions(config));
-  return [...new Set([...PAX_PERMISSIONS, ...PAX_AUDIT_PERMISSIONS, ...PAX_AGENT365_PERMISSIONS])].filter((p) => !need.has(p)).sort();
+  return [...new Set([...PAX_PERMISSIONS, ...PAX_AUDIT_PERMISSIONS, ...PAX_AGENT365_PERMISSIONS, COST_MANAGEMENT_READ_ALL])].filter((p) => !need.has(p)).sort();
 }
 
 /**
