@@ -184,6 +184,11 @@ test('studioReportsFlowDefinition: polls each operation, validates completion, t
         'body/startDate': "@variables('FromDate')", 'body/endDate': "@variables('ToDate')", 'body/granularity': 'Daily',
       });
       assert.match(actions[`Check_${label}_submission`].expression, /statusCode.*202.*Location.*Retry-After/);
+      assert.match(actions[`Check_${label}_submission`].expression, /statusCode.*200.*Succeeded.*fileName/);
+      assert.equal(actions[`Await_${label}_operation`].expression, `@equals(outputs('Submit_${label}')?['statusCode'], 202)`);
+      assert.deepEqual(actions[`Await_${label}_operation`].runAfter, { [`Check_${label}_submission`]: ['Succeeded'] });
+      assert.deepEqual(Object.keys(actions[`Await_${label}_operation`].actions), [`Initial_${label}_wait`, `Until_${label}_ready`]);
+      assert.deepEqual(actions[`Await_${label}_operation`].else.actions, {});
       assert.match(actions[`Initial_${label}_wait`].inputs.interval.count, /Retry-After/);
       const loop = actions[`Until_${label}_ready`];
       assert.equal(loop.operationOptions, 'FailWhenLimitsReached');
@@ -198,10 +203,13 @@ test('studioReportsFlowDefinition: polls each operation, validates completion, t
       assert.match(actions[`${label}_poll_delay`].inputs.interval.count, /Retry-After/);
       assert.equal(actions[`${label}_invalid_retry`].inputs.value, 'InvalidRetryAfter');
       assert.match(actions[`Check_${label}_result`].expression, /Succeeded.*fileName/);
+      assert.deepEqual(actions[`Check_${label}_result`].runAfter, { [`Await_${label}_operation`]: ['Succeeded'] });
       assert.equal(actions[`Fail_${label}_result`].inputs.runStatus, 'Failed');
       assert.equal(actions[`Download_${label}`].inputs.host.operationId, 'DownloadLicensingReportFile');
       assert.deepEqual(actions[`Download_${label}`].inputs.parameters, {
-        ReportName: report, FileName: `@body('Poll_${label}')?['fileName']`, 'api-version': '2024-10-01',
+        ReportName: report,
+        FileName: `@if(equals(outputs('Submit_${label}')?['statusCode'], 200), body('Submit_${label}')?['fileName'], body('Poll_${label}')?['fileName'])`,
+        'api-version': '2024-10-01',
       });
       assert.deepEqual(actions[`Download_${label}`].runtimeConfiguration.secureData.properties, ['inputs', 'outputs']);
     }

@@ -48,8 +48,10 @@ backticks. Do not put credentials in the flow definition, repository or run-hist
    | `FeatureDetailsPerResource` | `Submit_Feature` | `Poll_Feature` | `Download_Feature` | `FeatureStatus` |
    | `BillingDetailsPerEnvironment` | `Submit_Billing` | `Poll_Billing` | `Download_Billing` | `BillingStatus` |
 
-   For each **Generate Licensing Report**, use API version `2024-10-01`, disable automatic
-   retries, and check that the response is HTTP 202, the `Location` begins with
+   For each **Generate Licensing Report**, use API version `2024-10-01` and disable automatic
+   retries. The connector can wait for generation and return HTTP 200: require `status` =
+   `Succeeded` and a nonempty `fileName`, then download that file without polling. Otherwise,
+   require HTTP 202, check that the `Location` begins with
    `https://api.powerplatform.com/`, its final path segment is nonempty, and `Retry-After` is a
    positive integer. Stop the flow as failed if any check fails. For the Feature report, for
    example, extract the operation ID with:
@@ -58,7 +60,7 @@ backticks. Do not put credentials in the flow definition, repository or run-hist
    last(split(uriPath(coalesce(outputs('Submit_Feature')?['headers']?['Location'],outputs('Submit_Feature')?['headers']?['location'],'')),'/'))
    ```
 
-   Wait the returned `Retry-After` seconds before polling; never substitute zero. In a **Do until**
+   For HTTP 202 only, wait the returned `Retry-After` seconds before polling; never substitute zero. In a **Do until**
    loop, call **Get Licensing Report Operation Status** using the report name, extracted operation
    ID and the same API version. Set the status variable from the response's `status`. While it is
    `Running`, wait the poll response's positive integer `Retry-After` before the next poll; fail if

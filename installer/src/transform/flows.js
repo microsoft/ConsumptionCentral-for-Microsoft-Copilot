@@ -400,10 +400,13 @@ export function studioReportsFlowDefinition(t, schedule) {
     const delay = `${label}_poll_delay`;
     const invalid = `${label}_invalid_retry`;
     const until = `Until_${label}_ready`;
+    const awaitOperation = `Await_${label}_operation`;
     const terminal = `Check_${label}_result`;
     const download = `Download_${label}`;
     const status = `${label}Status`;
     const operationId = `last(split(uriPath(${header(submit, 'Location')}), '/'))`;
+    const completed = `equals(outputs('${submit}')?['statusCode'], 200)`;
+    const fileName = `if(${completed}, body('${submit}')?['fileName'], body('${poll}')?['fileName'])`;
     const submitCall = reportCall('GenerateLicensingReport', {
       ReportName: report,
       'api-version': LICENSING_VERSION,
@@ -415,12 +418,12 @@ export function studioReportsFlowDefinition(t, schedule) {
     actions[check] = {
       type: 'If',
       runAfter: { [submit]: ['Succeeded'] },
-      expression: `@and(equals(outputs('${submit}')?['statusCode'], 202), startsWith(toLower(string(${header(submit, 'Location')})), 'https://api.powerplatform.com/'), not(empty(${operationId})), ${validDelay(submit).slice(1)})`,
+      expression: `@or(and(${completed}, equals(body('${submit}')?['status'], 'Succeeded'), not(empty(body('${submit}')?['fileName']))), and(equals(outputs('${submit}')?['statusCode'], 202), startsWith(toLower(string(${header(submit, 'Location')})), 'https://api.powerplatform.com/'), not(empty(${operationId})), ${validDelay(submit).slice(1)}))`,
       actions: {},
-      else: { actions: { [`Fail_${label}_submission`]: fail('The report submission did not return a valid operation URL and positive Retry-After. Inspect the run before retrying.') } },
+      else: { actions: { [`Fail_${label}_submission`]: fail('The report submission returned neither a completed report nor a valid operation URL and positive Retry-After. Inspect the run before retrying.') } },
     };
     actions[initialWait] = {
-      type: 'Wait', runAfter: { [check]: ['Succeeded'] },
+      type: 'Wait', runAfter: {},
       inputs: { interval: { count: `@int(${header(submit, 'Retry-After')})`, unit: 'Second' } },
     };
     actions[until] = {
@@ -461,15 +464,23 @@ export function studioReportsFlowDefinition(t, schedule) {
         },
       },
     };
+    actions[awaitOperation] = {
+      type: 'If', runAfter: { [check]: ['Succeeded'] },
+      expression: `@equals(outputs('${submit}')?['statusCode'], 202)`,
+      actions: { [initialWait]: actions[initialWait], [until]: actions[until] },
+      else: { actions: {} },
+    };
+    delete actions[initialWait];
+    delete actions[until];
     actions[terminal] = {
-      type: 'If', runAfter: { [until]: ['Succeeded'] },
-      expression: `@and(equals(variables('${status}'), 'Succeeded'), not(empty(body('${poll}')?['fileName'])))`,
+      type: 'If', runAfter: { [awaitOperation]: ['Succeeded'] },
+      expression: `@and(equals(if(${completed}, body('${submit}')?['status'], variables('${status}')), 'Succeeded'), not(empty(${fileName})))`,
       actions: {},
       else: { actions: { [`Fail_${label}_result`]: fail('The report did not succeed with a file name. Inspect the operation before retrying.') } },
     };
     actions[download] = {
       ...reportCall('DownloadLicensingReportFile', {
-        ReportName: report, FileName: `@body('${poll}')?['fileName']`, 'api-version': LICENSING_VERSION,
+        ReportName: report, FileName: `@${fileName}`, 'api-version': LICENSING_VERSION,
       }),
       runAfter: { [terminal]: ['Succeeded'] },
       runtimeConfiguration: SECURE,
