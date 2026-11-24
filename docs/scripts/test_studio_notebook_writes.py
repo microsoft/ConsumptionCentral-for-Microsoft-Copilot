@@ -1015,7 +1015,7 @@ class Table:
         return [tuple(None if i is None else r[i] for i in picks) for r in frame._rows]
 
 
-def save(frame, name, how, replace_where):
+def save(frame, name, how, replace_where, merge_schema=False):
     spark, names = frame._spark, frame.columns
     if len({n.lower() for n in names}) < len(names):
         raise AnalysisError(f"[COLUMN_ALREADY_EXISTS] a write of {names}")
@@ -1029,6 +1029,10 @@ def save(frame, name, how, replace_where):
         return
     if how == "errorifexists":
         raise AnalysisError(f"[TABLE_OR_VIEW_ALREADY_EXISTS] {name}")
+    if merge_schema:
+        additions = [f for f in frame._fields if f.name.lower() not in {n.lower() for n in table.names}]
+        table = Table(table.names + [f.name for f in additions], table.types + [f.dtype for f in additions],
+                      [row + (None,) * len(additions) for row in table.rows])
     rows = table.layout(frame)
     if how == "append" and replace_where is None:
         spark.commit(name, "append", table.with_rows(table.rows + rows))
@@ -1068,9 +1072,12 @@ class Writer:
     def saveAsTable(self, name):
         if self.fmt != "delta":
             raise not_modelled(f"a {self.fmt!r} table")
-        if set(self.options) - {"replacewhere"}:
+        if set(self.options) - {"replacewhere", "mergeschema"}:
             raise not_modelled(f"write options {sorted(self.options)}")
-        save(self.frame, name, self.how, self.options.get("replacewhere"))
+        if "mergeschema" in self.options and self.options["mergeschema"] != "true":
+            raise not_modelled(f"mergeSchema value {self.options['mergeschema']!r}")
+        save(self.frame, name, self.how, self.options.get("replacewhere"),
+             merge_schema=self.options.get("mergeschema") == "true")
 
 
 CSV_OPTIONS = {"header": True, "inferSchema": False, "multiLine": True, "escape": '"', "encoding": "UTF-8"}
@@ -1355,6 +1362,18 @@ TENANT_KEYS = '["usage_date", "environment_id", "billing_plan_id", "capacity_typ
 # between them). They put back the settings and SNAPSHOT_MONTH, read() as it was, merge() and
 # drop_api_rows(), each export cell's merge, then delete, and cell 10's join.
 EXPORT_SWAPS = [
+    ('def replace_rows(',
+     'def replace_rows(',
+     '    """Writes df',
+     'df, table, where, keep=None):\n'),
+    ('def replace_rows(',
+     '    before = spark.table(table).count()\n',
+     '    after = spark.table(table).count()\n',
+     '    rows = df.select(*[F.col(f.name).cast(f.dataType).alias(f.name) for f in spark.table(table).schema])\n'
+     '    if keep is not None:\n'
+     '        rows = rows.unionByName(keep)\n'
+     '    (rows.write.format("delta").mode("overwrite")\n'
+     '         .option("replaceWhere", where).saveAsTable(table))\n'),
     ('LANDING = "Files/landing/studio"',
      'READ_API_FILES = False\n',
      '# Saved by that flow.',
@@ -3470,6 +3489,36 @@ class PreviewReports(unittest.TestCase):
                           product="AI Builder", scenario_name="Assist")
         self.assertEqual({r["snapshot_month"]: r["billed_credit"] for r in monthly},
                          {date(2026, 6, 1): 6.0, date(2026, 7, 1): 14.0})
+
+    def test_preview_upgrades_existing_detail_schema_atomically(self):
+        day = self.DAY - timedelta(2)
+        self.package([self.feature(day)], [self.billing(day)])
+        self.preview()
+        table_name = "studio_report_agent_daily"
+        stored = self.spark.tables[table_name]
+        keep = [i for i, name in enumerate(stored.names) if name != "harness_type"]
+        self.spark.tables[table_name] = Table([stored.names[i] for i in keep],
+                                             [stored.types[i] for i in keep],
+                                             [tuple(row[i] for i in keep) for row in stored.rows])
+        before = self.spark.tables[table_name]
+        feature = csv_text(self.FEATURE_HEADER + ("HarnessType",), [
+            self.feature(day, billed=9.0, resource_type=None) + ("Example harness",),
+        ])
+        self.package([], [self.billing(day)], serial=2, feature_payload=feature)
+        clean = clone(self.spark)
+        completed = run(clean, "new", self.DAY, settings={"READ_REPORT_API_FILES": True})
+        self.assertIsNone(completed.error, completed.tb)
+        detail_write = next(i for i, (_, name, _) in enumerate(completed.writes, 1) if name == table_name)
+        failed = run(self.spark, "new", self.DAY, fail_at=detail_write, settings={"READ_REPORT_API_FILES": True})
+        self.assertIsInstance(failed.error, SimulatedFailure)
+        self.assertIs(self.spark.tables[table_name], before)
+        self.assertNotIn("harness_type", before.names)
+        self.preview()
+        detail = rows_of(self.spark, table_name, harness_type="Example harness")
+        self.assertEqual([(row["billed_credit"], row["resource_type"]) for row in detail], [(9.0, None)])
+        older = rows_of(self.spark, table_name, harness_type=None)
+        self.assertEqual([row["billed_credit"] for row in older], [12.0])
+        self.assertEqual(differences(snapshot(clean, drop=LOADED), snapshot(self.spark, drop=LOADED)), [])
 
     def test_manual_exports_win_and_empty_reports_clear_only_their_window(self):
         day, old_day = self.DAY - timedelta(2), self.DAY - timedelta(15)
