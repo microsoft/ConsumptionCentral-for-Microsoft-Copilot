@@ -14,7 +14,7 @@ preview is unavailable in sovereign clouds.
 2. Create a scheduled cloud flow with trigger concurrency one. Follow steps **2–4** of the
    [manual reports flow](../2.%20Fabric/flows/STUDIO-REPORTS-MANUAL.md#build-the-flow) to
    initialize variables, generate and poll both reports, download them and compose the complete
-   `Package_reports`. Keep retries, secure inputs and outputs, and failure checks as described
+   `Package_reports`. Keep retries, action-specific secure-data settings, and failure checks as described
    there. The OneLake writer in steps 5–6 does not apply.
 3. Add a SharePoint **Create file** action after `Package_reports` succeeds. Select the site and
    destination folder, enter the following filename as an expression, and set file content to

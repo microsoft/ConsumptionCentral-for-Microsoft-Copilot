@@ -76,8 +76,9 @@ backticks. Do not put credentials in the flow definition, repository or run-hist
    ```
 
    The bodies may be CSV text or a connector binary wrapper; preserve them rather than converting
-   or parsing them in the flow. Enable secure inputs and outputs on the download and Compose
-   actions. Never save a partial pair.
+   or parsing them in the flow. Enable secure inputs and outputs on the downloads. Enable only
+   secure inputs on `Package_reports`: Compose does not support an explicit secure-output
+   setting, and securing its inputs also hides its output. Never save a partial pair.
 5. Connect **HTTP with Microsoft Entra ID (preauthorized)** to OneLake, using
    `https://onelake.dfs.fabric.microsoft.com` as the base resource URL and
    `https://storage.azure.com` as the Microsoft Entra resource URI. Sign in with an identity
