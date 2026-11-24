@@ -485,7 +485,7 @@ export function studioReportsFlowDefinition(t, schedule) {
       feature: "@body('Download_Feature')",
       billing: "@body('Download_Billing')",
     },
-    runtimeConfiguration: SECURE,
+    runtimeConfiguration: SECURE_INPUTS,
   };
   Object.assign(actions, saveFile(t, 'Save_reports', STUDIO_DIR, "StudioReportsPreview_@{variables('RunId')}.json",
     "@{string(outputs('Package_reports'))}", { Package_reports: ['Succeeded'] }, 'application/json'));

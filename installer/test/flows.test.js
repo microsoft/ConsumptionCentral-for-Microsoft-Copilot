@@ -209,6 +209,8 @@ test('studioReportsFlowDefinition: polls each operation, validates completion, t
     assert.deepEqual(actions.Package_reports.runAfter, { Download_Billing: ['Succeeded'] });
     assert.equal(actions.Package_reports.inputs.feature, "@body('Download_Feature')");
     assert.equal(actions.Package_reports.inputs.billing, "@body('Download_Billing')");
+    assert.deepEqual(actions.Package_reports.runtimeConfiguration.secureData.properties, ['inputs'],
+      'Compose only supports secure inputs; Power Automate also hides its output');
     assert.deepEqual(actions.Save_reports.runAfter, { Package_reports: ['Succeeded'] });
     assert.match(JSON.stringify(actions.Save_reports), /StudioReportsPreview_/);
     assert.match(JSON.stringify(actions.Save_reports), /Files\/landing\/studio/);
