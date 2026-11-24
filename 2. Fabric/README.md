@@ -82,8 +82,9 @@ represent other products or resources, not just Studio agents; the existing repo
 as agents. Product and resource type are retained in the preview detail table, but resource type
 is not displayed by the existing report. The billing report has no product field, so its totals
 cannot be isolated to Studio. In a notebook configured by hand, `READ_REPORT_API_FILES` is off
-by default; enable it only after setting up the separate preview flow. Its connector/download and
-Fabric execution have not been validated in a tenant.
+by default; enable it only after setting up the separate preview flow. Generation, download,
+paired OneLake publication and Fabric ingestion have been tenant-validated, including a valid
+empty billing report. Semantic-model refresh and rendered live report validation remain outstanding.
 For manual setup, see the [preview flow instructions](flows/STUDIO-REPORTS-MANUAL.md).
 
 For the separate Graph Cost Management beta, import the [preview notebook](notebooks/Ingest_Copilot_Cost_Management.ipynb), attach the
@@ -92,9 +93,10 @@ Lakehouse, and configure its tenant and client IDs and Key Vault secret name. Gr
 notebook's execution identity, including its pipeline connection, needs permission to read that
 secret and write to the Lakehouse. Run the notebook before any dependent model refresh and stop
 refresh if it fails. Its service, funding and balance tables are separate credit views and must
-not be added together. The notebook and application authorization have not been tenant-validated,
-and the existing report does not yet consume these tables. Graph beta is not supported for
-production. The local CSV collector is generated into this notebook by
+not be added together. Application authorization and app-only CSV collection have been tenant-validated;
+the Key Vault-backed notebook has not. The model includes these separate tables, but existing
+report visuals do not display them. Graph beta is not supported for production.
+The local CSV collector is generated into this notebook by
 `docs/scripts/sync_copilot_cost_notebook.py`.
 
 There is also an `Ingest_Studio_Consumption` notebook in that folder which reads

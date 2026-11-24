@@ -50,8 +50,11 @@ Missing files/tables yield empty optional views; invalid supplied data fails ref
 
 These are **credits, not currency or invoice settlement**. Service, funding and balance
 are overlapping views at different grains; never add them together or add them to
-Cowork, Studio or per-person totals. Authorization, actual API responses, service refresh
-and tenant rendering remain to be validated. Graph beta is not supported for production use.
+Cowork, Studio or per-person totals. App-only authorization, collection and file-backed Desktop
+loading have been checked. The service report was empty; nonempty service ingestion, the
+Key Vault-backed notebook, service refresh and live rendering remain unverified.
+The existing report visuals do not display these separate Graph views.
+Graph beta is not supported for production use.
 See Microsoft's [Cost Management overview](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/api/admin-settings/cost-management/overview).
 
 ## 1. Cowork / Work IQ credits — Viva Insights Consumption Dashboard
@@ -342,7 +345,11 @@ treat `ServiceName` as an open list — Consumption Central groups by whatever v
 > were not billed. The reports have no per-user rows; the old flow and optional per-user CSV
 > remain. Manual exports win on their covered scope. This public-preview route requires a
 > delegated Global, Power Platform or Dynamics 365 administrator, is unavailable in sovereign
-> clouds, and has not been validated with a real report download or Fabric tenant.
+> clouds, and requires Power Automate Premium. Generation, download, paired OneLake publication
+> and Fabric ingestion have been tenant-validated, including a valid empty billing report.
+> Desktop has also loaded the downloaded pair into the separate file-backed preview tables;
+> existing Studio page visuals do not display those tables. Service semantic-model refresh and
+> rendered live report validation remain outstanding.
 >
 > **The per-user grain has no documented API.** The installer's flow also reads credits per user from
 > a licensing API route that isn't documented (`/licensing/entitlements/MCSMessages/users`) and saves

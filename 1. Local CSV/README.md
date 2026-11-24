@@ -97,8 +97,10 @@ See [task fields, empty states and editable value assumptions](../docs/COWORK-TA
 The standalone [`pull_copilot_cost_management.py`](pull_copilot_cost_management.py) collects
 service usage by completed UTC day, funding usage by calendar month, and the current tenant
 balance into three separate CSV files. These are overlapping credit views, not currency amounts
-or additive totals. The Local CSV template does **not** yet read them. To inspect them in the
-app, choose all three CSVs along with the other files you want to view through **Change data**
+or additive totals. Place them beneath `DataFolder` to load the template's separate
+**Copilot Credit Service**, **Copilot Credit Funding** and **Copilot Credit Balance** tables.
+Existing report visuals do not display these separate views. To inspect them in the app,
+choose all three CSVs along with the other files you want to view through **Change data**
 (the selection replaces the current dataset), then open **Cowork & Work IQ > Credit aggregates**.
 
 An administrator must grant the app Microsoft Graph **application**
@@ -114,8 +116,9 @@ Run this from the repository root. The optional `--days` range is 1–366. The c
 older daily and monthly history and replaces the balance snapshot. All API requests must
 succeed before publication starts, but the file replacements are not one transaction. If a
 run fails, do not refresh dependent consumers; inspect the error and rerun successfully. The
-collector and app authorization have not been validated in a tenant. Graph beta is not
-supported for production.
+collector and app-only authorization have been tenant-validated, and Desktop has loaded the
+resulting files. The service report was empty in that test; nonempty service ingestion remains
+unverified. Graph beta is not supported for production.
 
 ## Next steps
 

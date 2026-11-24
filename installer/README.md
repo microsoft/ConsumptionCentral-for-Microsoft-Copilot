@@ -266,7 +266,9 @@ prepares their landing/state folders. Sign in to **Power Platform for Admins V2*
 Global, Power Platform or Dynamics 365 administrator, and to **SharePoint** with write access.
 The report reads the paired JSON directly into separate **Power Platform Credit Resources**
 and **Power Platform Credit Billing** tables; existing CSV views remain unchanged.
-The app still requires CSV input and does not read paired JSON. Tenant execution remains unverified.
+These separate tables are not displayed by the existing Studio page visuals. Desktop has loaded
+a downloaded pair; SharePoint flow delivery and live connector execution remain unverified.
+The app still requires CSV input and does not read paired JSON.
 
 ### Graph Copilot credit aggregates (beta)
 
@@ -289,8 +291,10 @@ remain separate from product/person facts and from one another. Credits are not 
 never sum the overlapping service, funding and balance views. The app reads the three CSV
 files alongside other selected inputs. Manual routes are documented in
 [Local CSV](../1.%20Local%20CSV/README.md) and [Fabric](../2.%20Fabric/README.md).
-Graph beta is not supported for production; app authorization, API collection and service
-rendering remain tenant-unverified.
+Graph beta is not supported for production. App authorization and app-only CSV collection
+have been tenant-validated, and Desktop has loaded the resulting CSVs. Nonempty service usage,
+the Key Vault-backed notebook and service rendering remain unverified. Existing report visuals
+do not display the separate Graph tables.
 
 ### Fabric Studio reports configuration
 
@@ -339,9 +343,10 @@ access and retention controls. To opt out, switch Studio back to **Connected (Po
 flow)** or **Upload CSV** in the installer. It attempts to turn off the preview flow (and, for
 CSV-only mode, the existing flow too) and warns if you must do so manually.
 
-**Not tenant-validated:** the generated flow, connector download representation and Fabric
-ingestion have only been exercised offline. Confirm a real downloaded pair and compare it with
-the admin center before relying on the preview.
+**Validation boundary:** generation, connector download, paired OneLake publication and Fabric
+ingestion have been tenant-validated, including a valid empty billing report. Desktop has loaded
+the downloaded files. Service semantic-model refresh and rendered live report validation remain
+outstanding; compare the results with the admin center before relying on the preview.
 
 ### Cowork credits Dataflow
 

@@ -11,6 +11,21 @@ from fix_viva_query_org import Package, PatchError
 
 
 class StudioCreditViews(unittest.TestCase):
+    def test_resource_heading_overrides_implicit_column_caption(self):
+        projection = {
+            "field": {"Column": {"Property": "Agent Name"}},
+            "queryRef": "Agent Bridge.Agent Name",
+            "nativeQueryRef": "Agent Name",
+        }
+        before = {"queryState": {"Rows": {"projections": [projection]}}}
+        after = labels(before)
+        expected = copy.deepcopy(before)
+        expected["queryState"]["Rows"]["projections"][0]["displayName"] = "Resource"
+        self.assertEqual(after, expected)
+        self.assertEqual(labels(after), after)
+        projection["displayName"] = "Custom caption"
+        self.assertEqual(labels(before), before)
+
     def test_resource_labels_preserve_bindings_and_literal_data_values(self):
         before = {"visual": {
             "query": {"queryState": {"Rows": {"projections": [{
@@ -69,6 +84,11 @@ class StudioCreditViews(unittest.TestCase):
                 self.assertIn(f'"{label}"', axis)
             for name in ("Studio Forecast Note", "Studio Forecast Summary", "Studio Headline"):
                 self.assertIn(EMPTY, joined(measure(model, "Credit Consumption (Tenant)", name)["expression"]))
+            note = joined(measure(model, "Settings", "Studio Snapshot Note")["expression"])
+            self.assertIn("User and resource detail", note)
+            self.assertIn("No matching resource-detail rows", note)
+            self.assertIn("COUNTROWS('Credit Consumption (Agent)')", note)
+            self.assertNotIn("User and agent detail", note)
             self.assertEqual(wording(candidate), (candidate, []))
 
     def test_edited_wording_fails_closed(self):

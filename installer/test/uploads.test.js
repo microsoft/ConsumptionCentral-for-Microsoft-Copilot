@@ -653,7 +653,7 @@ test('sourceCards: each card with its modes, what each needs and where to get it
     ['coworkCredits', 'api', /Viva Insights analyst/],
     ['coworkCredits', 'api', /Spending policies are still a CSV upload/],
     ['studioCredits', 'api', /Power Automate Premium/],
-    ['studioCredits', 'reports', /not yet been validated in a tenant/],
+    ['studioCredits', 'reports', /Power Automate Premium/],
     ['github', 'api', /Azure Key Vault or, with no Key Vault, in the notebook/],
     ['github', 'api', /enterprise owner or billing manager/],
     ['azureAi', 'api', /Reader, Cost Management Reader and Monitoring Reader/],

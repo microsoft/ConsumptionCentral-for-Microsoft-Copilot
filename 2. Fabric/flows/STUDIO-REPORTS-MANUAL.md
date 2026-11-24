@@ -1,7 +1,9 @@
 # Manual Fabric setup: Studio credit reports preview
 
-This is an opt-in alternative to the installer's preview flow. It has not been validated in a
-tenant: verify the connector responses and downloaded pair before relying on it. The API is a
+This is an opt-in alternative to the installer's preview flow. The matching generated flow has
+been tenant-validated through generation, download, paired OneLake publication and Fabric
+ingestion, including a valid empty billing report. This hand-built path has not been independently
+executed. Verify its connector responses and downloaded pair before relying on it. The API is a
 public preview and is unavailable in sovereign clouds. The reports can include non-Studio
 resources, and the billing report is not product-specific. They contain no per-user detail.
 Keep the existing licensing flow and CSV exports for fallback and historical or user detail.

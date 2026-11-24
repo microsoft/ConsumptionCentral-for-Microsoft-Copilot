@@ -17,6 +17,7 @@ OVERRIDES = {
         "DataFiles": '#table(type table [Content=binary, Name=text, Extension=text, #"Folder Path"=text, '
                      '#"Date modified"=datetime, MatchKey=text, Depth=Int64.Type], {})',
         "CoworkTaskInput": "[Data=null, People=null, Supplied=false, SourceUnavailable=false]",
+        "StudioCreditReportPair": "[Resources={}, Billing={}]",
     },
     "fabric": {
         "FabricSource": '#table(type table [Schema=text, Item=text, Kind=text, Data=table], {})',
@@ -27,6 +28,7 @@ OVERRIDES = {
     "viva": {
         "VivaConnectorSource": "#table(type table [], {})",
         "VivaOrgSource": "null",
+        "SourceFiles": "null",
     },
 }
 

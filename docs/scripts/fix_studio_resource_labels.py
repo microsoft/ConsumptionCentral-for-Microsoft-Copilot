@@ -21,7 +21,12 @@ def resource(match):
 
 def repair(value, path=()):
     if isinstance(value, dict):
-        return {key: repair(child, path + (key,)) for key, child in value.items()}
+        result = {key: repair(child, path + (key,)) for key, child in value.items()}
+        if path[-2:-1] == ("projections",) and "displayName" not in result:
+            column = result.get("field", {}).get("Column", {})
+            if column.get("Property") == "Agent Name":
+                result["displayName"] = "Resource"
+        return result
     if isinstance(value, list):
         return [repair(child, path + (index,)) for index, child in enumerate(value)]
     alias = path[-1:] == ("displayName",) and "projections" in path

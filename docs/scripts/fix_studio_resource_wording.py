@@ -19,12 +19,14 @@ HASHES = {
     (TENANT, "Studio Forecast Note"): "16fd27c42f917b129cc7622b6f4b0af1074a084dae3dafbedce0f0be2be1effd",
     (TENANT, "Studio Forecast Summary"): "af79c4ac952d91561ec224aaa7ac5cb89fb437cf62a464c26ed63b48f8e544d9",
     (TENANT, "Studio Headline"): "9e2fad6276a4478459e1ae5334488fae34af045017099d80713e14119ed3fdb3",
+    ("Settings", "Studio Snapshot Note"): "85bfd9790ae1d5a14a68e7a31b3dcf43cf44f633e1851d3dbaff4e5250b956d4",
 }
 CORRECTED_HASHES = {
     (AGENT, "Agent Action"): "ce0b83d0a14a086da13a92eaa60545402ff00e48249fc42202819a20233a2b7d",
     (TENANT, "Studio Forecast Note"): "61704a4dae4167ae75342d6ce838a582f9f1f2205141ef9a45e88bacf177e813",
     (TENANT, "Studio Forecast Summary"): "e7da4028a00994cf6e3089d087fcd203e33b85cc39b8de68e3a47ff57ebdf946",
     (TENANT, "Studio Headline"): "41e2f2a17ace2d506eaacfbecbc00f5d7ad6e00999d958c39f9d245f83c347d7",
+    ("Settings", "Studio Snapshot Note"): "abac9d42fc278f11cca3135e832266fc66cb4a4c9a9cba0e6708bdbe0401b6d3",
 }
 ACTION = '''VAR Consumed = [Studio Consumed Credits (Agent)]
 VAR Billed = [Total Billed Credits]
@@ -54,6 +56,9 @@ ACTION_LABELS = {
 
 
 def repaired(table_name, name, source):
+    if (table_name, name) == ("Settings", "Studio Snapshot Note"):
+        return source.replace("User and agent detail", "User and resource detail").replace(
+            "No matching agent-detail rows", "No matching resource-detail rows")
     if (table_name, name) == (AGENT, "Agent Action"):
         return ACTION
     if name == "Studio Forecast Note":

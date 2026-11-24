@@ -45,9 +45,11 @@ nothing needs renaming and anything you don't have is skipped.
 
 Leave `DataFolder` blank for consumption-only reporting. Leave pricing parameters at their defaults.
 
-For an unvalidated collection-only Power Platform reports preview, see the
-[SharePoint flow instructions](STUDIO-REPORTS-PREVIEW.md). The template does not yet read its
-paired report files; keep the existing exports.
+For the Power Platform reports preview, see the
+[SharePoint flow instructions](STUDIO-REPORTS-PREVIEW.md). The template reads paired report files
+into separate **Power Platform Credit Resources** and **Power Platform Credit Billing** tables,
+not the existing Studio page visuals. File-backed Desktop loading has been checked; SharePoint
+delivery and the live Viva Direct connector remain unverified. Keep the existing exports.
 
 **[Where to get each one →](../docs/DATA-SOURCES.md)** ·
 **[Automating the Azure files →](../docs/ADVANCED-SETUP.md#automating-azure-collection)**

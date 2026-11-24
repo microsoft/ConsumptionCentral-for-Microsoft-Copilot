@@ -3,9 +3,11 @@
 This flow saves complete pairs of Power Platform reports to SharePoint. The Viva Direct
 template reads them through `SourceFiles`, with separate **Power Platform Credit Resources**
 and **Power Platform Credit Billing** tables. The app accepts CSVs, not paired JSON.
-The flow, Power Query execution and actual connector responses have not been
-validated in a tenant. Keep existing exports and the licensing flow as fallbacks. The public
-preview is unavailable in sovereign clouds.
+Report generation and download have been tenant-validated with the Fabric writer, and Desktop
+has loaded the downloaded pair. SharePoint delivery and the live Viva Direct connector remain
+unverified. These separate tables are not displayed by the existing Studio page visuals.
+Keep existing exports and the licensing flow as fallbacks. The public preview is unavailable
+in sovereign clouds and requires Power Automate Premium.
 
 1. Sign in to Power Platform for Admins V2 with a Global, Power Platform or Dynamics 365
    administrator account. Use an environment whose license and DLP rules permit the connector
