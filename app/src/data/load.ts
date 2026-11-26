@@ -20,6 +20,7 @@ import type {
 } from './types'
 import { ALL_USERS, INTENSITY, NOT_SET, ZERO_GUID } from './types'
 import { intensityBand } from '../metrics/stats'
+import { detectCostManagement, readCostBalance, readCostFunding, readCostService } from './costManagement'
 
 interface Parsed {
   name: string
@@ -30,6 +31,8 @@ interface Parsed {
 /** Works out which export a file is from its headers, falling back to the file name. */
 export function detectKind(headers: string[], name: string): SourceKind | null {
   const n = hkey(name)
+  const costManagement = detectCostManagement(headers, name)
+  if (costManagement) return costManagement
   if (has(headers, 'Total Cowork tasks') || (has(headers, 'TaskCategory') && has(headers, 'MetricDate'))) return 'tasks'
   if (has(headers, 'Total Copilot Credits used') || (has(headers, 'MetricDate') && has(headers, 'ServiceName'))) return 'coworkMetrics'
   if (has(headers, 'SpendingPolicyId', 'PlanLimit')) return 'policies'
@@ -641,6 +644,12 @@ export function buildDataset(files: Parsed[], label: string, sample: boolean): {
   const studioTenant = readStudioTenant(one('studioTenant'))
   const studioAgents = readStudioAgents(one('studioAgent'))
   const studioUsers = readStudioUsers(one('studioUser'))
+  for (const kind of ['costService', 'costFunding', 'costBalance'] as const) {
+    if ((byKind.get(kind)?.length ?? 0) > 1) throw new Error(`Supply only one ${kind} Cost Management CSV.`)
+  }
+  const costService = readCostService(one('costService'))
+  const costFunding = readCostFunding(one('costFunding'))
+  const costBalance = readCostBalance(one('costBalance'))
   const ghUsage = readGhUsage(one('ghUsage'))
   const ghUsers = readGhUsers(one('ghUsers'))
   const ghUpn = new Map(ghUsers.filter((u) => u.upn).map((u) => [u.username.toLowerCase(), u.upn]))
@@ -733,6 +742,9 @@ export function buildDataset(files: Parsed[], label: string, sample: boolean): {
     studioTenant,
     studioAgents,
     studioUsers,
+    costService,
+    costFunding,
+    costBalance,
     ghUsage,
     ghUsers,
     ghUpn,
@@ -751,7 +763,9 @@ export function buildDataset(files: Parsed[], label: string, sample: boolean): {
 export async function loadFiles(files: File[]) {
   const parsed: Parsed[] = []
   for (const f of files) {
-    const { headers, rows } = parseCsv(await f.text())
+    const text = await f.text()
+    let { headers, rows } = parseCsv(text)
+    if (detectCostManagement(headers, f.name)) ({ headers, rows } = parseCsv(text, true))
     parsed.push({ name: f.name, headers, rows })
   }
   const res = buildDataset(parsed, files.length === 1 ? files[0].name : `${files.length} files`, false)

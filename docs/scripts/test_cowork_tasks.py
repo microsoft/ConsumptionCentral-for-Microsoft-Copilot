@@ -247,6 +247,11 @@ class ModelContractTests(unittest.TestCase):
                 reference, original_queries = documents(source)
                 model.apply(reference["model"], original_queries, profile)
                 roots = set(prepare_offline_export.OVERRIDES[profile])
+                if profile == "csv":
+                    pair = next(e for e in document["model"]["expressions"]
+                                if e["name"] == "StudioCreditReportPair")
+                    self.assertIn("StudioCreditReportPair", roots)
+                    self.assertTrue(pair["expression"].endswith("\n[Resources={}, Billing={}]"))
                 for expression in document["model"]["expressions"]:
                     if expression["name"] in roots:
                         self.assertIn(prepare_offline_export.MARKER, expression["expression"])

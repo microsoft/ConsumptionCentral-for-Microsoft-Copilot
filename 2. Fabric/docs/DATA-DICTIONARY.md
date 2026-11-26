@@ -148,12 +148,17 @@ on those days stay, and where two files share a key the newer file wins.
 > **Usage reports preview (separate opt-in).** A completed report pair replaces API rows in its
 > date window, preserving manual export precedence and older history. The billing report supplies
 > prepaid and PAYG amounts rather than the legacy flow's estimated split. The feature report
-> retains `product`, `resource_type` and `scenario_name` in versioned `studio_report_agent_daily`
-> rows; the report-facing monthly agent table is rebuilt from the prevailing preview and legacy
-> daily rows. It retains product but does not expose resource type. Preview rows can be for other
+> retains `product`, `resource_type`, optional `harness_type` and `scenario_name` in versioned `studio_report_agent_daily`
+> rows. Existing detail tables gain the optional harness column in the same atomic write, with
+> older rows retaining null for metadata their report did not supply. The
+> report-facing monthly agent table is rebuilt from the prevailing preview and legacy
+> daily rows. It retains product but does not expose resource or harness type. Missing types stay
+> null; they are not inferred from product or resource name. Preview rows can be for other
 > products and resources, not only Studio agents; the existing report labels them as agents. The
 > billing report has no product dimension, so its totals cannot be isolated to Studio. Preview
-> reports do not supply user rows. The route and connector have not been tenant-validated.
+> reports do not supply user rows. Header-only billing reports are valid: resource credits can
+> be present with no tenant billing rows. Report generation, download and paired OneLake
+> publication have been tenant-validated; the APIs remain preview/beta.
 
 ---
 

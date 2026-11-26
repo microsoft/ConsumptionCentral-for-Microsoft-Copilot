@@ -735,6 +735,7 @@ export const DATA_CHECK_TABLES = [
   { source: 'github', table: 'GitHub Usage', date: 'Usage_Date' },
   { source: 'azureAi', table: 'AzureAiSpend', date: 'UsageDate' },
   { source: 'orgData', table: 'Org', filled: 'Department' },
+  { source: 'costManagement', table: 'Copilot Credit Service', date: 'Date' },
 ];
 
 /** @param {string} table @param {string} [column] */

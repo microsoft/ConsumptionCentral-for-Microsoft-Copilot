@@ -178,7 +178,7 @@ turn one on later, choose **Repair or change**.
 |---|---|---|---|---|
 | Copilot Cowork and Work IQ credits | **Connected (Dataflow)**: a [Dataflow Gen2](#cowork-credits-dataflow) reads your Viva Insights query. Spending policies are still an upload | Viva Insights > Copilot Consumption Dashboard > **Export**. Upload `PersonServiceCreditsMetrics.csv` and `SpendingPolicyMetadata.csv` from the ZIP | Upload CSV | Pages 1–4 (Cowork) |
 | Cowork task categories | | Viva Insights: the Cowork weekly metrics export, `CoworkWeeklyMetrics.csv` with its `PeopleMetaData.csv`. See [Cowork tasks](../docs/COWORK-TASKS.md) | Skip | 2.1. Cowork: Tasks |
-| Copilot Studio credits | **Connected (Power Automate flow)** reads the licensing API; **Connected (reports API preview)** also opts in to [usage reports](#copilot-studio-usage-reports-preview) | Power Platform admin center > **Licensing** > **Products** > **Copilot Studio**. Download the Summary/Environments, Agents and optional Users exports (`EntitlementConsumption*_MCSMessages*.csv`) | Upload CSV | Pages 5–8 (Studio) |
+| Copilot Studio credits | **Connected (Power Automate flow)** reads the licensing API; **Connected (New API: reports preview)** also opts in to [usage reports](#copilot-studio-usage-reports-preview) | Power Platform admin center > **Licensing** > **Products** > **Copilot Studio**. Download the Summary/Environments, Agents and optional Users exports (`EntitlementConsumption*_MCSMessages*.csv`) | Upload CSV | Pages 5–8 (Studio) |
 | GitHub Copilot | **Connected (GitHub API)**, with a [GitHub token](#github-token) | GitHub: your enterprise > **Billing and licensing** > **Usage** > **AI usage** > **Get usage report**. The seat map is a CSV of username, UPN, display name and plan | Skip | Pages 11–14 (GHCP) |
 | Azure AI Foundry and Azure OpenAI | [From Azure](#azure-ai), with the app registration | | Skip | Pages 9–10.1 (Azure) |
 | Org data | **Connected (Microsoft Entra ID)**: read from Microsoft Graph each day | Microsoft Entra admin center > **Users** > **All users** > **Download users**, or any CSV with a UPN or email column and your org columns | Skip | Department and other org filters. Without it, departments come from Viva Insights |
@@ -260,7 +260,45 @@ win.
 
 ### Copilot Studio usage reports preview
 
-Choose **Connected (reports API preview)** on the Studio card, or use
+On **No Fabric**, use `--data studioCredits=reports` or choose it in Advanced source settings.
+The installer creates the preview and fallback licensing flows with SharePoint writers and
+prepares their landing/state folders. Sign in to **Power Platform for Admins V2** as a
+Global, Power Platform or Dynamics 365 administrator, and to **SharePoint** with write access.
+The report reads the paired JSON directly into separate **Power Platform Credit Resources**
+and **Power Platform Credit Billing** tables; existing CSV views remain unchanged.
+These separate tables are not displayed by the existing Studio page visuals. Desktop has loaded
+a downloaded pair; SharePoint flow delivery and live connector execution remain unverified.
+The app still requires CSV input and does not read paired JSON.
+
+### Graph Copilot credit aggregates (beta)
+
+Use `--data costManagement=api` on either route; default **skip**. Fabric deploys the
+`Ingest_Copilot_Cost_Management` notebook using the existing app registration and Key Vault
+(or the chosen inline notebook secret). The model refresh depends on the notebook succeeding.
+No Fabric reuses the PAX app and Windows Credential Manager secret; the scheduled task
+passes its app-only Graph token to the shared collector through standard input, never
+through command-line arguments. **Python 3.10+ is required only when this source is enabled**.
+
+Grant **CopilotCostManagement.Read.All application permission** and administrator consent
+on the existing app. API authorization must also permit the requests. The collector reloads
+fourteen completed UTC service days and the matching funding months, preserves older CSV/Delta
+history, and replaces the balance. On a new PC it restores cumulative CSVs from SharePoint first.
+Any collection/upload failure fails the refresh; the three files/tables are not one transaction,
+so do not refresh downstream consumers after a failed run.
+
+The three optional **Copilot Credit** model tables and the app's **Credit aggregates** view
+remain separate from product/person facts and from one another. Credits are not currency;
+never sum the overlapping service, funding and balance views. The app reads the three CSV
+files alongside other selected inputs. Manual routes are documented in
+[Local CSV](../1.%20Local%20CSV/README.md) and [Fabric](../2.%20Fabric/README.md).
+Graph beta is not supported for production. App authorization and app-only CSV collection
+have been tenant-validated, and Desktop has loaded the resulting CSVs. Nonempty service usage,
+the Key Vault-backed notebook and service rendering remain unverified. Existing report visuals
+do not display the separate Graph tables.
+
+### Fabric Studio reports configuration
+
+Choose **Connected (New API: reports preview)** on the Studio card, or use
 `--data studioCredits=reports`. This adds a separate daily flow and keeps the existing Studio
 credits flow running as the fallback. Sign in to the preview flow's **Power Platform for Admins
 V2** connector separately using its **OAuth Connection** option; the existing flow uses its
@@ -305,9 +343,10 @@ access and retention controls. To opt out, switch Studio back to **Connected (Po
 flow)** or **Upload CSV** in the installer. It attempts to turn off the preview flow (and, for
 CSV-only mode, the existing flow too) and warns if you must do so manually.
 
-**Not tenant-validated:** the generated flow, connector download representation and Fabric
-ingestion have only been exercised offline. Confirm a real downloaded pair and compare it with
-the admin center before relying on the preview.
+**Validation boundary:** generation, connector download, paired OneLake publication and Fabric
+ingestion have been tenant-validated, including a valid empty billing report. Desktop has loaded
+the downloaded files. Service semantic-model refresh and rendered live report validation remain
+outstanding; compare the results with the admin center before relying on the preview.
 
 ### Cowork credits Dataflow
 
@@ -444,6 +483,9 @@ in Power BI. To keep your edits, use **File** > **Save a copy** in Power BI firs
 **The pipeline.** `ConsumptionCentral_Pipeline` runs `ConsumptionCentral_Upload_Router` first,
 then the load notebooks for the sources you chose, the Cowork Dataflow before the Viva load, then
 `Refresh_Consumption_Model`, and last `Record_Load_Status`.
+
+The installer leaves an existing disabled pipeline schedule disabled, including when its time
+changes. Enable it explicitly in Fabric when scheduled runs are wanted again.
 
 **One Spark session.** The notebooks share one Spark session instead of each starting its own.
 This keeps a small capacity from being too busy to start them. The installer turns on the

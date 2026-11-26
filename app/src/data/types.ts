@@ -67,6 +67,28 @@ export interface StudioUserRow {
   licensed: boolean
 }
 
+export interface CostServiceRow {
+  date: string
+  service: string
+  credits: number
+}
+
+export interface CostFundingRow {
+  month: string
+  funding: string
+  credits: number
+  freshness: string
+}
+
+export interface CostBalanceRow {
+  asOf: string
+  billingMethod: string
+  purchased: number | null
+  consumed: number
+  remaining: number | null
+  freshness: string
+}
+
 export interface GhUsageRow {
   date: string
   username: string
@@ -170,6 +192,9 @@ export type SourceKind =
   | 'studioTenant'
   | 'studioAgent'
   | 'studioUser'
+  | 'costService'
+  | 'costFunding'
+  | 'costBalance'
   | 'ghUsage'
   | 'ghUsers'
   | 'azureDaily'
@@ -201,6 +226,9 @@ export interface Dataset {
   studioTenant: StudioTenantRow[]
   studioAgents: StudioAgentRow[]
   studioUsers: StudioUserRow[]
+  costService: CostServiceRow[]
+  costFunding: CostFundingRow[]
+  costBalance: CostBalanceRow[]
   // GitHub
   ghUsage: GhUsageRow[]
   ghUsers: GhUser[]

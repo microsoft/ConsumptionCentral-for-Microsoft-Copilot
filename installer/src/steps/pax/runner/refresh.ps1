@@ -236,6 +236,8 @@ function Read-RefreshConfig {
     windowDays       = 7
     runHours         = 10
     agent365         = $false
+    costManagement   = $false
+    studioReports    = $false
     deidentify       = $false
     repairHint       = $script:RepairHint
     acceptDropHint   = $script:AcceptDropHint
@@ -252,6 +254,8 @@ function Read-RefreshConfig {
   if ($config.acceptDropHint -is [string] -and $config.acceptDropHint.Trim()) { $script:AcceptDropHint = $config.acceptDropHint.Trim() }
 
   if ($config.schema -ne 1) { $problems.Add("schema is '$($config.schema)', and this script reads schema 1.") }
+  if ($config.costManagement -isnot [bool]) { $problems.Add('costManagement must be true or false.') }
+  if ($config.studioReports -isnot [bool]) { $problems.Add('studioReports must be true or false.') }
   # userInfo reads only the user directory, as one file that each run replaces whole.
   $userInfo = $config.mode -eq 'userInfo'
   if ($config.mode -notin 'audit', 'userInfo') { $problems.Add("mode is '$($config.mode)', and this script reads audit or userInfo.") }
@@ -556,6 +560,7 @@ function Test-Python {
     $text = [string]($output | Select-Object -Last 1)
     if ([version]::TryParse($text.Trim(), [ref]$version) -and $version -ge [version]'3.10') {
       Write-Host "Python $($text.Trim()) ($candidate)"
+      $script:PythonCommand = $parts
       return
     }
   }
@@ -1352,6 +1357,63 @@ function Invoke-Refresh {
   $script:ExitCode = 0
 }
 
+function Invoke-CreditRefresh {
+  Test-Python
+  $folder = Join-Path $script:WorkDir 'credit-aggregates'
+  New-Item -ItemType Directory -Path $folder -Force | Out-Null
+  $names = @('CopilotCostServiceDaily.csv', 'CopilotCostFundingMonthly.csv', 'CopilotCostBalance.csv')
+  foreach ($name in $names[0..1]) {
+    $local = Join-Path $folder $name
+    if (Test-Path -LiteralPath $local -PathType Leaf) { continue }
+    $response = Invoke-Graph -Path (Get-DrivePath (@(Get-FolderSegments) + $name))
+    if ($response.Status -eq 404) { continue }
+    if ($response.Status -ne 200) { throw (Format-GraphError $response "Restoring $name") }
+    if ($response.Body.folder) { throw "SharePoint has a folder where $name should be." }
+    $url = $response.Body.'@microsoft.graph.downloadUrl'
+    if (-not $url) { throw "SharePoint didn't return a download link for $name." }
+    $download = "$local.download"
+    try {
+      Invoke-WebRequest -Uri $url -OutFile $download
+      if ($null -ne $response.Body.size -and (Get-Item -LiteralPath $download).Length -ne [long]$response.Body.size) {
+        throw "The $name download was incomplete."
+      }
+      Move-Item -LiteralPath $download -Destination $local -Force
+    } finally {
+      if (Test-Path -LiteralPath $download) { Remove-Item -LiteralPath $download -Force }
+    }
+  }
+  $start = [System.Diagnostics.ProcessStartInfo]::new()
+  $start.FileName = (Get-Command $script:PythonCommand[0]).Source
+  foreach ($argument in @($script:PythonCommand | Select-Object -Skip 1) +
+    @((Join-Path $PSScriptRoot 'pull_copilot_cost_management.py'), $folder, '--token-stdin')) {
+    $start.ArgumentList.Add($argument)
+  }
+  $start.UseShellExecute = $false
+  $start.CreateNoWindow = $true
+  $start.RedirectStandardInput = $true
+  $start.RedirectStandardOutput = $true
+  $start.RedirectStandardError = $true
+  $process = [System.Diagnostics.Process]::new()
+  $process.StartInfo = $start
+  try {
+    if (-not $process.Start()) { throw 'Could not start the Graph credit collector.' }
+    $output = $process.StandardOutput.ReadToEndAsync()
+    $errors = $process.StandardError.ReadToEndAsync()
+    $process.StandardInput.WriteLine($script:GraphToken)
+    $process.StandardInput.Close()
+    if (-not $process.WaitForExit(1800000)) {
+      $process.Kill($true)
+      throw 'Graph credit collection timed out. No credit files were uploaded.'
+    }
+    if ($process.ExitCode -ne 0) { throw "Graph credit collection failed: $($errors.GetAwaiter().GetResult().Trim())" }
+    Write-Host $output.GetAwaiter().GetResult().Trim()
+  } finally {
+    $process.Dispose()
+  }
+  $segments = @(Get-FolderSegments)
+  foreach ($name in $names) { Send-File -Path (Join-Path $folder $name) -Name $name -Segments $segments }
+}
+
 function Invoke-UserInfoRefresh {
   # One PAX pass reads the whole user directory, and its file replaces the last one whole, here
   # and in SharePoint. So a new machine or a reinstall has nothing to restore or carry on from.
@@ -1371,6 +1433,7 @@ function Invoke-UserInfoRefresh {
   Invoke-PaxChild
   Complete-UserInfoRun
   Publish-Streams
+  if ($script:Cfg.costManagement) { Invoke-CreditRefresh }
   # Only a file that reached SharePoint sets the rows the next run is checked against.
   $users.rows = $script:UserRows
   $state.lastResult = 'success'
@@ -1411,6 +1474,10 @@ function Invoke-Check {
   Resolve-Drive
   $segments = @(Get-FolderSegments)
   Confirm-RemoteFolder $segments
+  if ($script:Cfg.studioReports) {
+    Confirm-RemoteFolder ($segments + @('Files', 'landing', 'studio'))
+    Confirm-RemoteFolder ($segments + @('Files', 'consumption_central_flows'))
+  }
   return [ordered]@{ ok = $true; siteId = $script:Cfg.siteId; driveId = $script:Cfg.driveId; folder = '/' + ($segments -join '/') }
 }
 

@@ -11,6 +11,7 @@ import { routerWanted } from './uploads.js';
 /** Microsoft Graph's application ID. Same in every tenant. */
 export const GRAPH_APP_ID = '00000003-0000-0000-c000-000000000000';
 export const USER_READ_ALL = 'User.Read.All';
+export const COST_MANAGEMENT_READ_ALL = 'CopilotCostManagement.Read.All';
 
 /** The dashboard's list of what the installer deploys, at the repo root. */
 export const MANIFEST_FILE = 'installer-assets.json';
@@ -19,7 +20,7 @@ export const ASSET_NOTEBOOKS_DIR = 'assets/notebooks';
 
 /**
  * @typedef {'vivaConsumption' | 'studioConsumption' | 'azureAi' | 'github' | 'githubApi' | 'commercialTerms'
- *   | 'org' | 'orgGraph' | 'uploadRouter' | 'refreshModel' | 'loadStatus'} NotebookKey
+ *   | 'org' | 'orgGraph' | 'uploadRouter' | 'refreshModel' | 'loadStatus' | 'costManagement'} NotebookKey
  */
 
 /** @typedef {import('./uploads.js').DataSourceModes} DataSourceModes */
@@ -56,6 +57,7 @@ export const NOTEBOOK_RULES = [
     asset: { file: `${ITEM_PREFIX}Upload_Router.ipynb`, displayName: `${ITEM_PREFIX}Upload_Router`, at: 'first' },
   },
   { key: 'azureAi', when: (ds) => ds.azureAi === 'api' },
+  { key: 'costManagement', when: (ds) => ds.costManagement === 'api' },
   { key: 'studioConsumption', when: (ds) => ds.studioCredits !== 'skip' },
   // Always: it writes the Viva tables the model reads, empty until the first export or Dataflow run.
   { key: 'vivaConsumption', when: () => true },
@@ -213,7 +215,7 @@ export const onceNotebooks = (/** @type {NotebookInfo[]} */ catalog, /** @type {
  * - Org data from Entra: Ingest_Org_Graph reads users through Graph.
  * @param {DataSourceModes} ds
  */
-export const appWanted = (ds) => ['api', 'reports'].includes(ds.studioCredits) || ds.azureAi === 'api' || ds.orgData === 'api';
+export const appWanted = (ds) => ['api', 'reports'].includes(ds.studioCredits) || ds.azureAi === 'api' || ds.orgData === 'api' || ds.costManagement === 'api';
 
 /**
  * Whether the install needs the app registration at all: for the sources above, or for the semantic
@@ -236,4 +238,7 @@ export const secretWanted = (ds) => appWanted(ds) || ds.github === 'api';
  * @param {DataSourceModes} ds
  * @returns {string[]}
  */
-export const permissionsFor = (ds) => (['api', 'reports'].includes(ds.studioCredits) || ds.orgData === 'api' ? [USER_READ_ALL] : []);
+export const permissionsFor = (ds) => [
+  ...(ds.costManagement === 'api' ? [COST_MANAGEMENT_READ_ALL] : []),
+  ...(['api', 'reports'].includes(ds.studioCredits) || ds.orgData === 'api' ? [USER_READ_ALL] : []),
+];

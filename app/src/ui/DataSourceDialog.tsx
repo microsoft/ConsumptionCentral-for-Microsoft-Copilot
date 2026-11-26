@@ -12,8 +12,11 @@ const KIND_LABEL: Record<SourceKind, string> = {
   org: 'Organisation data (Viva / Entra)',
   tasks: 'Cowork task categories',
   studioTenant: 'Copilot Studio tenant consumption',
-  studioAgent: 'Copilot Studio agent consumption',
+  studioAgent: 'Copilot Studio resource consumption',
   studioUser: 'Copilot Studio user consumption',
+  costService: 'Graph credit service usage',
+  costFunding: 'Graph credit funding usage',
+  costBalance: 'Graph tenant credit balance',
   ghUsage: 'GitHub Copilot usage report',
   ghUsers: 'GitHub Copilot seats',
   azureDaily: 'Azure AI daily cost',
@@ -24,6 +27,7 @@ const KIND_LABEL: Record<SourceKind, string> = {
 
 const PRODUCT_KINDS: [string, SourceKind[]][] = [
   ['Cowork & Work IQ', ['coworkMetrics', 'policyMap', 'policies', 'peopleMeta', 'org', 'tasks']],
+  ['Graph Cost Management (beta)', ['costService', 'costFunding', 'costBalance']],
   ['Copilot Studio', ['studioTenant', 'studioAgent', 'studioUser']],
   ['GitHub Copilot', ['ghUsage', 'ghUsers']],
   ['Azure AI Foundry', ['azureDaily', 'azureSolution', 'azureHealth', 'recon']],
@@ -82,7 +86,7 @@ export function DataSourceDialog({ open, onClose }: { open: boolean; onClose: ()
         ))}
         <h3>Use your own exports</h3>
         <p>
-          Select the CSV exports described in the README: Cowork credit metrics and policies, Copilot Studio consumption, the GitHub Copilot usage report and seats, and Azure AI cost and health. Supply any subset; products without files show a dash. Files are read in your browser and never uploaded.
+          Select the CSV exports described in the README: Cowork credit metrics and policies, optional Graph credit aggregates, Copilot Studio consumption, the GitHub Copilot usage report and seats, and Azure AI cost and health. Supply any subset; products without files show a dash. Files are read in your browser and never uploaded.
         </p>
         <label className="drop">
           <input type="file" accept=".csv,text/csv" multiple disabled={busy} onChange={(e) => void pick(e.target.files)} />

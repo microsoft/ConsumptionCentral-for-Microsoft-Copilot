@@ -66,8 +66,8 @@ function StudioFilters({ view }: { view: string }) {
       <Select label="Period (tenant totals)" value={filters.studioPeriod || 'all'} onChange={(v) => setFilter('studioPeriod', v)} options={STUDIO_PERIODS} />
       <GroupByFields />
       <Select label="Environment" value={filters.env ?? ''} onChange={(v) => setFilter('env', v)} options={opts(o.envs)} allLabel="All" />
-      <Select label="Agent" value={filters.agent ?? ''} onChange={(v) => setFilter('agent', v)} options={opts(o.agents)} allLabel="All agents" />
-      <Select label="Product" value={filters.product ?? ''} onChange={(v) => setFilter('product', v)} options={opts(o.products)} allLabel="All" help="Values come directly from the Product column in the per-agent export. Examples include Microsoft 365 Copilot Chat and GitHub Copilot; the list varies by export and is not exhaustive. Product is not assumed to be a universal harness label. This filter applies to agent detail, not tenant totals or the per-user snapshot." />
+      <Select label="Resource" value={filters.agent ?? ''} onChange={(v) => setFilter('agent', v)} options={opts(o.agents)} allLabel="All resources" />
+      <Select label="Product" value={filters.product ?? ''} onChange={(v) => setFilter('product', v)} options={opts(o.products)} allLabel="All" help="Values come directly from the Product column in the resource export. Examples include Microsoft 365 Copilot Chat and GitHub Copilot; the list varies by export and is not exhaustive. Product is not assumed to be a universal harness label. This filter applies to resource detail, not tenant totals or the per-user snapshot." />
       {view === 'optimization' && (
         <Select label="Action" value={filters.agentAction ?? ''} onChange={(v) => setFilter('agentAction', v)} options={opts(AGENT_ACTIONS)} allLabel="All actions" />
       )}
@@ -148,7 +148,7 @@ function OverviewFilters() {
 export function FilterBar({ route }: { route: Route }) {
   const { filters, resetFilters } = useData()
   const { tab, view } = route
-  if (tab.id === 'guide') return null
+  if (tab.id === 'guide' || (tab.id === 'cowork' && view === 'credit-aggregates')) return null
   const anySet = Object.values(filters).some(Boolean)
   return (
     <div className="filters" role="group" aria-label="Filters">

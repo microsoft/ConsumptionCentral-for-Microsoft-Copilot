@@ -14,7 +14,7 @@ const C = PRODUCT_COLOR.studio
 function useStudio() {
   const { ds, filters, settings } = useData()
   const m = useMemo(() => studioModel(ds, filters, settings), [ds, filters, settings])
-  return { settings, m, filters, noTenant: !ds.studioTenant.length }
+  return { settings, m, filters, noTenant: m.observed === 0 }
 }
 
 interface UserLine {
@@ -36,7 +36,7 @@ function userRows(m: StudioModel, rate: number) {
   }))
 }
 
-const PERIOD_HELP = 'The period filter applies to tenant totals only; user and agent detail is an undated snapshot.'
+const PERIOD_HELP = 'The period filter applies to tenant totals only; user and resource detail is an undated snapshot.'
 
 function Footnotes({ m }: { m: StudioModel }) {
   return <Note>{m.snapshotNote}</Note>
@@ -44,6 +44,7 @@ function Footnotes({ m }: { m: StudioModel }) {
 
 export function StudioConsumption() {
   const { m, settings, noTenant } = useStudio()
+  const userSnapshot = m.users > 0
   return (
     <>
       <KpiRow>
@@ -51,37 +52,39 @@ export function StudioConsumption() {
           <Kpi tone="studio" label="Credits consumed" value={int(m.tenant.consumed)} sub={m.billingPeriod} help={`Tenant total: prepaid plus pay-as-you-go credits from the daily export. ${PERIOD_HELP}`} />
         </NotSuppliedIf>
         <Kpi label="Billing active users" value={int(m.users)} help="Distinct people in the user snapshot." />
-        <Kpi label="Agents with credits" value={int(m.agentsWithCredits)} />
+        <Kpi label="Resources with credits" value={int(m.agentsWithCredits)} />
         <Kpi label="Avg credits per user" value={dec2(N(m.avgPerUser))} />
-        <Kpi label="Avg agents per user" value={dec2(N(m.avgAgents))} />
+        <Kpi label="Avg resources per user" value={dec2(N(m.avgAgents))} />
       </KpiRow>
       <div className="grid grid-1-2">
-        <Panel title="Agents in the user snapshot">
+        <Panel title={userSnapshot ? 'Resources in the user snapshot' : 'Resources in the resource snapshot'}>
           <DataTable
-            label="Agents in the user snapshot"
+            label={userSnapshot ? 'Resources in the user snapshot' : 'Resources in the resource snapshot'}
             search={(r) => r.agent}
             columns={[
-              { key: 'agent', label: 'Agent', value: (r) => r.agent },
-              { key: 'credits', label: 'Credits', value: (r) => r.userCredits, fmt: int, align: 'right', bar: C },
-              { key: 'share', label: 'Share', value: (r) => N(r.userShare), fmt: pct, align: 'right' },
+              { key: 'agent', label: 'Resource', value: (r) => r.agent },
+              { key: 'credits', label: 'Credits', value: (r) => userSnapshot ? r.userCredits : r.consumed, fmt: int, align: 'right', bar: C },
+              { key: 'share', label: 'Share', value: (r) => N(userSnapshot ? r.userShare : r.share), fmt: pct, align: 'right' },
             ]}
-            rows={m.agents.filter((a) => a.userCredits > 0).map((a) => ({ id: a.agent, data: a }))}
+            rows={m.agents.filter((a) => userSnapshot ? a.userCredits > 0 : a.consumed > 0).map((a) => ({ id: a.agent, data: a }))}
             initialSort={{ key: 'credits', desc: true }}
             pageSize={8}
           />
         </Panel>
         <Panel title="Consumption over time" note="Daily tenant credits. Hover for the prepaid and PAYG split.">
-          <LineChart
-            label="Daily Studio credits"
-            area
-            xFmt={dayLabel}
-            data={m.daily.map((d) => ({ key: d.date, values: [d.consumed, d.prepaid, d.payg] }))}
-            series={[
-              { name: 'Credits consumed', color: C, fmt: int },
-              { name: 'Prepaid', color: PREPAID, fmt: int, tipOnly: true },
-              { name: 'PAYG', color: PAYG, fmt: int, tipOnly: true },
-            ]}
-          />
+          {noTenant ? <p className="section-note">No tenant consumption rows in this selection.</p> : (
+            <LineChart
+              label="Daily Studio credits"
+              area
+              xFmt={dayLabel}
+              data={m.daily.map((d) => ({ key: d.date, values: [d.consumed, d.prepaid, d.payg] }))}
+              series={[
+                { name: 'Credits consumed', color: C, fmt: int },
+                { name: 'Prepaid', color: PREPAID, fmt: int, tipOnly: true },
+                { name: 'PAYG', color: PAYG, fmt: int, tipOnly: true },
+              ]}
+            />
+          )}
         </Panel>
       </div>
       <div className="grid grid-2">
@@ -117,6 +120,7 @@ export function StudioConsumption() {
 export function StudioCost() {
   const { m, settings, noTenant } = useStudio()
   const t = m.tenant
+  const userSnapshot = m.users > 0
   return (
     <>
       <NotSuppliedIf when={noTenant}>
@@ -145,29 +149,31 @@ export function StudioCost() {
           />
         </Panel>
         <Panel title="Cost over time" note="Hover for the daily total.">
-          <LineChart
-            label="Daily Studio cost"
-            xFmt={dayLabel}
-            data={m.daily.map((d) => ({ key: d.date, values: [d.prepaidCost, d.paygCost, d.cost] }))}
-            series={[
-              { name: 'Prepaid cost', color: PREPAID, fmt: usd2 },
-              { name: 'PAYG cost', color: PAYG, fmt: usd2 },
-              { name: 'Total cost', color: C, fmt: usd2, tipOnly: true },
-            ]}
-          />
+          {noTenant ? <p className="section-note">No tenant consumption rows in this selection.</p> : (
+            <LineChart
+              label="Daily Studio cost"
+              xFmt={dayLabel}
+              data={m.daily.map((d) => ({ key: d.date, values: [d.prepaidCost, d.paygCost, d.cost] }))}
+              series={[
+                { name: 'Prepaid cost', color: PREPAID, fmt: usd2 },
+                { name: 'PAYG cost', color: PAYG, fmt: usd2 },
+                { name: 'Total cost', color: C, fmt: usd2, tipOnly: true },
+              ]}
+            />
+          )}
         </Panel>
       </div>
       <div className="grid grid-2">
-        <Panel title="Estimated cost by agent">
+        <Panel title="Estimated cost by resource" note={userSnapshot ? 'User snapshot billable credits at the PAYG rate.' : 'Resource snapshot billed credits at the PAYG rate; not an allocation of the tenant bill.'}>
           <DataTable
-            label="Estimated cost by agent"
+            label="Estimated cost by resource"
             search={(r) => r.agent}
             columns={[
-              { key: 'agent', label: 'Agent', value: (r) => r.agent },
-              { key: 'billable', label: 'Billable credits', value: (r) => r.userBillable, fmt: int, align: 'right' },
-              { key: 'cost', label: 'Cost', value: (r) => r.userBillable * settings.studioPayg, fmt: usd2, align: 'right', bar: C },
+              { key: 'agent', label: 'Resource', value: (r) => r.agent },
+              { key: 'billable', label: userSnapshot ? 'Billable credits' : 'Billed credits', value: (r) => userSnapshot ? r.userBillable : r.billed, fmt: int, align: 'right' },
+              { key: 'cost', label: 'Cost', value: (r) => (userSnapshot ? r.userBillable : r.billed) * settings.studioPayg, fmt: usd2, align: 'right', bar: C },
             ]}
-            rows={m.agents.filter((a) => a.userCredits > 0 || a.userBillable > 0).map((a) => ({ id: a.agent, data: a }))}
+            rows={m.agents.filter((a) => userSnapshot ? a.userCredits > 0 || a.userBillable > 0 : a.consumed > 0).map((a) => ({ id: a.agent, data: a }))}
             initialSort={{ key: 'cost', desc: true }}
             pageSize={8}
           />
@@ -197,7 +203,7 @@ export function StudioOptimization() {
           <Kpi label="Environments without entitlement" value={int(m.envsWithoutEnt)} />
         </NotSuppliedIf>
         <Kpi label="Unlicensed credit share" value={pct(N(m.unlicensed))} help="Share of user-snapshot credits from people without a Microsoft 365 Copilot licence." />
-        <Kpi label="Agents with no consumption" value={int(m.agentsNoConsumption)} />
+        <Kpi label="Resources with no consumption" value={int(m.agentsNoConsumption)} />
         <Kpi label="Top 10% of users" value={pct(N(m.top10))} sub="share of credits" />
       </KpiRow>
       <Note title="Headline">{m.headline}</Note>
@@ -205,20 +211,20 @@ export function StudioOptimization() {
         Admins can configure identity-based policies and resource-based policies for agents or environments. A resource policy takes precedence where both cover the same agent. This report does not load policy settings or enforcement state. The per-user snapshot reports consumption, not user-specific limits, so the app does not make user-limit recommendations.
       </Note>
       <div className="grid grid-1-2">
-        <Panel title="Agents by recommended action" note="Triage signals from consumption and billed share; these are not the configured agent limits.">
+        <Panel title="Resources by recommended action" note="Triage signals from consumption and billed share; these are not configured resource limits.">
           <BarList
-            label="Agents by recommended action"
+            label="Resources by recommended action"
             color={C}
             keepOrder
             items={m.byAction.map((a) => ({ key: a.action, label: a.action, value: a.agents, hint: `${int(a.credits)} credits`, color: ACTION_COLOR[idx(a.action)] }))}
           />
         </Panel>
-        <Panel title="Agent action queue">
+        <Panel title="Resource action queue">
           <DataTable
-            label="Agent action queue"
+            label="Resource action queue"
             search={(r) => r.agent}
             columns={[
-              { key: 'agent', label: 'Agent', value: (r) => r.agent },
+              { key: 'agent', label: 'Resource', value: (r) => r.agent },
               { key: 'action', label: 'Action', value: (r) => r.action, render: (r) => <span className="wrap-cell full">{r.action}</span>, width: '26%' },
               { key: 'consumed', label: 'Credits', value: (r) => r.consumed, fmt: int, align: 'right', bar: C },
               { key: 'absorbed', label: 'Non-billed share', value: (r) => N(r.absorbed), fmt: pct, align: 'right', help: 'Non-billed credits divided by billed plus non-billed credits in the export. The source does not identify why a row was non-billed.' },
@@ -296,23 +302,23 @@ export function StudioForecast() {
               columns={[
                 { key: 'group', label: m.attr, value: (r) => r.group },
                 { key: 'share', label: 'Share', value: (r) => N(r.share), fmt: pct, align: 'right' },
-                { key: 'c30', label: '30 days', value: (r) => (r.share ?? 0) * cost30, fmt: usd2, align: 'right' },
-                { key: 'c12', label: '12 months', value: (r) => (r.share ?? 0) * fc.yearCost, fmt: usd, align: 'right', bar: C },
+                { key: 'c30', label: '30 days', value: (r) => fc.cost30 === null ? NaN : (r.share ?? 0) * cost30, fmt: usd2, align: 'right' },
+                { key: 'c12', label: '12 months', value: (r) => fc.cost30 === null ? NaN : (r.share ?? 0) * fc.yearCost, fmt: usd, align: 'right', bar: C },
               ]}
               rows={m.byGroup.map((g) => ({ id: g.group, data: g }))}
               initialSort={{ key: 'c12', desc: true }}
               pageSize={8}
             />
           </Panel>
-          <Panel title="Projected cost by agent" note="Tenant projection split by each agent's share of agent-snapshot credits.">
+          <Panel title="Projected cost by resource" note="Tenant projection split by each resource's share of snapshot credits.">
             <DataTable
-              label="Projected cost by agent"
+              label="Projected cost by resource"
               search={(r) => r.agent}
               columns={[
-                { key: 'agent', label: 'Agent', value: (r) => r.agent },
+                { key: 'agent', label: 'Resource', value: (r) => r.agent },
                 { key: 'share', label: 'Share', value: (r) => N(r.share), fmt: pct, align: 'right' },
-                { key: 'c30', label: '30 days', value: (r) => (r.share ?? 0) * cost30, fmt: usd2, align: 'right' },
-                { key: 'c12', label: '12 months', value: (r) => (r.share ?? 0) * fc.yearCost, fmt: usd, align: 'right', bar: C },
+                { key: 'c30', label: '30 days', value: (r) => fc.cost30 === null ? NaN : (r.share ?? 0) * cost30, fmt: usd2, align: 'right' },
+                { key: 'c12', label: '12 months', value: (r) => fc.cost30 === null ? NaN : (r.share ?? 0) * fc.yearCost, fmt: usd, align: 'right', bar: C },
               ]}
               rows={m.agents.filter((a) => a.consumed > 0).map((a) => ({ id: a.agent, data: a }))}
               initialSort={{ key: 'c12', desc: true }}
@@ -322,7 +328,9 @@ export function StudioForecast() {
         </div>
         <div className="stack">
           <Panel title="Monthly cost, next 12 months">
-            <ForecastChart fc={{ ...fc, runRate: fc.monthlyCost }} color={C} label="Projected monthly Studio cost" />
+            {fc.cost30 === null
+              ? <p className="section-note">A forecast requires tenant consumption history.</p>
+              : <ForecastChart fc={{ ...fc, runRate: fc.monthlyCost }} color={C} label="Projected monthly Studio cost" />}
           </Panel>
           <Panel title="Forecast summary">
             <p className="prose">{fc.summary}</p>

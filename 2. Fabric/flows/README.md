@@ -12,6 +12,8 @@ Consumption Central reads five sources, and they do not automate equally:
 
 Of these routes, **Copilot Studio** is only partly automated: the installer's flows pull daily credits, but backfill and some per-user detail still need the PPAC export. Azure AI does not.
 
+For a manually configured Fabric installation, see the [Studio reports preview flow setup](STUDIO-REPORTS-MANUAL.md).
+
 **The flows on this page are for manually landed exports.** They watch a mailbox or a SharePoint library and write
 straight to OneLake, so the ingester picks the file up on its next run. That does not remove the
 download; it removes the "save it in the right place" step and the mistakes that come with it.

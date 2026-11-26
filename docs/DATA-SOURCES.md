@@ -21,13 +21,41 @@ The single question most people arrive with. Answered once, here:
 | [Cowork / Work IQ](#1-cowork--work-iq-credits--viva-insights-consumption-dashboard) | Certified Power Query connector — direct on Power BI, Dataflow Gen2 on Fabric | **No** |
 | [GitHub Copilot](#3-github-copilot-ai-credits) | REST API | **No** |
 | [Entra org attributes](#5-org-attributes--microsoft-entra-optional) | Graph PowerShell on a schedule, or the [`Ingest_Org_Graph`](../2.%20Fabric/notebooks/Ingest_Org_Graph.ipynb) Fabric notebook | **No** |
-| [Copilot Studio](#2-copilot-studio-credits) | Fabric only: the installer's [licensing API flow](../installer/README.md#copilot-studio-credits-flow) (about six months on first run, then the last ten days, with per-user rows), or the opt-in [usage reports preview](../installer/README.md#copilot-studio-usage-reports-preview) (delegated admin; previous 14 days; no per-user rows) | **Partly** — Local CSV and Viva Direct always need the PPAC export; on Fabric it is still needed for history before the flow's window and, if only the preview runs, for per-user detail |
+| [Copilot Studio](#2-copilot-studio-credits) | Fabric licensing flow, or opt-in [usage reports preview](../installer/README.md#copilot-studio-usage-reports-preview) on Fabric and No Fabric (delegated admin; previous 14 days; no per-user rows) | **Partly** — CSV remains the fallback and is needed for older history and user detail not supplied by reports. File-backed templates expose preview resources and environment billing in separate tables. |
+| [Graph credit aggregates](#graph-copilot-credit-aggregates-beta) | Opt-in app-only Graph collector: Fabric notebook or No Fabric scheduled PC refresh | **No**, after application consent and API authorization |
 | [Azure AI Foundry](#4-azure-ai-foundry) | Cost Management Query API + Azure Monitor; scheduled Python collector or Fabric notebook, which also records Copilot pay-as-you-go | **No** |
 
 For manually downloaded exports, a [Power Automate flow](../2.%20Fabric/flows/) can land
 the file in the right place. Azure collection does not require that flow.
 
 ---
+
+## Graph Copilot credit aggregates (beta)
+
+Use `--data costManagement=api` on either installer route; the default is **skip**.
+Manual installations use the [Python collector](../1.%20Local%20CSV/README.md) or
+[Fabric notebook](../2.%20Fabric/notebooks/Ingest_Copilot_Cost_Management.ipynb).
+An administrator grants **CopilotCostManagement.Read.All application permission** on the
+existing app registration. This one role covers service/funding reports and the tenant balance.
+Reports-only applications may instead request **CopilotCostManagement-Reports.Read.All**,
+but this collector also requests balance, so that narrower role is insufficient here.
+
+The collector reloads fourteen completed UTC service days and their calendar funding months,
+preserves older history, and replaces the balance snapshot. Output is
+`CopilotCostServiceDaily.csv`, `CopilotCostFundingMonthly.csv`, and `CopilotCostBalance.csv`;
+Fabric writes `copilot_cost_service_daily`, `copilot_cost_funding_monthly`, and
+`copilot_cost_balance`. Each active template contains three optional, disconnected
+**Copilot Credit** tables. The app exposes the CSVs under **Credit aggregates**.
+Missing files/tables yield empty optional views; invalid supplied data fails refresh.
+
+These are **credits, not currency or invoice settlement**. Service, funding and balance
+are overlapping views at different grains; never add them together or add them to
+Cowork, Studio or per-person totals. App-only authorization, collection and file-backed Desktop
+loading have been checked. The service report was empty; nonempty service ingestion, the
+Key Vault-backed notebook, service refresh and live rendering remain unverified.
+The existing report visuals do not display these separate Graph views.
+Graph beta is not supported for production use.
+See Microsoft's [Cost Management overview](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/api/admin-settings/cost-management/overview).
 
 ## 1. Cowork / Work IQ credits — Viva Insights Consumption Dashboard
 
@@ -317,7 +345,11 @@ treat `ServiceName` as an open list — Consumption Central groups by whatever v
 > were not billed. The reports have no per-user rows; the old flow and optional per-user CSV
 > remain. Manual exports win on their covered scope. This public-preview route requires a
 > delegated Global, Power Platform or Dynamics 365 administrator, is unavailable in sovereign
-> clouds, and has not been validated with a real report download or Fabric tenant.
+> clouds, and requires Power Automate Premium. Generation, download, paired OneLake publication
+> and Fabric ingestion have been tenant-validated, including a valid empty billing report.
+> Desktop has also loaded the downloaded pair into the separate file-backed preview tables;
+> existing Studio page visuals do not display those tables. Service semantic-model refresh and
+> rendered live report validation remain outstanding.
 >
 > **The per-user grain has no documented API.** The installer's flow also reads credits per user from
 > a licensing API route that isn't documented (`/licensing/entitlements/MCSMessages/users`) and saves

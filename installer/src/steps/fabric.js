@@ -1076,7 +1076,7 @@ export function sameSchedule(existing, wanted) {
   const b = wanted.configuration;
   const list = (/** @type {any} */ v) => JSON.stringify([...(v ?? [])].sort());
   return (
-    existing?.enabled === true &&
+    existing?.enabled === wanted.enabled &&
     a.type === b.type &&
     a.localTimeZoneId === b.localTimeZoneId &&
     list(a.times) === list(b.times) &&
@@ -1100,12 +1100,14 @@ export async function ensureSchedule(ctx) {
   const mine = schedules.find((s) => s.id === f.scheduleId);
 
   if (mine) {
-    if (sameSchedule(mine, wanted)) {
-      ui.ok(`Schedule: ${describeSchedule(config.schedule)}`);
+    const updated = mine.enabled === false ? { ...wanted, enabled: false } : wanted;
+    const disabled = updated.enabled === false ? ' (disabled)' : '';
+    if (sameSchedule(mine, updated)) {
+      ui.ok(`Schedule: ${describeSchedule(config.schedule)}${disabled}`);
       return;
     }
-    await api.fabric.updateSchedule(ws, pipelineId, mine.id, wanted);
-    ui.ok(`Updated the schedule: ${describeSchedule(config.schedule)}`);
+    await api.fabric.updateSchedule(ws, pipelineId, mine.id, updated);
+    ui.ok(`Updated the schedule: ${describeSchedule(config.schedule)}${disabled}`);
     return;
   }
   if (schedules.length) {

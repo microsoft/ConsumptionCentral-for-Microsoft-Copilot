@@ -3,7 +3,7 @@ import type { Filters, Settings } from '../data/store'
 import { dateLabel } from '../ui/format'
 
 export const REPORTING_CAVEAT =
-  'This page uses the date filter for every product, so a total can differ from the product tab, which shows its own period. Cowork counts whole weeks dated in the range. Studio user and agent snapshots have no dates and are left out.'
+  'This page uses the date filter for every product, so a total can differ from the product tab, which shows its own period. Cowork counts whole weeks dated in the range. Studio user and resource snapshots have no dates and are left out.'
 
 export const PRODUCTS = ['Cowork / Work IQ', 'Copilot Studio', 'GitHub Copilot', 'Azure AI Foundry'] as const
 export type Product = (typeof PRODUCTS)[number]

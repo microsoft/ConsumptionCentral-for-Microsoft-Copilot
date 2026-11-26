@@ -55,6 +55,7 @@ const EVERY_API = ds({ coworkCredits: 'api', studioCredits: 'api', github: 'api'
 test('installer-assets.json joins with the rules: the router first, the loads in manifest order, then the refresh and the status record', () => {
   assert.deepEqual(keys(catalog), [
     'uploadRouter',
+    'costManagement',
     'azureAi',
     'studioConsumption',
     'vivaConsumption',
@@ -183,6 +184,7 @@ test('notebooksFor deploys each notebook for the modes in the design table, for 
   const deployedWhen = {
     uploadRouter: (d) => routerWanted(d),
     azureAi: (d) => d.azureAi === 'api',
+    costManagement: (d) => d.costManagement === 'api',
     studioConsumption: (d) => d.studioCredits !== 'skip',
     vivaConsumption: () => true,
     github: (d) => d.github === 'csv',
@@ -255,12 +257,15 @@ test('the app registration is wanted only for Studio, Azure AI or org data from 
   assert.equal(secretWanted(defaults), false);
   assert.deepEqual(permissionsFor(defaults), []);
   for (const choice of CHOICES) {
-    const app = ['api', 'reports'].includes(choice.studioCredits) || choice.azureAi === 'api' || choice.orgData === 'api';
+    const app = ['api', 'reports'].includes(choice.studioCredits) || choice.azureAi === 'api' || choice.orgData === 'api' || choice.costManagement === 'api';
     const label = JSON.stringify(choice);
     assert.equal(appWanted(choice), app, label);
     // The GitHub token is kept like the client secret.
     assert.equal(secretWanted(choice), app || choice.github === 'api', label);
-    assert.deepEqual(permissionsFor(choice), ['api', 'reports'].includes(choice.studioCredits) || choice.orgData === 'api' ? [USER_READ_ALL] : [], label);
+    assert.deepEqual(permissionsFor(choice), [
+      ...(choice.costManagement === 'api' ? ['CopilotCostManagement.Read.All'] : []),
+      ...(['api', 'reports'].includes(choice.studioCredits) || choice.orgData === 'api' ? [USER_READ_ALL] : []),
+    ], label);
   }
   // The Cowork Dataflow signs in as a person, Commercial terms runs as the installer's user, and GitHub takes a token.
   for (const over of /** @type {Partial<DataSourceModes>[]} */ ([{ coworkCredits: 'api' }, { commercialTerms: 'api' }, { github: 'api' }, { coworkTasks: 'csv' }])) {

@@ -412,6 +412,7 @@ test('confirmPlan: prints the whole plan, then asks to go ahead', async () => {
       `${pad}Azure AI Foundry and Azure OpenAI: Skip`,
       `${pad}Org data: Skip`,
       `${pad}Credit rate from Azure Cost Management: Connected (API)`,
+      `${pad}Graph Copilot credit aggregates (beta): Skip`,
       `    Exports:     Copilot Cowork and Work IQ credits, Copilot Studio credits (dropped in ${UPLOAD_DIR})`,
       '    Workspace:   Consumption Central (new)',
       '    Lakehouse:   ConsumptionCentral',

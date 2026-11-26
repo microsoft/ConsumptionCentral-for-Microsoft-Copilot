@@ -15,7 +15,7 @@ import { PRODUCT } from '../src/product.js';
 import { setupRecovery } from '../src/setup.js';
 import { recordWorkspaceGone } from '../src/steps/fabric.js';
 import { PAX_RELEASE, RUNNER_SCRIPTS } from '../src/steps/pax/local.js';
-import { PAX_SCRIPTS } from '../src/sources.js';
+import { CREDIT_SCRIPTS, PAX_SCRIPTS } from '../src/sources.js';
 import {
   appName,
   askTarget,
@@ -111,8 +111,8 @@ test('requiredPermissions: the PAX app asks for what PAX reads and one site, sor
 
   // What the PAX app may hold from an earlier choice and no longer needs; the Fabric route keeps what it has.
   assert.deepEqual(retiredPermissions(fabric), []);
-  assert.deepEqual(retiredPermissions(paxRecord()), [...PAX_AUDIT_PERMISSIONS, ...PAX_AGENT365_PERMISSIONS].sort());
-  assert.deepEqual(retiredPermissions(pax), [...PAX_AUDIT_PERMISSIONS], 'with the Agent 365 file on, only the audit log is retired');
+  assert.deepEqual(retiredPermissions(paxRecord()), [...PAX_AUDIT_PERMISSIONS, ...PAX_AGENT365_PERMISSIONS, 'CopilotCostManagement.Read.All'].sort());
+  assert.deepEqual(retiredPermissions(pax), [...PAX_AUDIT_PERMISSIONS, 'CopilotCostManagement.Read.All'].sort(), 'optional credit and audit permissions are retired');
 });
 
 test('settledRoute: a record keeps the route it started on; the workspace alone settles nothing', () => {
@@ -361,7 +361,7 @@ test('preview: on the PAX route, refresh.json, the task\'s scripts and the app\'
     assert.equal(config.sharePoint, undefined, 'the placeholders stay out of the record');
 
     const scripts = readdirSync(join(out, 'scripts')).sort();
-    const shipped = realSources().paxScripts ? [...RUNNER_SCRIPTS, ...PAX_SCRIPTS] : [...RUNNER_SCRIPTS];
+    const shipped = realSources().paxScripts ? [...RUNNER_SCRIPTS, ...PAX_SCRIPTS, ...CREDIT_SCRIPTS.map((s) => s.split('/').at(-1))] : [...RUNNER_SCRIPTS];
     assert.deepEqual(scripts, [...shipped].sort());
 
     const perms = readFileSync(join(out, 'graph-permissions.txt'), 'utf8');

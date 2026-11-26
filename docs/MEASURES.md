@@ -152,7 +152,7 @@ The chargeable portion of user consumption.
 Credits the customer is actually charged for.
 
 **`Total Non-Billed Credits`** · *Credit Consumption (Agent)*  
-Credits consumed inside entitlement and therefore not charged.
+Credits reported as non-billed. The source does not identify why they were not billed.
 
 **`User Credit Share %`** · *Credit Consumption (User)*  
 This user's share of all Studio credits in the current view.
@@ -184,7 +184,7 @@ Studio cost attributable to each consuming person.
 Credits consumed by the agents sitting in this recommended action, for use as a tooltip on the Agents by Recommended Action chart.
 
 **`Entitlement Absorbed %`** · *Credit Consumption (Agent)*  
-The share of an agent's credits covered by prepaid capacity, so they never reached a bill. Shown as "Covered, not charged".
+The share of a resource's credits reported as non-billed. This does not establish prepaid coverage.
 
 **`Environments In Use`** · *Credit Consumption (Tenant)*  
 Environments carrying real consumption, so tables can drop the empty ones.

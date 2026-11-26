@@ -92,6 +92,34 @@ With tasks present, keep legacy metadata beside the selected legacy metrics file
 it from the task companion.
 See [task fields, empty states and editable value assumptions](../docs/COWORK-TASKS.md).
 
+## Optional Graph credit aggregates (beta)
+
+The standalone [`pull_copilot_cost_management.py`](pull_copilot_cost_management.py) collects
+service usage by completed UTC day, funding usage by calendar month, and the current tenant
+balance into three separate CSV files. These are overlapping credit views, not currency amounts
+or additive totals. Place them beneath `DataFolder` to load the template's separate
+**Copilot Credit Service**, **Copilot Credit Funding** and **Copilot Credit Balance** tables.
+Existing report visuals do not display these separate views. To inspect them in the app,
+choose all three CSVs along with the other files you want to view through **Change data**
+(the selection replaces the current dataset), then open **Cowork & Work IQ > Credit aggregates**.
+
+An administrator must grant the app Microsoft Graph **application**
+`CopilotCostManagement.Read.All` permission and consent. The API also checks application
+authorization; consent alone does not guarantee access. Sign in to Azure CLI as that app using
+an appropriate secure credential, then run:
+
+```powershell
+python "1. Local CSV\pull_copilot_cost_management.py" "<output-folder>" --days 14
+```
+
+Run this from the repository root. The optional `--days` range is 1–366. The collector retains
+older daily and monthly history and replaces the balance snapshot. All API requests must
+succeed before publication starts, but the file replacements are not one transaction. If a
+run fails, do not refresh dependent consumers; inspect the error and rerun successfully. The
+collector and app-only authorization have been tenant-validated, and Desktop has loaded the
+resulting files. The service report was empty in that test; nonempty service ingestion remains
+unverified. Graph beta is not supported for production.
+
 ## Next steps
 
 - **Automate the Azure export** — schedule [`pull_azure_ai.py`](pull_azure_ai.py) instead of

@@ -11,7 +11,7 @@
    },
    {
     "title": "Copilot Studio",
-    "sub": "credits per agent"
+    "sub": "credits per resource"
    },
    {
     "title": "GitHub Copilot",
@@ -250,11 +250,11 @@
      ],
      [
       {
-       "t": "Copilot Studio's per-user and per-agent exports carry no date column at all.",
+       "t": "Copilot Studio's per-user and per-resource exports carry no date column at all.",
        "b": true
       },
       {
-       "t": " They are snapshots of the whole extract. So the Studio period filter scopes the tenant-level trend and entitlement figures only — the per-user and per-agent figures always show everything, whatever period you pick. That is Microsoft's export, not a template choice."
+       "t": " They are snapshots of the whole extract. So the Studio period filter scopes the tenant-level trend and entitlement figures only — the per-user and per-resource figures always show everything, whatever period you pick."
       }
      ]
     ]
@@ -360,7 +360,7 @@
      ],
      [
       {
-       "t": "Studio per-agent ignores the date filter",
+       "t": "Studio per-resource ignores the date filter",
        "b": true
       },
       {
@@ -630,7 +630,7 @@
   "id": "guide-studio",
   "name": "How to read — Copilot Studio",
   "title": "How to read — Copilot Studio",
-  "subtitle": "Credits consumed by Copilot Studio agents",
+  "subtitle": "Credits consumed by resources",
   "cards": [],
   "sections": [
    {
@@ -638,7 +638,7 @@
     "paras": [
      [
       {
-       "t": "Credits consumed by agents built in Copilot Studio, reported three ways: per tenant, per agent and per user."
+       "t": "Credits reported by tenant, resource and user. Resource rows can include products and resources other than Copilot Studio agents."
       }
      ],
      [
@@ -684,7 +684,7 @@
        "t": "Microsoft's Studio exports carry a date on the tenant-level file only. The "
       },
       {
-       "t": "per-user and per-agent files have no date column at all",
+       "t": "per-user and per-resource files have no date column at all",
        "b": true
       },
       {
@@ -693,12 +693,12 @@
      ],
      [
       {
-       "t": "So the period filter on these views scopes the tenant-level trend and entitlement figures. Per-user and per-agent figures always show the whole extract, whatever period is selected."
+       "t": "So the period filter on these views scopes the tenant-level trend and entitlement figures. Per-user and per-resource figures always show the whole extract, whatever period is selected."
       }
      ],
      [
       {
-       "t": "This is worth knowing before reconciling a per-agent figure against a date-filtered total and finding they disagree — they are answering different questions."
+       "t": "This is worth knowing before reconciling a per-resource figure against a date-filtered total and finding they disagree — they are answering different questions."
       }
      ]
     ]
@@ -712,16 +712,16 @@
        "b": true
       },
       {
-       "t": " is the share of consumption that cost nothing. High is good."
+       "t": " is the share of resource credits reported as non-billed. The data does not establish why they were non-billed or whether prepaid coverage applied."
       }
      ],
      [
       {
-       "t": "Agents with No Consumption",
+       "t": "Resources with No Consumption",
        "b": true
       },
       {
-       "t": " are published but unused — candidates to retire."
+       "t": " have zero credits in the supplied resource snapshot; this alone does not establish whether they are unused."
       }
      ]
     ]
@@ -731,11 +731,11 @@
     "paras": [
      [
       {
-       "t": "Per-user and per-agent grain",
+       "t": "Per-user and per-resource grain",
        "b": true
       },
       {
-       "t": " — the per-user file is one row per user per agent, so a person using three agents appears three times. Anything counting people aggregates first."
+       "t": " — the per-user file can contain one row per user and resource, so a person using multiple resources can appear multiple times. Anything counting people aggregates first."
       }
      ],
      [
@@ -744,7 +744,7 @@
        "b": true
       },
       {
-       "t": " — the per-agent export carries the model behind each agent, including non-Microsoft models where used."
+       "t": " — the per-resource export may identify the model used, including non-Microsoft models."
       }
      ]
     ]
@@ -1129,12 +1129,12 @@
        "b": true
       },
       {
-       "t": "A suggestion per agent, from how much it consumes and how much of that is chargeable: Review, Investigate, Monitor, Healthy, or Unused."
+       "t": "A suggestion per resource based on relative consumption and billed share: Review, Investigate, Monitor, Healthy, or Unused. It does not verify coverage."
       }
      ],
      [
       {
-       "t": "Covered, not charged — ",
+       "t": "Non-billed credits — ",
        "b": true
       },
       {
@@ -1147,7 +1147,7 @@
        "b": true
       },
       {
-       "t": "Filters the user figures only. The agent and environment exports carry no person, so those figures stay unfiltered."
+       "t": "Filters the user figures only. The resource and environment exports carry no person, so those figures stay unfiltered."
       }
      ],
      [
@@ -1274,7 +1274,7 @@
        "b": true
       },
       {
-       "t": "Picks the attribute usage is rolled up by - Department, Business Unit, Cost Center, Job Family, Job Title, City, Country, Manager, a per-product Usage Intensity cohort, or User. On Cowork views it re-groups the rollups. On Studio views it filters the user figures; agent and environment figures carry no person in the export, so they stay unfiltered."
+       "t": "Picks the attribute usage is rolled up by - Department, Business Unit, Cost Center, Job Family, Job Title, City, Country, Manager, a per-product Usage Intensity cohort, or User. On Cowork views it re-groups the rollups. On Studio views it filters the user figures; resource and environment figures carry no person in the export, so they stay unfiltered."
       }
      ]
     ]

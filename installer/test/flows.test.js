@@ -184,6 +184,11 @@ test('studioReportsFlowDefinition: polls each operation, validates completion, t
         'body/startDate': "@variables('FromDate')", 'body/endDate': "@variables('ToDate')", 'body/granularity': 'Daily',
       });
       assert.match(actions[`Check_${label}_submission`].expression, /statusCode.*202.*Location.*Retry-After/);
+      assert.match(actions[`Check_${label}_submission`].expression, /statusCode.*200.*Succeeded.*fileName/);
+      assert.equal(actions[`Await_${label}_operation`].expression, `@equals(outputs('Submit_${label}')?['statusCode'], 202)`);
+      assert.deepEqual(actions[`Await_${label}_operation`].runAfter, { [`Check_${label}_submission`]: ['Succeeded'] });
+      assert.deepEqual(Object.keys(actions[`Await_${label}_operation`].actions), [`Initial_${label}_wait`, `Until_${label}_ready`]);
+      assert.deepEqual(actions[`Await_${label}_operation`].else.actions, {});
       assert.match(actions[`Initial_${label}_wait`].inputs.interval.count, /Retry-After/);
       const loop = actions[`Until_${label}_ready`];
       assert.equal(loop.operationOptions, 'FailWhenLimitsReached');
@@ -198,10 +203,13 @@ test('studioReportsFlowDefinition: polls each operation, validates completion, t
       assert.match(actions[`${label}_poll_delay`].inputs.interval.count, /Retry-After/);
       assert.equal(actions[`${label}_invalid_retry`].inputs.value, 'InvalidRetryAfter');
       assert.match(actions[`Check_${label}_result`].expression, /Succeeded.*fileName/);
+      assert.deepEqual(actions[`Check_${label}_result`].runAfter, { [`Await_${label}_operation`]: ['Succeeded'] });
       assert.equal(actions[`Fail_${label}_result`].inputs.runStatus, 'Failed');
       assert.equal(actions[`Download_${label}`].inputs.host.operationId, 'DownloadLicensingReportFile');
       assert.deepEqual(actions[`Download_${label}`].inputs.parameters, {
-        ReportName: report, FileName: `@body('Poll_${label}')?['fileName']`, 'api-version': '2024-10-01',
+        ReportName: report,
+        FileName: `@if(equals(outputs('Submit_${label}')?['statusCode'], 200), body('Submit_${label}')?['fileName'], body('Poll_${label}')?['fileName'])`,
+        'api-version': '2024-10-01',
       });
       assert.deepEqual(actions[`Download_${label}`].runtimeConfiguration.secureData.properties, ['inputs', 'outputs']);
     }
@@ -209,6 +217,8 @@ test('studioReportsFlowDefinition: polls each operation, validates completion, t
     assert.deepEqual(actions.Package_reports.runAfter, { Download_Billing: ['Succeeded'] });
     assert.equal(actions.Package_reports.inputs.feature, "@body('Download_Feature')");
     assert.equal(actions.Package_reports.inputs.billing, "@body('Download_Billing')");
+    assert.deepEqual(actions.Package_reports.runtimeConfiguration.secureData.properties, ['inputs'],
+      'Compose only supports secure inputs; Power Automate also hides its output');
     assert.deepEqual(actions.Save_reports.runAfter, { Package_reports: ['Succeeded'] });
     assert.match(JSON.stringify(actions.Save_reports), /StudioReportsPreview_/);
     assert.match(JSON.stringify(actions.Save_reports), /Files\/landing\/studio/);
@@ -220,6 +230,19 @@ test('studioReportsFlowDefinition: polls each operation, validates completion, t
     const names = new Set(allActions(named.actions).map(([name]) => name));
     for (const [, ref] of JSON.stringify(named).matchAll(/(?:body|outputs|actions|result)\('([^']+)'\)/g)) assert.ok(names.has(ref), ref);
   }
+});
+
+test('studioReportsFlowDefinition: the paired report can be written to SharePoint', () => {
+  const target = { endpoint: '', sharePoint: { siteUrl: 'https://example.sharepoint.com/sites/test', folder: '/sites/test/Shared Documents/Reports' } };
+  const def = studioReportsFlowDefinition(target, SCHEDULE);
+  assertWellFormed(def);
+  assert.deepEqual(connectorsUsed(def), [CONNECTORS.powerPlatformAdmin.name, CONNECTORS.sharePoint.name].sort());
+  const save = def.actions.Save_reports;
+  assert.deepEqual(save.runAfter, { Package_reports: ['Succeeded'] });
+  assert.equal(save.inputs.host.operationId, 'CreateFile');
+  assert.equal(save.inputs.parameters.folderPath, `/sites/test/Shared Documents/Reports/${STUDIO_DIR}`);
+  assert.match(save.inputs.parameters.name, /^StudioReportsPreview_/);
+  assert.match(save.inputs.parameters.body, /string\(outputs\('Package_reports'\)\)/);
 });
 
 test('nameByConnection: each action on an HTTP with Microsoft Entra ID connection says which, references follow, and no Set variable is empty', () => {

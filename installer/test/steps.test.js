@@ -413,6 +413,26 @@ test('schedule: created, unchanged on re-run, updated when the time changes, ado
   assert.equal(adopt.config.fabric.scheduleId, 'theirs');
 });
 
+test('schedule: a disabled schedule stays disabled on rerun and time changes', async () => {
+  const fabric = fakeFabric();
+  const ui = fakeUi();
+  const { ctx, config } = fakeCtx({ fabric: fabric.api, ui: ui.ui });
+  config.fabric.pipelineId = 'pipe-1';
+  await ensureSchedule(ctx);
+  fabric.schedules[0].enabled = false;
+  fabric.calls.length = 0;
+
+  await ensureSchedule(ctx);
+  assert.deepEqual(fabric.calls, []);
+  assert.match(ui.text(), /disabled/);
+
+  config.schedule.time = '05:00';
+  await ensureSchedule(ctx);
+  assert.deepEqual(fabric.calls, ['updateSchedule']);
+  assert.equal(fabric.schedules[0].enabled, false);
+  assert.deepEqual(fabric.schedules[0].configuration.times, ['05:00']);
+});
+
 /**
  * @param {string[]} have  App role IDs already assigned.
  * @param {{ revoke?: (assignmentId: string) => void }} [o]  Runs before an assignment is removed, and can throw.

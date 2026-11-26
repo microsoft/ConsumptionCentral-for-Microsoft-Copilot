@@ -31,6 +31,13 @@ export { SESSION_TAG };
 
 /** @type {Partial<Record<NotebookKey, ActivityRule>>} */
 export const ACTIVITIES = {
+  costManagement: {
+    name: 'Run_Copilot_Cost_Management',
+    label: 'Graph Copilot credit aggregates (beta)',
+    timeout: '0.01:00:00',
+    does: 'Reads completed UTC service days, calendar-month funding and the current tenant credit balance as separate views.',
+    refreshAfter: 'Succeeded',
+  },
   uploadRouter: {
     name: 'Run_Upload_Router',
     label: 'Uploaded CSV exports',

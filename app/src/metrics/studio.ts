@@ -13,7 +13,7 @@ export const STUDIO_PERIODS = [
 export const AGENT_ACTIONS = [
   '1. Review - high volume, mostly billed',
   '2. Investigate - almost all billed',
-  '3. Monitor - high volume, well covered',
+  '3. Monitor - high volume, mostly non-billed',
   '4. Healthy - low volume, no action needed',
   '5. Unused - retire or promote',
 ]
@@ -118,7 +118,7 @@ export function studioModel(ds: Dataset, f: Filters, s: Settings) {
   const top = envs.find((e) => e.used > 0)
   const headline =
     !envTotal || !top
-      ? 'No Studio consumption in this selection.'
+      ? 'No tenant consumption in this selection. Resource or user data may still be available.'
       : `${pct0(top.used / envTotal)} of Studio credits come from ${top.env}.${top.ent > 0 ? '' : ' That environment holds no entitlement, so its usage bills directly.'}`
 
   // Agent snapshot: environment, agent and product.
@@ -243,7 +243,7 @@ export function studioModel(ds: Dataset, f: Filters, s: Settings) {
     : ' Growth is the scenario you chose, not the fitted rate.'
   const forecastNote =
     confidence === 'No data'
-      ? 'No Studio data loaded.'
+      ? 'No tenant history is available for this forecast. Resource or user snapshots may still be available.'
       : `${confidence === 'Indicative only' ? 'Only ' : ''}${int(span ?? 0)} calendar days of Studio history are in scope.${basis}`
   const growthBit = fitted
     ? fit === null
@@ -253,15 +253,15 @@ export function studioModel(ds: Dataset, f: Filters, s: Settings) {
         : ` The history-based rate is ${pct(growth)} a month across ${int(span ?? 0)} calendar days, bounded to -30%/+30% for planning.`
     : ` Using your selected growth rate of ${pct(growth)} a month.`
   const forecastSummary = !runRate
-    ? 'No Studio consumption in the current selection.'
+    ? 'No tenant consumption is available for this forecast. Resource or user snapshots may still be available.'
     : `Studio is averaging about ${int(runRate)} credits a day across the selected history, which projects to ${usd(cost30 ?? 0)} over 30 days and ${usd(yearCost)} over twelve months.${growthBit}${
         daysRemaining === null ? '' : ` Prepaid capacity lasts about ${int(daysRemaining)} more days at this rate.`
       } Confidence is ${confidence.toLowerCase()}.`
 
   const notes = [
-    'Date controls affect tenant totals only. User and agent detail is an undated export snapshot; costs are rate estimates, not an allocation of the selected-period PAYG bill.',
+    'Date controls affect tenant totals only. User and resource detail is an undated export snapshot; costs are rate estimates, not an allocation of the selected-period PAYG bill.',
   ]
-  if (!agentRows.length) notes.push('No matching agent-detail rows: model/feature breakdown is unavailable.')
+  if (!agentRows.length) notes.push('No matching resource-detail rows: model/feature breakdown is unavailable.')
   if (!userRows.length) notes.push('No matching user-detail rows.')
 
   return {

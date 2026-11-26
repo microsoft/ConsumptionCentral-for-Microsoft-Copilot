@@ -117,6 +117,27 @@ at *parse* time rather than runtime, so the firewall sees the CSV and SQL source
 in one partition and throws
 `Formula.Firewall: ... privacy levels which cannot be used together`. Two files, no branch.
 
+## Rebuilding Studio resource labels
+
+Power Platform credit reports can contain resources other than agents. The Studio
+display-label repair operates on an expanded PBIP, never on signed PBIT report
+parts:
+
+```powershell
+python docs\scripts\pbit_to_pbip.py "2. Fabric\Consumption Central - Fabric.pbit" --out <short-private-folder> --project-name fabric
+python docs\scripts\fix_studio_resource_labels.py <short-private-folder>\fabric\fabric.Report
+```
+
+Repeat for the Local CSV and Viva Direct templates. Validate the report, open it
+in a dedicated Desktop document, inspect all four Studio pages, and re-export
+with neutral shipping defaults. Titles and field aliases change to resource;
+semantic query references retain their existing names. Do not remove
+`SecurityBindings` or patch report parts inside a PBIT.
+
+The model-only `fix_studio_resource_wording.py` repair also keeps the disconnected
+action axis synchronized with `Agent Action`; changing only the measure would
+leave the action chart without matching categories.
+
 ## Rebuilding the Cowork task additions
 
 The reviewable sources are under `docs\scripts\cowork_tasks\`: shared M normalization/adapters,

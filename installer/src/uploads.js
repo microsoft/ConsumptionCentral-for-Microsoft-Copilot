@@ -27,7 +27,7 @@ export const UPLOAD_FOLDERS = [UPLOAD_DIR, STUDIO_DIR, VIVA_DIR, COWORK_TASKS_DI
 export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 /** @typedef {'api' | 'reports' | 'csv' | 'skip'} SourceMode */
-/** @typedef {'coworkCredits' | 'coworkTasks' | 'studioCredits' | 'github' | 'azureAi' | 'orgData' | 'commercialTerms'} DataSourceId */
+/** @typedef {'coworkCredits' | 'coworkTasks' | 'studioCredits' | 'github' | 'azureAi' | 'orgData' | 'commercialTerms' | 'costManagement'} DataSourceId */
 /** @typedef {Record<DataSourceId, SourceMode>} DataSourceModes */
 
 /**
@@ -105,10 +105,10 @@ export const DATA_SOURCES = [
     defaultMode: 'csv',
     page: '5–8. Studio',
     group: USAGE_GROUP,
-    modeLabels: { api: 'Connected (Power Automate flow)', reports: 'Connected (reports API preview)', csv: 'Upload CSV only' },
+    modeLabels: { api: 'Connected (Power Automate flow)', reports: 'Connected (New API: reports preview)', csv: 'Upload CSV only' },
     hints: {
       api: 'A daily Power Automate flow reads the Power Platform licensing API. Whoever signs in to the flow needs Power Automate Premium, and signs in to its connections once. Exports are optional, and they win for the months they cover.',
-      reports: 'Opt in to the preview reports API alongside the existing flow as fallback. It needs a delegated Global, Power Platform or Dynamics 365 administrator; downloaded reports and connector handling have not yet been validated in a tenant.',
+      reports: 'Opt in to the preview reports API alongside the existing flow as fallback. It needs Power Automate Premium and a delegated Global, Power Platform or Dynamics 365 administrator. Generation, download and paired OneLake publication have been tenant-validated; model refresh remains unverified.',
       csv: 'Upload the exports each month. No flow.',
     },
     export: {
@@ -179,6 +179,18 @@ export const DATA_SOURCES = [
     group: CONTEXT_GROUP,
     hints: {
       api: 'The installer runs the notebook once, as you, so your account needs Cost Management Reader on the billing scope. Run Ingest_CommercialTerms again from the workspace when your price changes.',
+    },
+  },
+  {
+    id: 'costManagement',
+    label: 'Graph Copilot credit aggregates (beta)',
+    description: 'Separate daily service usage, monthly funding and tenant balance; credits, not currency.',
+    modes: ['api', 'skip'],
+    defaultMode: 'skip',
+    group: USAGE_GROUP,
+    modeLabels: { api: 'Connected (New API: Graph beta)' },
+    hints: {
+      api: 'Requires admin consent for CopilotCostManagement.Read.All application permission and API authorization. Beta is not supported for production. These overlapping aggregate views do not replace Viva or add to product totals.',
     },
   },
 ];

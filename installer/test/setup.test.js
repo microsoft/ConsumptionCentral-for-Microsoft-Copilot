@@ -349,7 +349,7 @@ test('setupCategories has one category per setup section, summarised from the re
   assert.ok(off.every((c) => c.complete === false));
   const summaries = (/** @type {ReturnType<typeof setupCategories>} */ cats) => Object.fromEntries(cats.map((c) => [c.id, c.summary]));
   const before = summaries(off);
-  assert.match(before.data, /^Copilot Cowork and Work IQ credits: Upload CSV; .*; Org data: Skip; Credit rate from Azure Cost Management: Skip$/);
+  assert.match(before.data, /^Copilot Cowork and Work IQ credits: Upload CSV; .*; Org data: Skip; Credit rate from Azure Cost Management: Skip; Graph Copilot credit aggregates \(beta\): Skip$/);
   assert.deepEqual({ ...before, data: undefined }, {
     data: undefined,
     placement: 'Choose workspace; capacity: not set',
