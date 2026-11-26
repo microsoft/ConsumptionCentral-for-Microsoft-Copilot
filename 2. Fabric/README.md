@@ -75,7 +75,8 @@ saves those files, and the installer turns `READ_API_FILES` on when it sets the 
 replaces the days and months the files cover, one Delta commit per table, so a failed write leaves
 its table as it was, and older days keep their rows.
 
-The installer also offers an **opt-in** [Copilot Studio usage reports preview](../installer/README.md#copilot-studio-usage-reports-preview).
+The installer marks the **opt-in New API** choices for the [Copilot Studio usage reports preview](../installer/README.md#copilot-studio-usage-reports-preview)
+and Graph Copilot credit aggregates beta. The existing choices and defaults remain available.
 It keeps that existing flow and optional CSVs as fallbacks. The preview's report pair supplies
 resource product/scenario and the reported prepaid/PAYG split, but no per-user data. Rows can
 represent other products or resources, not just Studio agents; the existing report labels them

@@ -105,7 +105,7 @@ export const DATA_SOURCES = [
     defaultMode: 'csv',
     page: '5–8. Studio',
     group: USAGE_GROUP,
-    modeLabels: { api: 'Connected (Power Automate flow)', reports: 'Connected (reports API preview)', csv: 'Upload CSV only' },
+    modeLabels: { api: 'Connected (Power Automate flow)', reports: 'Connected (New API: reports preview)', csv: 'Upload CSV only' },
     hints: {
       api: 'A daily Power Automate flow reads the Power Platform licensing API. Whoever signs in to the flow needs Power Automate Premium, and signs in to its connections once. Exports are optional, and they win for the months they cover.',
       reports: 'Opt in to the preview reports API alongside the existing flow as fallback. It needs Power Automate Premium and a delegated Global, Power Platform or Dynamics 365 administrator. Generation, download and paired OneLake publication have been tenant-validated; model refresh remains unverified.',
@@ -188,7 +188,7 @@ export const DATA_SOURCES = [
     modes: ['api', 'skip'],
     defaultMode: 'skip',
     group: USAGE_GROUP,
-    modeLabels: { api: 'Connected (Graph beta)' },
+    modeLabels: { api: 'Connected (New API: Graph beta)' },
     hints: {
       api: 'Requires admin consent for CopilotCostManagement.Read.All application permission and API authorization. Beta is not supported for production. These overlapping aggregate views do not replace Viva or add to product totals.',
     },

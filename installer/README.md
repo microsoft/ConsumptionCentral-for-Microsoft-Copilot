@@ -178,7 +178,7 @@ turn one on later, choose **Repair or change**.
 |---|---|---|---|---|
 | Copilot Cowork and Work IQ credits | **Connected (Dataflow)**: a [Dataflow Gen2](#cowork-credits-dataflow) reads your Viva Insights query. Spending policies are still an upload | Viva Insights > Copilot Consumption Dashboard > **Export**. Upload `PersonServiceCreditsMetrics.csv` and `SpendingPolicyMetadata.csv` from the ZIP | Upload CSV | Pages 1–4 (Cowork) |
 | Cowork task categories | | Viva Insights: the Cowork weekly metrics export, `CoworkWeeklyMetrics.csv` with its `PeopleMetaData.csv`. See [Cowork tasks](../docs/COWORK-TASKS.md) | Skip | 2.1. Cowork: Tasks |
-| Copilot Studio credits | **Connected (Power Automate flow)** reads the licensing API; **Connected (reports API preview)** also opts in to [usage reports](#copilot-studio-usage-reports-preview) | Power Platform admin center > **Licensing** > **Products** > **Copilot Studio**. Download the Summary/Environments, Agents and optional Users exports (`EntitlementConsumption*_MCSMessages*.csv`) | Upload CSV | Pages 5–8 (Studio) |
+| Copilot Studio credits | **Connected (Power Automate flow)** reads the licensing API; **Connected (New API: reports preview)** also opts in to [usage reports](#copilot-studio-usage-reports-preview) | Power Platform admin center > **Licensing** > **Products** > **Copilot Studio**. Download the Summary/Environments, Agents and optional Users exports (`EntitlementConsumption*_MCSMessages*.csv`) | Upload CSV | Pages 5–8 (Studio) |
 | GitHub Copilot | **Connected (GitHub API)**, with a [GitHub token](#github-token) | GitHub: your enterprise > **Billing and licensing** > **Usage** > **AI usage** > **Get usage report**. The seat map is a CSV of username, UPN, display name and plan | Skip | Pages 11–14 (GHCP) |
 | Azure AI Foundry and Azure OpenAI | [From Azure](#azure-ai), with the app registration | | Skip | Pages 9–10.1 (Azure) |
 | Org data | **Connected (Microsoft Entra ID)**: read from Microsoft Graph each day | Microsoft Entra admin center > **Users** > **All users** > **Download users**, or any CSV with a UPN or email column and your org columns | Skip | Department and other org filters. Without it, departments come from Viva Insights |
@@ -298,7 +298,7 @@ do not display the separate Graph tables.
 
 ### Fabric Studio reports configuration
 
-Choose **Connected (reports API preview)** on the Studio card, or use
+Choose **Connected (New API: reports preview)** on the Studio card, or use
 `--data studioCredits=reports`. This adds a separate daily flow and keeps the existing Studio
 credits flow running as the fallback. Sign in to the preview flow's **Power Platform for Admins
 V2** connector separately using its **OAuth Connection** option; the existing flow uses its

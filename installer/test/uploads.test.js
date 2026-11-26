@@ -444,9 +444,10 @@ test('describeSources: each source and how it arrives, as its card names the mod
     'Azure AI Foundry and Azure OpenAI: Connected (API)',
     'Org data: Connected (Microsoft Entra ID)',
     'Credit rate from Azure Cost Management: Connected (API)',
-    'Graph Copilot credit aggregates (beta): Connected (Graph beta)',
+    'Graph Copilot credit aggregates (beta): Connected (New API: Graph beta)',
   ]);
   assert.equal(modeLabel('github', 'api'), 'Connected (GitHub API)');
+  assert.equal(modeLabel('studioCredits', 'reports'), 'Connected (New API: reports preview)');
   assert.equal(modeLabel(dataSource('studioCredits'), 'csv'), 'Upload CSV only');
   assert.equal(modeLabel('azureAi', 'skip'), 'Skip');
 });
@@ -681,7 +682,7 @@ test('parseModes: each source takes only its own modes; the rest keep theirs', (
   assert.deepEqual(parseModes({ github: 'csv', azureAi: 'api', productFeedback: 'csv' }, ds), { modes: defaultsWith({ github: 'csv', azureAi: 'api' }) });
   assert.deepEqual(parseModes({ azureAi: 'csv' }, ds), { error: 'Azure AI Foundry and Azure OpenAI can be Connected (API) or Skip.' });
   assert.deepEqual(parseModes({ coworkTasks: 'api' }, ds), { error: 'Cowork task categories can be Upload CSV or Skip.' });
-  assert.deepEqual(parseModes({ studioCredits: 'flow' }, ds), { error: 'Copilot Studio credits can be Connected (Power Automate flow) or Connected (reports API preview) or Upload CSV only or Skip.' });
+  assert.deepEqual(parseModes({ studioCredits: 'flow' }, ds), { error: 'Copilot Studio credits can be Connected (Power Automate flow) or Connected (New API: reports preview) or Upload CSV only or Skip.' });
   assert.deepEqual(parseModes({ studioCredits: 'reports' }, ds), { modes: defaultsWith({ studioCredits: 'reports' }) });
   for (const raw of [null, undefined, 'github=csv']) assert.deepEqual(parseModes(raw, ds), { error: 'Choose how each source arrives.' });
   assert.deepEqual(ds, defaultDataSources(), 'the current modes are left alone');
